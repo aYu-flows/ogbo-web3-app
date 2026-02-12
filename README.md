@@ -32,8 +32,8 @@
 
 ### 获取安装包
 
-**APK 文件名**: `OGBO-v1.0-debug.apk`
-**文件大小**: 约 30-50 MB
+**APK 文件名**: `OGBO-v1.0.apk`
+**文件大小**: 约 4 - 5 MB
 **支持系统**: Android 7.0 及以上版本
 
 ### 安装步骤
@@ -66,7 +66,7 @@
 如果您的设备已启用 USB 调试:
 
 ```bash
-adb install OGBO-v1.0-debug.apk
+adb install OGBO-v1.0.apk
 ```
 
 ### 使用说明
