@@ -92,6 +92,7 @@ function ChatDetail({ chat, onBack, locale }: { chat: Chat; onBack: () => void; 
   const [input, setInput] = useState("");
   const [showEmoji, setShowEmoji] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
+  const [isComposing, setIsComposing] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -219,11 +220,13 @@ function ChatDetail({ chat, onBack, locale }: { chat: Chat; onBack: () => void; 
             ref={inputRef}
             value={input}
             onChange={(e) => setInput(e.target.value)}
+            onCompositionStart={() => setIsComposing(true)}
+            onCompositionEnd={() => setIsComposing(false)}
             onKeyDown={handleKeyDown}
             placeholder={t("chat.inputPlaceholder", locale)}
             className="flex-1 min-w-0 bg-muted rounded-full px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[var(--ogbo-blue)]/20 transition-all"
           />
-          {input.trim() ? (
+          {input.trim() || isComposing ? (
             <motion.button
               initial={{ scale: 0 }}
               animate={{ scale: 1 }}
