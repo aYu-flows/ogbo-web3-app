@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">OGBO</string>
+    <string name="title_activity_main">OGBO</string>
+    <string name="package_name">com.ogbo.app</string>
+    <string name="custom_url_scheme">com.ogbo.app</string>
+</resources>

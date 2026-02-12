@@ -1,0 +1,87 @@
+# ===================================
+# OGBO Web3 Social App - Git Ignore
+# ===================================
+
+# ============ Development Docs (DO NOT UPLOAD) ============
+# Specification documents
+specs/
+prompts/
+implement/
+
+# Task and project management docs
+tasks/
+reports/
+*.md
+!README.md
+!frontend/README.md
+
+# Temporary notes and todos
+*.txt
+!frontend/package.json
+
+# ============ Build Outputs ============
+# APK files
+*.apk
+
+# Build artifacts
+frontend/out/
+frontend/.next/
+frontend/build/
+frontend/dist/
+
+# Android build
+frontend/android/build/
+frontend/android/app/build/
+frontend/android/.gradle/
+frontend/android/local.properties
+frontend/android/.idea/
+frontend/android/captures/
+frontend/android/app/release/
+
+# iOS build
+frontend/ios/build/
+frontend/ios/Pods/
+frontend/ios/App/Podfile.lock
+
+# ============ Dependencies ============
+node_modules/
+frontend/node_modules/
+.pnpm-store/
+
+# ============ IDE and Editor ============
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# ============ Environment and Secrets ============
+.env
+.env.local
+.env.*.local
+*.log
+
+# ============ Temporary Files ============
+*.tmp
+*.temp
+.cache/
+*.pid
+*.seed
+
+# ============ Logo Source Files ============
+logo_*.png
+generate_icons.py
+
+# ============ Scripts and Batch Files ============
+*.bat
+cmd.bat
+
+# ============ System Files ============
+Thumbs.db
+desktop.ini
+.rooignore
+
+# ============ Keep These ============
+!frontend/public/favicon-*.png
+!frontend/public/apple-touch-icon.png
