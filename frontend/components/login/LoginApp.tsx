@@ -7,6 +7,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import toast, { Toaster } from "react-hot-toast";
 import { useStore, type Locale } from "@/lib/store";
 import { t } from "@/lib/i18n";
+import AppDownloadBanner from "@/components/AppDownloadBanner";
 import {
   ArrowLeft, Eye, EyeOff, Lock, Globe, ChevronDown,
   Check, X, AlertCircle, AlertTriangle, Loader2,
@@ -1427,6 +1428,9 @@ export default function LoginApp() {
 
   return (
     <div className="h-dvh w-full bg-background flex items-center justify-center">
+      {/* App Download Banner - Web only */}
+      <AppDownloadBanner />
+
       <Toaster position="top-center" toastOptions={{
         duration: 2500,
         style: { background: "hsl(var(--card))", color: "hsl(var(--card-foreground))", border: "1px solid hsl(var(--border))", borderRadius: "12px", fontSize: "13px", fontWeight: 500, boxShadow: "0 4px 12px rgba(0,0,0,0.1)" },
