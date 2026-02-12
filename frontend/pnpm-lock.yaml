@@ -24,6 +24,9 @@ importers:
       '@capacitor/ios':
         specifier: ^7.5.0
         version: 7.5.0(@capacitor/core@7.5.0)
+      '@capacitor/status-bar':
+        specifier: ^8.0.0
+        version: 8.0.0(@capacitor/core@7.5.0)
       '@hookform/resolvers':
         specifier: ^3.9.1
         version: 3.10.0(react-hook-form@7.71.1(react@19.2.3))
@@ -233,6 +236,11 @@ packages:
     resolution: {integrity: sha512-HlEWLjmPMSyjD8pM2FSTYF7a7aoYDdrlUoA3Ybm8OnmOaby3R7L8jpzJr96igh/i2SpsHvDI7v3sO2FhSNKCKA==}
     peerDependencies:
       '@capacitor/core': ^7.5.0
+
+  '@capacitor/status-bar@8.0.0':
+    resolution: {integrity: sha512-aIj3bc7z8lfPgOen8HlrBrkfnxpFnh21OCx6jCUx4Mvv+B6eEkUQ49b32DOddgVfr+igRHLX2SYi7duqIsNDXg==, tarball: https://registry.npmmirror.com/@capacitor/status-bar/-/status-bar-8.0.0.tgz}
+    peerDependencies:
+      '@capacitor/core': '>=8.0.0'
 
   '@emnapi/runtime@1.8.1':
     resolution: {integrity: sha512-mehfKSMWjjNol8659Z8KxEMrdSJDDot5SXMq00dM8BN4o+CLNXQ0xH2V7EchNHV4RmbZLmmPdEaXZc5H2FXmDg==, tarball: https://registry.npmmirror.com/@emnapi/runtime/-/runtime-1.8.1.tgz}
@@ -2577,6 +2585,10 @@ snapshots:
       tslib: 2.8.1
 
   '@capacitor/ios@7.5.0(@capacitor/core@7.5.0)':
+    dependencies:
+      '@capacitor/core': 7.5.0
+
+  '@capacitor/status-bar@8.0.0(@capacitor/core@7.5.0)':
     dependencies:
       '@capacitor/core': 7.5.0
 

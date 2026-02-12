@@ -14,6 +14,7 @@ import MarketPage from "@/components/pages/MarketPage";
 import DiscoverPage from "@/components/pages/DiscoverPage";
 import AssetsPage from "@/components/pages/AssetsPage";
 import AppDownloadBanner from "@/components/AppDownloadBanner";
+import StatusBarConfig from "@/components/StatusBarConfig";
 
 export default function Page() {
   const { activeTab, isLoggedIn, checkAuthStatus } = useStore();
@@ -76,6 +77,9 @@ export default function Page() {
 
   return (
     <div className="flex h-dvh bg-background overflow-hidden">
+      {/* Status Bar Configuration - Capacitor only */}
+      <StatusBarConfig />
+
       {/* App Download Banner - Web only */}
       <AppDownloadBanner />
 

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useStore } from "@/lib/store";
 import LoginApp from "@/components/login/LoginApp";
+import StatusBarConfig from "@/components/StatusBarConfig";
 
 export default function LoginPage() {
   const { isLoggedIn, checkAuthStatus } = useStore();
@@ -50,5 +51,10 @@ export default function LoginPage() {
     );
   }
 
-  return <LoginApp />;
+  return (
+    <>
+      <StatusBarConfig />
+      <LoginApp />
+    </>
+  );
 }

@@ -47,7 +47,8 @@ export default function TopBar({
   const isHome = activeTab === "home";
 
   return (
-    <header className="relative flex items-center justify-between px-4 lg:px-6 h-14 bg-card border-b border-border z-30 safe-area-top">
+    <header className="relative bg-card border-b border-border z-30" style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}>
+      <div className="relative flex items-center justify-between px-4 lg:px-6 h-14">
       {/* Left: Logo or Title */}
       <div className="flex items-center gap-2.5">
         {isHome ? (
@@ -230,6 +231,7 @@ export default function TopBar({
           </motion.div>
         )}
       </AnimatePresence>
+      </div>
     </header>
   );
 }
