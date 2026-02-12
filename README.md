@@ -1,57 +1,210 @@
-# OGBO Web3 Social App
+# OGBO Web3 Social App - V1.0 UI 交互版使用指南
 
-A next-generation Web3 social wallet application combining decentralized finance with social networking features.
-
-## 🚀 Features
-
-- **Multi-chain Wallet**: Support for Ethereum, BSC, Polygon, and more
-- **Social Chat**: Built-in messaging with Web3 contacts
-- **DeFi Integration**: Swap, stake, and manage crypto assets
-- **NFT Gallery**: View and manage your NFT collection
-- **DApp Browser**: Explore decentralized applications
-- **Real-time Market Data**: Track cryptocurrency prices and trends
-
-## 🛠 Tech Stack
-
-- **Frontend**: Next.js 16 + React 19 + TypeScript
-- **Styling**: Tailwind CSS + Framer Motion
-- **State Management**: Zustand
-- **Mobile**: Capacitor (iOS + Android)
-- **Deployment**: Vercel (Web)
-
-## 📱 Platforms
-
-- 🌐 Web: [https://ogbo-web3-app.vercel.app](https://ogbo-web3-app.vercel.app)
-- 📱 Android: Available as APK
-- 🍎 iOS: Coming soon
-
-## 🔧 Development
-
-```bash
-cd frontend
-pnpm install
-pnpm dev
-```
-
-Visit [http://localhost:3000](http://localhost:3000)
-
-## 📦 Build
-
-### Web
-```bash
-pnpm build
-```
-
-### Android
-```bash
-npx cap sync android
-cd android && ./gradlew assembleDebug
-```
-
-## 📄 License
-
-Proprietary - All rights reserved
+**版本**: V1.0 UI 交互版
+**发布日期**: 2026-02-12
+**适用对象**: 客户体验与演示
 
 ---
 
-Built with ❤️ by the OGBO Team
+## 🌐 Web 端访问
+
+### 访问地址
+
+**生产环境 URL**: https://ogbo-web3-app.vercel.app
+
+### 使用方式
+
+1. 在任何现代浏览器中打开上述 URL
+2. 支持桌面端和移动端浏览器
+3. 建议使用 Chrome、Safari、Edge 浏览器以获得最佳体验
+
+### 功能说明
+
+- ✅ 完整的登录界面 UI
+- ✅ 钱包连接界面展示
+- ✅ 社交聊天界面导航
+- ✅ 所有按钮和交互元素可点击
+- ℹ️ **注意**: 当前为 UI 交互版，展示的是模拟数据，暂不包含实际功能
+
+---
+
+## 📱 Android App 安装
+
+### 获取安装包
+
+**APK 文件名**: `OGBO-v1.0-debug.apk`
+**文件大小**: 约 30-50 MB
+**支持系统**: Android 7.0 及以上版本
+
+### 安装步骤
+
+#### 方法一: 直接安装（推荐）
+
+1. **下载 APK**
+   - 从提供的链接下载 APK 文件到您的 Android 设备
+   - 或通过 USB 将 APK 复制到设备
+
+2. **允许安装未知应用**
+   - **Android 8.0+**:
+     1. 点击 APK 文件开始安装
+     2. 如果提示"不允许安装未知应用"
+     3. 点击"设置" → 启用"允许来自此来源的应用"
+     4. 返回继续安装
+
+   - **Android 7.x**:
+     1. 进入"设置" → "安全"
+     2. 启用"未知来源"
+     3. 点击 APK 文件安装
+
+3. **完成安装**
+   - 点击"安装"按钮
+   - 等待安装完成（约 10-30 秒）
+   - 点击"打开"启动 App
+
+#### 方法二: 通过 ADB 安装（技术用户）
+
+如果您的设备已启用 USB 调试:
+
+```bash
+adb install OGBO-v1.0-debug.apk
+```
+
+### 使用说明
+
+1. **启动 App**
+   - 在应用抽屉中找到"OGBO"图标
+   - 点击启动应用
+
+2. **功能体验**
+   - 浏览登录界面设计
+   - 查看钱包连接流程
+   - 探索聊天界面布局
+   - 体验所有 UI 交互元素
+
+3. **注意事项**
+   - ℹ️ 当前为 UI 交互版，展示的是设计效果和交互流程
+   - ℹ️ 钱包连接、消息发送等功能为模拟展示
+   - ℹ️ 实际功能将在 V1.0 功能版中实现
+
+---
+
+## 🎯 体验要点
+
+### 重点查看项目
+
+1. **视觉设计**
+   - 现代化的 Web3 应用设计风格
+   - 高质感的 UI 组件
+   - 流畅的动画效果
+
+2. **交互流程**
+   - 用户登录流程
+   - 钱包连接步骤
+   - 聊天界面导航
+   - 功能模块切换
+
+3. **响应式布局**
+   - Web 端支持不同屏幕尺寸
+   - Android App 适配各种设备
+   - 竖屏/横屏显示
+
+### 已实现的 UI 模块
+
+| 模块 | 说明 | 状态 |
+|------|------|------|
+| 启动屏幕 | App Logo 和品牌展示 | ✅ 完成 |
+| 登录界面 | 用户登录/注册 UI | ✅ 完成 |
+| 钱包连接 | Web3 钱包连接界面 | ✅ 完成 |
+| 主界面 | App 主导航和布局 | ✅ 完成 |
+| 聊天界面 | 社交消息列表和对话 | ✅ 完成 |
+| 个人资料 | 用户信息展示 | ✅ 完成 |
+
+---
+
+## ❓ 常见问题
+
+### Web 端
+
+**Q: 为什么点击"连接钱包"没有反应？**
+A: 当前版本为 UI 交互展示版，钱包连接功能会展示 UI 流程，但不会实际连接 Web3 钱包。实际功能将在下一版本实现。
+
+**Q: 可以在手机浏览器访问吗？**
+A: 可以。Web 端采用响应式设计，支持在移动端浏览器访问。
+
+**Q: 数据会保存吗？**
+A: 当前版本不涉及真实数据存储，所有展示内容为模拟数据。
+
+### Android App
+
+**Q: 为什么安装时显示"此应用可能有风险"？**
+A: 这是正常提示。因为 APK 不是从 Google Play 下载的，Android 会显示此警告。这是内部测试版本，可以安全安装。
+
+**Q: App 需要什么权限？**
+A: 当前 UI 交互版仅需基本的存储权限，不涉及敏感权限。
+
+**Q: 为什么有些功能点击后没有响应？**
+A: 当前为 UI 展示版本，专注于视觉设计和交互流程。部分功能按钮为占位符，完整功能将在 V1.0 功能版中实现。
+
+**Q: App 需要联网吗？**
+A: 不需要。当前版本的 UI 和资源都打包在 APK 中，可以离线体验。
+
+**Q: 可以卸载吗？**
+A: 可以。像普通 App 一样，在设置中卸载即可。
+
+### 通用问题
+
+**Q: 这个版本包含哪些功能？**
+A: 这是 V1.0 UI 交互版，包含:
+- ✅ 完整的界面设计
+- ✅ UI 组件和交互逻辑
+- ✅ 页面导航和流程展示
+- ❌ 暂不包含实际的钱包功能
+- ❌ 暂不包含真实的消息发送
+- ❌ 暂不包含后端数据存储
+
+**Q: 功能版什么时候发布？**
+A: V1.0 功能版将在 UI 交互版确认后进行开发，将包含完整的钱包集成、消息系统和后端 API。
+
+**Q: 如何提供反馈？**
+A: 请记录您的使用体验和建议，包括:
+- UI/UX 设计反馈
+- 交互流程建议
+- 功能优先级意见
+- 发现的问题或改进点
+
+---
+
+## 📞 技术支持
+
+### 遇到问题？
+
+如果您在体验过程中遇到任何问题:
+
+1. **Web 端问题**
+   - 尝试刷新页面
+   - 清除浏览器缓存
+   - 更换浏览器
+
+2. **Android 安装问题**
+   - 确认 Android 版本 >= 7.0
+   - 检查存储空间是否充足
+   - 确认已启用"未知来源"安装
+
+3. **其他问题**
+   - 记录问题详情（截图、错误信息等）
+   - 联系技术团队获取支持
+
+---
+
+## 🎉 感谢体验
+
+感谢您体验 OGBO Web3 Social App V1.0 UI 交互版！
+
+您的反馈对我们非常重要，将帮助我们打造更好的产品。
+
+**下一步**: 基于您的反馈，我们将开发 V1.0 功能版，实现完整的钱包集成和社交功能。
+
+---
+
+**文档版本**: 1.0
+**更新日期**: 2026-02-12
