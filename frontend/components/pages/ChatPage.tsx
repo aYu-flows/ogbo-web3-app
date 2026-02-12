@@ -207,12 +207,12 @@ function ChatDetail({ chat, onBack, locale }: { chat: Chat; onBack: () => void; 
       </div>
 
       {/* Input bar */}
-      <div className="border-t border-border bg-card px-3 py-2 relative">
+      <div className="border-t border-border bg-card px-2 py-2 relative">
         <AnimatePresence>
           {showEmoji && <EmojiPicker onSelect={(emoji) => setInput((prev) => prev + emoji)} onClose={() => setShowEmoji(false)} />}
         </AnimatePresence>
-        <div className="flex items-center gap-1.5">
-          <motion.button whileTap={{ scale: 0.9 }} onClick={() => setShowEmoji(!showEmoji)} className="rounded-full p-2 hover:bg-muted transition-colors flex-shrink-0">
+        <div className="flex items-center gap-1">
+          <motion.button whileTap={{ scale: 0.9 }} onClick={() => setShowEmoji(!showEmoji)} className="rounded-full p-1.5 hover:bg-muted transition-colors flex-shrink-0">
             <Smile className="w-5 h-5 text-muted-foreground" />
           </motion.button>
           <input
@@ -221,7 +221,7 @@ function ChatDetail({ chat, onBack, locale }: { chat: Chat; onBack: () => void; 
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder={t("chat.inputPlaceholder", locale)}
-            className="flex-1 min-w-0 bg-muted rounded-full px-3.5 py-2 text-sm outline-none focus:ring-2 focus:ring-[var(--ogbo-blue)]/20 transition-all"
+            className="flex-1 min-w-0 bg-muted rounded-full px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[var(--ogbo-blue)]/20 transition-all"
           />
           {input.trim() ? (
             <motion.button
@@ -229,16 +229,16 @@ function ChatDetail({ chat, onBack, locale }: { chat: Chat; onBack: () => void; 
               animate={{ scale: 1 }}
               whileTap={{ scale: 0.9 }}
               onClick={handleSend}
-              className="rounded-full p-2 bg-[var(--ogbo-blue)] text-white hover:bg-[var(--ogbo-blue-hover)] transition-colors flex-shrink-0"
+              className="rounded-full p-1.5 bg-[var(--ogbo-blue)] text-white hover:bg-[var(--ogbo-blue-hover)] transition-colors flex-shrink-0"
             >
               <Send className="w-4 h-4" />
             </motion.button>
           ) : (
             <>
-              <button onClick={() => toast(t("common.comingSoon", locale))} className="rounded-full p-2 hover:bg-muted transition-colors flex-shrink-0">
+              <button onClick={() => toast(t("common.comingSoon", locale))} className="rounded-full p-1.5 hover:bg-muted transition-colors flex-shrink-0">
                 <Mic className="w-5 h-5 text-muted-foreground" />
               </button>
-              <button onClick={() => toast(t("common.comingSoon", locale))} className="rounded-full p-2 hover:bg-muted transition-colors flex-shrink-0">
+              <button onClick={() => toast(t("common.comingSoon", locale))} className="rounded-full p-1.5 hover:bg-muted transition-colors flex-shrink-0">
                 <Camera className="w-5 h-5 text-muted-foreground" />
               </button>
             </>
