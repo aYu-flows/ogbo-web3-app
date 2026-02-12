@@ -26,7 +26,7 @@ const banners = [
     gradient: "from-[#ff007a] to-[#ff6b9d]",
   },
   {
-    title: { zh: "OGBO Meeting 内测", en: "OGBO Meeting Beta" },
+    title: { zh: "OGBOX Meeting 内测", en: "OGBOX Meeting Beta" },
     desc: { zh: "邀请你加入Web3视频会议", en: "Join Web3 video conferencing" },
     cta: { zh: "申请体验", en: "Apply Now" },
     gradient: "from-[#0066FF] to-[#7C3AED]",

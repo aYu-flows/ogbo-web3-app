@@ -6,8 +6,8 @@ import "./globals.css";
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 
 export const metadata: Metadata = {
-  title: "OGBO - Web3 Social Wallet",
-  description: "OGBO Web3 Wallet + Social Application - Your gateway to the decentralized world",
+  title: "OGBOX - Web3 Social Wallet",
+  description: "OGBOX Web3 Wallet + Social Application - Your gateway to the decentralized world",
   icons: {
     icon: [
       { url: '/favicon-16x16.png', sizes: '16x16', type: 'image/png' },

@@ -2,7 +2,7 @@ import type { CapacitorConfig } from '@capacitor/cli';
 
 const config: CapacitorConfig = {
   appId: 'com.ogbo.app',
-  appName: 'OGBO',
+  appName: 'OGBOX',
   webDir: 'out',
   server: {
     androidScheme: 'https',  // Changed back to https for better compatibility

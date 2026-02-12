@@ -1,4 +1,4 @@
-# OGBO Web3 Social App
+# OGBOX Web3 Social App
 
 A next-generation Web3 social wallet application combining decentralized finance with social networking features.
 
@@ -21,7 +21,7 @@ A next-generation Web3 social wallet application combining decentralized finance
 
 ## 📱 Platforms
 
-- 🌐 Web: [https://ogbo-web3-app.vercel.app](https://ogbo-web3-app.vercel.app)
+- 🌐 Web: [https://ogbox-web3-app.vercel.app](https://ogbox-web3-app.vercel.app)
 - 📱 Android: Available as APK
 - 🍎 iOS: Coming soon
 
@@ -54,4 +54,4 @@ Proprietary - All rights reserved
 
 ---
 
-Built with ❤️ by the OGBO Team
+Built with ❤️ by the OGBOX Team

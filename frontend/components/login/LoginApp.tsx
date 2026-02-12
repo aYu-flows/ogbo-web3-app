@@ -484,7 +484,7 @@ function WelcomeView({ goTo }: { goTo: (v: AuthView) => void }) {
         </motion.div>
         <motion.h1 initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}
           className="text-3xl lg:text-4xl font-bold text-foreground text-center text-balance">
-          {t("auth.welcomeTo", locale)} OGBO
+          {t("auth.welcomeTo", locale)} OGBOX
         </motion.h1>
         <motion.p initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.5 }}
           className="text-base lg:text-lg text-muted-foreground mt-2 text-center">

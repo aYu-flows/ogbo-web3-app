@@ -9,7 +9,7 @@ import { t } from "@/lib/i18n";
 import toast from "react-hot-toast";
 
 const pageTitles: Record<TabType, { zh: string; en: string }> = {
-  home: { zh: "OGBO", en: "OGBO" },
+  home: { zh: "OGBOX", en: "OGBOX" },
   chat: { zh: "聊天", en: "Chat" },
   market: { zh: "行情", en: "Market" },
   discover: { zh: "发现", en: "Discover" },

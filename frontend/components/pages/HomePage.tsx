@@ -293,7 +293,7 @@ function MeetingModal({ open, onClose, locale }: { open: boolean; onClose: () =>
               <div className="mx-auto mb-4 w-16 h-16 rounded-2xl gradient-cyan flex items-center justify-center">
                 <Video className="w-8 h-8 text-white" />
               </div>
-              <h3 className="text-lg font-semibold mb-1">OGBO Meeting</h3>
+              <h3 className="text-lg font-semibold mb-1">OGBOX Meeting</h3>
               <p className="text-sm text-muted-foreground mb-4">
                 {locale === "zh" ? "安全加密的Web3视频会议功能" : "Secure encrypted Web3 video conferencing"}
               </p>

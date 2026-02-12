@@ -42,7 +42,7 @@ export default function SidebarNav() {
         <div className="w-9 h-9 rounded-xl gradient-primary flex items-center justify-center">
           <span className="text-white font-bold text-base">O</span>
         </div>
-        <span className="text-xl font-bold tracking-tight">OGBO</span>
+        <span className="text-xl font-bold tracking-tight">OGBOX</span>
       </div>
 
       {/* Navigation */}
