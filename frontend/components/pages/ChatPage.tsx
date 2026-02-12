@@ -221,7 +221,10 @@ function ChatDetail({ chat, onBack, locale }: { chat: Chat; onBack: () => void; 
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onCompositionStart={() => setIsComposing(true)}
-            onCompositionEnd={() => setIsComposing(false)}
+            onCompositionEnd={() => {
+              // Delay to let onChange fire first
+              setTimeout(() => setIsComposing(false), 0);
+            }}
             onKeyDown={handleKeyDown}
             placeholder={t("chat.inputPlaceholder", locale)}
             className="flex-1 min-w-0 bg-muted rounded-full px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[var(--ogbo-blue)]/20 transition-all"
