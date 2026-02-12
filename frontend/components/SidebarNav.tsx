@@ -42,7 +42,7 @@ export default function SidebarNav() {
       <div className="flex items-center gap-2.5 px-5 h-16 border-b border-border">
         <div className="w-9 h-9 relative flex-shrink-0">
           <Image
-            src="/logo/logo-vertical.png"
+            src="/logo/logo.png"
             alt="OGBOX Logo"
             width={36}
             height={36}

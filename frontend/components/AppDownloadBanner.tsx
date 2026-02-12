@@ -66,7 +66,7 @@ export default function AppDownloadBanner() {
             <div className="flex items-center gap-3 min-w-0 flex-1">
               <div className="flex-shrink-0 w-8 h-8 bg-white rounded-lg flex items-center justify-center p-1">
                 <Image
-                  src="/logo/logo-vertical.png"
+                  src="/logo/logo.png"
                   alt="OGBOX Logo"
                   width={28}
                   height={28}

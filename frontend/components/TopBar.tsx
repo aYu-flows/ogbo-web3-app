@@ -54,7 +54,7 @@ export default function TopBar({
           <div className="flex items-center gap-2">
             <div className="w-8 h-8 relative flex-shrink-0 lg:hidden">
               <Image
-                src="/logo/logo-vertical.png"
+                src="/logo/logo.png"
                 alt="OGBOX Logo"
                 width={32}
                 height={32}

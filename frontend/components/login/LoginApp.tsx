@@ -483,7 +483,7 @@ function WelcomeView({ goTo }: { goTo: (v: AuthView) => void }) {
           className="w-28 h-28 lg:w-32 lg:h-32 relative mb-8"
         >
           <Image
-            src="/logo/logo-vertical.png"
+            src="/logo/logo.png"
             alt="OGBOX Logo"
             width={128}
             height={128}
