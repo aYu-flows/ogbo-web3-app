@@ -69,7 +69,7 @@ function EmojiPicker({ onSelect, onClose }: { onSelect: (emoji: string) => void;
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: 10 }}
-      className="absolute bottom-full mb-2 left-0 right-0 rounded-2xl bg-card border border-border shadow-lg p-3"
+      className="absolute bottom-full mb-2 left-3 right-3 rounded-2xl bg-card border border-border shadow-lg p-3"
     >
       <div className="grid grid-cols-8 gap-1">
         {emojis.map((emoji) => (
@@ -138,7 +138,7 @@ function ChatDetail({ chat, onBack, locale }: { chat: Chat; onBack: () => void; 
       animate={{ x: 0 }}
       exit={{ x: "100%" }}
       transition={{ type: "tween", duration: 0.3 }}
-      className="absolute inset-0 lg:relative lg:inset-auto bg-background z-20 flex flex-col"
+      className="absolute inset-0 lg:relative lg:inset-auto bg-background z-20 flex flex-col overflow-x-hidden"
     >
       {/* Header */}
       <div className="flex items-center gap-3 px-3 py-3 border-b border-border bg-card">
