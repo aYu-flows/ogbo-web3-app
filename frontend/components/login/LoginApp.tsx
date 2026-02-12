@@ -270,7 +270,7 @@ function ProgressBar({ step, total }: { step: number; total: number }) {
 function BackHeader({ onBack, rightSlot }: { onBack: () => void; rightSlot?: React.ReactNode }) {
   const { locale } = useStore();
   return (
-    <div className="flex items-center justify-between h-14 px-4 lg:px-6">
+    <div className="flex items-center justify-between h-14 px-4 lg:px-6" style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 8px)' }}>
       <button
         onClick={onBack}
         className="flex items-center gap-1 text-muted-foreground hover:text-foreground transition-colors rounded-full p-1 hover:bg-muted"
@@ -472,7 +472,7 @@ function WelcomeView({ goTo }: { goTo: (v: AuthView) => void }) {
   const { locale } = useStore();
   return (
     <div className="flex flex-col h-full">
-      <div className="flex items-center justify-end h-14 px-4 lg:px-6">
+      <div className="flex items-center justify-end h-14 px-4 lg:px-6" style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 8px)' }}>
         <LangSwitcher />
       </div>
       <div className="flex-1 flex flex-col items-center justify-center px-6 lg:px-8">

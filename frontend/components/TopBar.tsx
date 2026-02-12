@@ -47,8 +47,8 @@ export default function TopBar({
   const isHome = activeTab === "home";
 
   return (
-    <header className="relative bg-card border-b border-border z-30" style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}>
-      <div className="relative flex items-end justify-between px-4 lg:px-6 h-14 pb-2">
+    <header className="relative bg-card border-b border-border z-30" style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 8px)' }}>
+      <div className="relative flex items-end justify-between px-4 lg:px-6 h-14 pb-3">
       {/* Left: Logo or Title */}
       <div className="flex items-center gap-2.5">
         {isHome ? (
