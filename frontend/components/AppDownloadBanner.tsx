@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import Image from "next/image";
 import { X, Download } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -63,34 +64,14 @@ export default function AppDownloadBanner() {
           <div className="flex items-center justify-between py-3 gap-4">
             {/* Left: Logo + Text */}
             <div className="flex items-center gap-3 min-w-0 flex-1">
-              <div className="flex-shrink-0 w-8 h-8 bg-white rounded-lg flex items-center justify-center">
-                <svg
-                  viewBox="0 0 500 500"
-                  className="w-6 h-6"
-                  fill="none"
-                  xmlns="http://www.w3.org/2000/svg"
-                >
-                  <defs>
-                    <linearGradient id="logo-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
-                      <stop offset="0%" stopColor="#8b5cf6" />
-                      <stop offset="50%" stopColor="#3b82f6" />
-                      <stop offset="100%" stopColor="#06b6d4" />
-                    </linearGradient>
-                  </defs>
-                  <path
-                    d="M250 50 L400 150 L400 350 L250 450 L100 350 L100 150 Z"
-                    fill="url(#logo-gradient)"
-                    opacity="0.9"
-                  />
-                  <circle cx="250" cy="290" r="30" fill="white" />
-                  <path
-                    d="M250 150 L250 230 M220 260 L250 230 L280 260"
-                    stroke="white"
-                    strokeWidth="20"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  />
-                </svg>
+              <div className="flex-shrink-0 w-8 h-8 bg-white rounded-lg flex items-center justify-center p-1">
+                <Image
+                  src="/logo/logo-vertical.png"
+                  alt="OGBOX Logo"
+                  width={28}
+                  height={28}
+                  className="object-contain"
+                />
               </div>
               <span className="text-white font-semibold text-sm sm:text-base truncate">
                 获取 OGBOX app

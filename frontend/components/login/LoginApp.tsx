@@ -4,6 +4,7 @@ import React from "react";
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
+import Image from "next/image";
 import toast, { Toaster } from "react-hot-toast";
 import { useStore, type Locale } from "@/lib/store";
 import { t } from "@/lib/i18n";
@@ -479,9 +480,15 @@ function WelcomeView({ goTo }: { goTo: (v: AuthView) => void }) {
           initial={{ scale: 0, rotate: -180 }}
           animate={{ scale: 1, rotate: 0 }}
           transition={{ type: "spring", duration: 0.8, bounce: 0.4 }}
-          className="w-28 h-28 lg:w-32 lg:h-32 rounded-3xl gradient-primary flex items-center justify-center shadow-2xl mb-8"
+          className="w-28 h-28 lg:w-32 lg:h-32 relative mb-8"
         >
-          <span className="text-white font-bold text-5xl lg:text-6xl">O</span>
+          <Image
+            src="/logo/logo-vertical.png"
+            alt="OGBOX Logo"
+            width={128}
+            height={128}
+            className="object-contain drop-shadow-2xl"
+          />
         </motion.div>
         <motion.h1 initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}
           className="text-3xl lg:text-4xl font-bold text-foreground text-center text-balance">

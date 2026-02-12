@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
+import Image from "next/image";
 import { Globe, Bell, Search, Plus, LogOut } from "lucide-react";
 import { useStore, type TabType } from "@/lib/store";
 import { t } from "@/lib/i18n";
@@ -51,8 +52,14 @@ export default function TopBar({
       <div className="flex items-center gap-2.5">
         {isHome ? (
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg gradient-primary flex items-center justify-center lg:hidden">
-              <span className="text-white font-bold text-sm">O</span>
+            <div className="w-8 h-8 relative flex-shrink-0 lg:hidden">
+              <Image
+                src="/logo/logo-vertical.png"
+                alt="OGBOX Logo"
+                width={32}
+                height={32}
+                className="object-contain"
+              />
             </div>
             <span className="text-lg font-bold tracking-tight">{title}</span>
           </div>

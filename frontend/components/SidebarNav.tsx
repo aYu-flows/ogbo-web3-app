@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
+import Image from "next/image";
 import { Home, MessageCircle, BarChart3, Compass, Wallet, LogOut } from "lucide-react";
 import { useStore, type TabType } from "@/lib/store";
 import { t } from "@/lib/i18n";
@@ -39,8 +40,14 @@ export default function SidebarNav() {
     <aside className="hidden lg:flex flex-col w-60 xl:w-64 bg-card border-r border-border h-dvh flex-shrink-0">
       {/* Logo */}
       <div className="flex items-center gap-2.5 px-5 h-16 border-b border-border">
-        <div className="w-9 h-9 rounded-xl gradient-primary flex items-center justify-center">
-          <span className="text-white font-bold text-base">O</span>
+        <div className="w-9 h-9 relative flex-shrink-0">
+          <Image
+            src="/logo/logo-vertical.png"
+            alt="OGBOX Logo"
+            width={36}
+            height={36}
+            className="object-contain"
+          />
         </div>
         <span className="text-xl font-bold tracking-tight">OGBOX</span>
       </div>
