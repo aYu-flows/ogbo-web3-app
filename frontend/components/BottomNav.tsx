@@ -17,7 +17,7 @@ export default function BottomNav() {
   const { activeTab, switchTab, locale, unreadChatCount } = useStore();
 
   return (
-    <nav className="relative flex items-end bg-card border-t border-border" style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}>
+    <nav className="relative flex items-end bg-card border-t border-border safe-area-bottom">
       <div className="flex w-full">
         {tabs.map((tab) => {
           const isActive = activeTab === tab.key;

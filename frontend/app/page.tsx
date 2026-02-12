@@ -13,6 +13,7 @@ import ChatPage from "@/components/pages/ChatPage";
 import MarketPage from "@/components/pages/MarketPage";
 import DiscoverPage from "@/components/pages/DiscoverPage";
 import AssetsPage from "@/components/pages/AssetsPage";
+import AppDownloadBanner from "@/components/AppDownloadBanner";
 
 export default function Page() {
   const { activeTab, isLoggedIn, checkAuthStatus } = useStore();
@@ -75,6 +76,9 @@ export default function Page() {
 
   return (
     <div className="flex h-dvh bg-background overflow-hidden">
+      {/* App Download Banner - Web only */}
+      <AppDownloadBanner />
+
       <Toaster
         position="top-center"
         toastOptions={{

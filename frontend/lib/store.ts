@@ -352,6 +352,8 @@ export const useStore = create<AppState>((set, get) => ({
     set({ isLoggedIn: false })
     if (typeof window !== 'undefined') {
       localStorage.removeItem('ogbo_logged_in')
+      // Reset download banner visibility on logout
+      localStorage.removeItem('ogbox_hide_download_banner')
     }
   },
   checkAuthStatus: () => {

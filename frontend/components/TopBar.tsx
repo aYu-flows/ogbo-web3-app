@@ -46,7 +46,7 @@ export default function TopBar({
   const isHome = activeTab === "home";
 
   return (
-    <header className="relative flex items-center justify-between px-4 lg:px-6 h-14 bg-card border-b border-border z-30">
+    <header className="relative flex items-center justify-between px-4 lg:px-6 h-14 bg-card border-b border-border z-30 safe-area-top">
       {/* Left: Logo or Title */}
       <div className="flex items-center gap-2.5">
         {isHome ? (
