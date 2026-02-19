@@ -8,7 +8,6 @@ import {
   Send,
   Download,
   ArrowLeftRight,
-  ShoppingCart,
   Users,
   TrendingUp,
   Compass,
@@ -426,7 +425,6 @@ export default function HomePage() {
     { icon: Send, label: t("home.send", locale), onClick: () => setSendOpen(true) },
     { icon: Download, label: t("home.receive", locale), onClick: () => setReceiveOpen(true) },
     { icon: ArrowLeftRight, label: t("home.swap", locale), onClick: () => setSwapOpen(true) },
-    { icon: ShoppingCart, label: t("home.buy", locale), onClick: () => toast(t("common.comingSoon", locale)) },
   ];
 
   const featureCards = [

@@ -10,7 +10,6 @@ import {
   Send,
   Download,
   ArrowLeftRight,
-  ShoppingCart,
   Plus,
   ChevronRight,
   ExternalLink,
@@ -228,7 +227,6 @@ export default function AssetsPage() {
               { icon: Send, label: t("home.send", locale) },
               { icon: Download, label: t("home.receive", locale) },
               { icon: ArrowLeftRight, label: t("home.swap", locale) },
-              { icon: ShoppingCart, label: t("home.buy", locale) },
             ].map((action) => (
               <motion.button
                 key={action.label}
