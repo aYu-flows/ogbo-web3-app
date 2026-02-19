@@ -3,7 +3,7 @@ import type { Locale } from './store'
 const translations: Record<Locale, Record<string, string>> = {
   zh: {
     // Navigation
-    'nav.home': '首页',
+    'nav.home': '主页',
     'nav.chat': '聊天',
     'nav.market': '行情',
     'nav.discover': '发现',

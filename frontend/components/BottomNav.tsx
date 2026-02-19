@@ -7,8 +7,8 @@ import { t } from "@/lib/i18n";
 
 const tabs: { key: TabType; icon: typeof Home; labelKey: string }[] = [
   { key: "home", icon: Home, labelKey: "nav.home" },
-  { key: "chat", icon: MessageCircle, labelKey: "nav.chat" },
   { key: "market", icon: BarChart3, labelKey: "nav.market" },
+  { key: "chat", icon: MessageCircle, labelKey: "nav.chat" },
   { key: "discover", icon: Compass, labelKey: "nav.discover" },
   { key: "assets", icon: Wallet, labelKey: "nav.assets" },
 ];

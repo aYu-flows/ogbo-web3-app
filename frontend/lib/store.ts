@@ -277,7 +277,7 @@ interface AppState {
 }
 
 export const useStore = create<AppState>((set, get) => ({
-  activeTab: 'home',
+  activeTab: 'chat',
   locale: 'zh',
   isBalanceVisible: true,
   currentWalletId: '1',
