@@ -37,9 +37,9 @@ export default function AppDownloadBanner() {
   };
 
   const handleDownload = () => {
-    // Trigger APK download
+    // Download APK from GitHub Releases
     const link = document.createElement("a");
-    link.href = "/download/OGBOX-v1.0.apk";
+    link.href = "https://github.com/aYu-flows/ogbo-web3-app/releases/download/v1.0/OGBOX-v1.0.apk";
     link.download = "OGBOX-v1.0.apk";
     document.body.appendChild(link);
     link.click();
