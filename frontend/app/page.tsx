@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useCallback, useEffect } from "react";
-import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { Toaster } from "react-hot-toast";
 import { useStore } from "@/lib/store";
@@ -18,7 +17,6 @@ import StatusBarConfig from "@/components/StatusBarConfig";
 
 export default function Page() {
   const { activeTab, isLoggedIn, checkAuthStatus } = useStore();
-  const router = useRouter();
   const [isChecking, setIsChecking] = useState(true);
   const [chatSearchOpen, setChatSearchOpen] = useState(false);
   const [chatNewOpen, setChatNewOpen] = useState(false);

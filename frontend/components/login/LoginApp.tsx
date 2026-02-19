@@ -2,7 +2,6 @@
 
 import React from "react";
 import { useState, useEffect, useMemo, useCallback } from "react";
-import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import Image from "next/image";
 import toast, { Toaster } from "react-hot-toast";
@@ -1411,7 +1410,6 @@ export default function LoginApp() {
   const [selectedNetwork, setSelectedNetwork] = useState<BlockchainNetwork>(SUPPORTED_NETWORKS[0]);
   const [showNetworkSwitcher, setShowNetworkSwitcher] = useState(false);
   const { locale, login } = useStore();
-  const router = useRouter();
 
   const goTo = useCallback((v: AuthView) => {
     const viewOrder: AuthView[] = [
