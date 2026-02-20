@@ -1,7 +1,17 @@
 import { create } from 'zustand'
+import type { PushAPI } from '@pushprotocol/restapi'
+import type { Signer } from 'ethers'
 
 export type TabType = 'home' | 'chat' | 'market' | 'discover' | 'assets'
 export type Locale = 'zh' | 'en'
+
+export interface ChatRequest {
+  fromAddress: string
+  fromDID: string
+  message: string
+  timestamp: number
+  chatId: string
+}
 
 export interface Token {
   symbol: string
@@ -47,6 +57,7 @@ export interface Message {
   content: string
   timestamp: number
   status: 'sent' | 'delivered' | 'read'
+  pushMessageId?: string
 }
 
 export interface Chat {
@@ -62,6 +73,9 @@ export interface Chat {
   members?: number
   pinned?: boolean
   messages: Message[]
+  walletAddress?: string
+  pushChatId?: string
+  did?: string
 }
 
 export interface Coin {
@@ -258,6 +272,13 @@ interface AppState {
   unreadChatCount: number
   notifications: number
   isLoggedIn: boolean
+  walletAddress: string | null
+
+  // Push Protocol state
+  pushUser: PushAPI | null
+  chatRequests: ChatRequest[]
+  pushInitialized: boolean
+  isConnectingPush: boolean
 
   switchTab: (tab: TabType) => void
   toggleBalance: () => void
@@ -271,9 +292,21 @@ interface AppState {
   sendMessage: (chatId: string, content: string, sender?: string) => void
   updatePrices: () => void
   getCurrentWallet: () => Wallet
-  login: () => void
+  login: (address?: string) => void
   logout: () => void
   checkAuthStatus: () => void
+
+  // Push Protocol actions
+  initPush: (signer: Signer) => Promise<void>
+  destroyPush: () => void
+  refreshChats: () => Promise<void>
+  refreshChatRequests: () => Promise<void>
+  acceptRequest: (address: string) => Promise<void>
+  rejectRequest: (address: string) => Promise<void>
+  sendFriendRequest: (address: string, message?: string) => Promise<void>
+  sendPushMessage: (address: string, content: string) => Promise<void>
+  loadChatHistory: (address: string) => Promise<void>
+  searchUserByAddress: (address: string) => Promise<any>
 }
 
 export const useStore = create<AppState>((set, get) => ({
@@ -288,6 +321,13 @@ export const useStore = create<AppState>((set, get) => ({
   unreadChatCount: mockChats.reduce((acc, c) => acc + c.unread, 0),
   notifications: 3,
   isLoggedIn: false,
+  walletAddress: null,
+
+  // Push Protocol initial state
+  pushUser: null,
+  chatRequests: [],
+  pushInitialized: false,
+  isConnectingPush: false,
 
   switchTab: (tab) => set({ activeTab: tab }),
   toggleBalance: () => set((s) => ({ isBalanceVisible: !s.isBalanceVisible })),
@@ -342,17 +382,16 @@ export const useStore = create<AppState>((set, get) => ({
     const s = get()
     return s.wallets.find((w) => w.id === s.currentWalletId) || s.wallets[0]
   },
-  login: () => {
-    set({ isLoggedIn: true })
+  login: (address?: string) => {
+    set({ isLoggedIn: true, walletAddress: address || null })
     if (typeof window !== 'undefined') {
       localStorage.setItem('ogbo_logged_in', 'true')
     }
   },
   logout: () => {
-    set({ isLoggedIn: false })
+    set({ isLoggedIn: false, walletAddress: null })
     if (typeof window !== 'undefined') {
       localStorage.removeItem('ogbo_logged_in')
-      // Reset download banner visibility on logout
       localStorage.removeItem('ogbox_hide_download_banner')
     }
   },
@@ -360,6 +399,236 @@ export const useStore = create<AppState>((set, get) => ({
     if (typeof window !== 'undefined') {
       const isLoggedIn = localStorage.getItem('ogbo_logged_in') === 'true'
       set({ isLoggedIn })
+    }
+  },
+
+  // ======== Push Protocol Actions ========
+
+  initPush: async (signer) => {
+    set({ isConnectingPush: true })
+    try {
+      const { initPushUser, setupSocketListeners, fetchChats: fetchPushChats, fetchChatRequests: fetchPushRequests, pushFeedToChat, pushRequestToChatRequest, pushMessageToMessage } = await import('@/lib/push')
+      const pushUser = await initPushUser(signer)
+      set({ pushUser, pushInitialized: true })
+
+      const state = get()
+      const myAddress = state.walletAddress || ''
+
+      // Load chats and requests
+      const [rawChats, rawRequests] = await Promise.all([
+        fetchPushChats(pushUser),
+        fetchPushRequests(pushUser),
+      ])
+
+      const chats = rawChats.map((feed: any) => pushFeedToChat(feed, myAddress))
+      const chatRequests = rawRequests.map((feed: any) => pushRequestToChatRequest(feed))
+      const unreadChatCount = chats.reduce((acc: number, c: any) => acc + (c.unread || 0), 0)
+      set({ chats, chatRequests, unreadChatCount })
+
+      // Setup WebSocket listeners
+      setupSocketListeners(pushUser, {
+        onMessage: (data: any) => {
+          const s = get()
+          const addr = s.walletAddress || ''
+          const msg = pushMessageToMessage(data, addr)
+          const chatId = data.chatId || data.chatid || ''
+          set((state) => {
+            const chats = state.chats.map((c) => {
+              if (c.pushChatId === chatId || c.walletAddress?.toLowerCase() === data.from?.toLowerCase()) {
+                // Deduplicate by pushMessageId
+                const exists = c.messages.some((m) => m.pushMessageId && m.pushMessageId === msg.pushMessageId)
+                if (exists) return c
+                return {
+                  ...c,
+                  lastMessage: msg.content,
+                  timestamp: msg.timestamp,
+                  unread: c.unread + (msg.sender !== 'me' ? 1 : 0),
+                  messages: [...c.messages, msg],
+                }
+              }
+              return c
+            })
+            return { chats, unreadChatCount: chats.reduce((acc, c) => acc + c.unread, 0) }
+          })
+        },
+        onRequest: (data: any) => {
+          const newRequest = pushRequestToChatRequest(data)
+          set((state) => {
+            const exists = state.chatRequests.some((r) => r.fromAddress.toLowerCase() === newRequest.fromAddress.toLowerCase())
+            if (exists) return {}
+            return { chatRequests: [...state.chatRequests, newRequest] }
+          })
+        },
+        onAccept: () => {
+          get().refreshChats()
+        },
+      })
+    } catch (error: any) {
+      console.error('Push init failed:', error)
+      const { default: toast } = await import('react-hot-toast')
+      const locale = get().locale
+      const msg = locale === 'zh' ? '聊天初始化失败，请重试' : 'Chat initialization failed, please retry'
+      toast.error(msg)
+    } finally {
+      set({ isConnectingPush: false })
+    }
+  },
+
+  destroyPush: () => {
+    const state = get()
+    if (state.pushUser) {
+      try {
+        state.pushUser.stream?.removeAllListeners?.()
+        state.pushUser.stream?.disconnect?.()
+      } catch {
+        // ignore
+      }
+    }
+    set({
+      pushUser: null,
+      chatRequests: [],
+      pushInitialized: false,
+      isConnectingPush: false,
+      walletAddress: null,
+      chats: mockChats,
+      unreadChatCount: mockChats.reduce((acc, c) => acc + c.unread, 0),
+    })
+  },
+
+  refreshChats: async () => {
+    const state = get()
+    if (!state.pushUser || !state.pushInitialized) return
+    try {
+      const { fetchChats: fetchPushChats, pushFeedToChat } = await import('@/lib/push')
+      const rawChats = await fetchPushChats(state.pushUser)
+      const chats = rawChats.map((feed: any) => pushFeedToChat(feed, state.walletAddress || ''))
+      const unreadChatCount = chats.reduce((acc: number, c: any) => acc + (c.unread || 0), 0)
+      set({ chats, unreadChatCount })
+    } catch (error) {
+      console.error('refreshChats failed:', error)
+    }
+  },
+
+  refreshChatRequests: async () => {
+    const state = get()
+    if (!state.pushUser || !state.pushInitialized) return
+    try {
+      const { fetchChatRequests: fetchPushRequests, pushRequestToChatRequest } = await import('@/lib/push')
+      const rawRequests = await fetchPushRequests(state.pushUser)
+      const chatRequests = rawRequests.map((feed: any) => pushRequestToChatRequest(feed))
+      set({ chatRequests })
+    } catch (error) {
+      console.error('refreshChatRequests failed:', error)
+    }
+  },
+
+  acceptRequest: async (address) => {
+    const state = get()
+    if (!state.pushUser) return
+    try {
+      const { acceptChatRequest } = await import('@/lib/push')
+      await acceptChatRequest(state.pushUser, address)
+      set((s) => ({
+        chatRequests: s.chatRequests.filter((r) => r.fromAddress.toLowerCase() !== address.toLowerCase()),
+      }))
+      await get().refreshChats()
+      const { default: toast } = await import('react-hot-toast')
+      const locale = get().locale
+      const msg = locale === 'zh' ? '已接受好友请求，快去打招呼吧！' : 'Friend request accepted! Say hi!'
+      toast.success(msg)
+    } catch (error) {
+      console.error('acceptRequest failed:', error)
+      const { default: toast } = await import('react-hot-toast')
+      toast.error(get().locale === 'zh' ? '操作失败，请重试' : 'Failed, please retry')
+    }
+  },
+
+  rejectRequest: async (address) => {
+    const state = get()
+    if (!state.pushUser) return
+    try {
+      const { rejectChatRequest } = await import('@/lib/push')
+      await rejectChatRequest(state.pushUser, address)
+      set((s) => ({
+        chatRequests: s.chatRequests.filter((r) => r.fromAddress.toLowerCase() !== address.toLowerCase()),
+      }))
+      const { default: toast } = await import('react-hot-toast')
+      const locale = get().locale
+      toast.success(locale === 'zh' ? '已拒绝请求' : 'Request rejected')
+    } catch (error) {
+      console.error('rejectRequest failed:', error)
+    }
+  },
+
+  sendFriendRequest: async (address, message) => {
+    const state = get()
+    if (!state.pushUser) return
+    try {
+      const { sendChatRequest } = await import('@/lib/push')
+      await sendChatRequest(state.pushUser, address, message || '')
+    } catch (error) {
+      console.error('sendFriendRequest failed:', error)
+      throw error
+    }
+  },
+
+  sendPushMessage: async (address, content) => {
+    const state = get()
+    if (!state.pushUser) return
+    try {
+      const { sendMessage: pushSend } = await import('@/lib/push')
+      await pushSend(state.pushUser, address, content)
+      // Optimistically add message to local state
+      const msg = {
+        id: `m${Date.now()}`,
+        sender: 'me' as const,
+        content,
+        timestamp: Date.now(),
+        status: 'sent' as const,
+      }
+      set((s) => ({
+        chats: s.chats.map((c) =>
+          c.walletAddress?.toLowerCase() === address.toLowerCase()
+            ? { ...c, lastMessage: content, timestamp: Date.now(), messages: [...c.messages, msg] }
+            : c
+        ),
+      }))
+    } catch (error) {
+      console.error('sendPushMessage failed:', error)
+      throw error
+    }
+  },
+
+  searchUserByAddress: async (address) => {
+    const state = get()
+    if (!state.pushUser) return null
+    try {
+      const { getUserInfo } = await import('@/lib/push')
+      return await getUserInfo(state.pushUser, address)
+    } catch (error) {
+      console.error('searchUserByAddress failed:', error)
+      return null
+    }
+  },
+
+  loadChatHistory: async (address) => {
+    const state = get()
+    if (!state.pushUser || !state.walletAddress) return
+    try {
+      const { fetchChatHistory, pushMessageToMessage } = await import('@/lib/push')
+      const rawMsgs = await fetchChatHistory(state.pushUser, address, 30)
+      const messages = rawMsgs
+        .map((msg: any) => pushMessageToMessage(msg, state.walletAddress!))
+        .reverse()
+      set((s) => ({
+        chats: s.chats.map((c) =>
+          c.walletAddress?.toLowerCase() === address.toLowerCase()
+            ? { ...c, messages }
+            : c
+        ),
+      }))
+    } catch (error) {
+      console.error('loadChatHistory failed:', error)
     }
   },
 }))

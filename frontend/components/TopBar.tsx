@@ -20,9 +20,11 @@ const pageTitles: Record<TabType, { zh: string; en: string }> = {
 export default function TopBar({
   onSearch,
   onAdd,
+  onAddFriend,
 }: {
   onSearch?: () => void;
   onAdd?: () => void;
+  onAddFriend?: () => void;
 }) {
   const { activeTab, locale, switchLocale, notifications, logout } = useStore();
   const [langMenuOpen, setLangMenuOpen] = useState(false);
@@ -84,12 +86,12 @@ export default function TopBar({
         )}
 
         {/* Add button for chat */}
-        {activeTab === "chat" && onAdd && (
+        {activeTab === "chat" && (onAddFriend || onAdd) && (
           <motion.button
             whileTap={{ scale: 0.9 }}
-            onClick={onAdd}
+            onClick={onAddFriend || onAdd}
             className="rounded-full p-2 hover:bg-muted transition-colors"
-            aria-label="New chat"
+            aria-label="Add friend"
           >
             <Plus className="w-5 h-5 text-foreground" />
           </motion.button>

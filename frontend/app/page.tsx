@@ -3,7 +3,9 @@
 import { useState, useCallback, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Toaster } from "react-hot-toast";
+import { useAccount, useWalletClient } from "wagmi";
 import { useStore } from "@/lib/store";
+import { walletClientToSigner } from "@/lib/wagmi";
 import TopBar from "@/components/TopBar";
 import BottomNav from "@/components/BottomNav";
 import SidebarNav from "@/components/SidebarNav";
@@ -14,42 +16,63 @@ import DiscoverPage from "@/components/pages/DiscoverPage";
 import AssetsPage from "@/components/pages/AssetsPage";
 import AppDownloadBanner from "@/components/AppDownloadBanner";
 import StatusBarConfig from "@/components/StatusBarConfig";
+import AddFriendModal from "@/components/chat/AddFriendModal";
 
 export default function Page() {
-  const { activeTab, isLoggedIn, checkAuthStatus } = useStore();
+  const { activeTab, isLoggedIn, checkAuthStatus, initPush, pushInitialized, isConnectingPush, destroyPush, walletAddress, login } = useStore();
   const [isChecking, setIsChecking] = useState(true);
   const [chatSearchOpen, setChatSearchOpen] = useState(false);
-  const [chatNewOpen, setChatNewOpen] = useState(false);
+  const [addFriendOpen, setAddFriendOpen] = useState(false);
   const [marketSearchOpen, setMarketSearchOpen] = useState(false);
 
-  useEffect(() => {
-    // Check authentication status on mount
-    checkAuthStatus();
+  // Wagmi wallet state
+  const { address: wagmiAddress, isConnected } = useAccount();
+  const { data: walletClient } = useWalletClient();
 
-    // Small delay to ensure store is updated
-    setTimeout(() => {
-      setIsChecking(false);
-    }, 100);
+  useEffect(() => {
+    checkAuthStatus();
+    setTimeout(() => setIsChecking(false), 100);
   }, [checkAuthStatus]);
 
   useEffect(() => {
-    // Redirect to login if not logged in
     if (!isChecking && !isLoggedIn) {
-      // Use window.location.replace for Capacitor compatibility
       window.location.replace("./login.html");
     }
   }, [isLoggedIn, isChecking]);
+
+  // Sync wagmi wallet address to store when connected
+  useEffect(() => {
+    if (isConnected && wagmiAddress && isLoggedIn) {
+      if (!walletAddress || walletAddress.toLowerCase() !== wagmiAddress.toLowerCase()) {
+        login(wagmiAddress);
+      }
+    }
+  }, [isConnected, wagmiAddress, isLoggedIn]);
+
+  // Auto-initialize Push Protocol when wallet is connected and user is logged in
+  useEffect(() => {
+    if (!isLoggedIn || !isConnected || !walletClient || pushInitialized || isConnectingPush) return;
+    walletClientToSigner(walletClient)
+      .then((signer) => initPush(signer))
+      .catch(console.error);
+  }, [isLoggedIn, isConnected, walletClient, pushInitialized, isConnectingPush]);
+
+  // Destroy Push when wallet disconnects
+  useEffect(() => {
+    if (isLoggedIn && !isConnected && pushInitialized) {
+      destroyPush();
+    }
+  }, [isConnected, isLoggedIn, pushInitialized]);
 
   const handleSearch = useCallback(() => {
     if (activeTab === "chat") setChatSearchOpen((p) => !p);
     if (activeTab === "market") setMarketSearchOpen((p) => !p);
   }, [activeTab]);
 
-  const handleAdd = useCallback(() => {
-    if (activeTab === "chat") setChatNewOpen(true);
-  }, [activeTab]);
+  const handleAddFriend = useCallback(() => {
+    setAddFriendOpen(true);
+  }, []);
 
-  // Show loading while checking auth status
   if (isChecking) {
     return (
       <div className="flex h-dvh items-center justify-center bg-background">
@@ -61,7 +84,6 @@ export default function Page() {
     );
   }
 
-  // Don't render main app if not logged in
   if (!isLoggedIn) {
     return (
       <div className="flex h-dvh items-center justify-center bg-background">
@@ -75,10 +97,7 @@ export default function Page() {
 
   return (
     <div className="flex h-dvh bg-background overflow-hidden">
-      {/* Status Bar Configuration - Capacitor only */}
       <StatusBarConfig />
-
-      {/* App Download Banner - Web only */}
       <AppDownloadBanner />
 
       <Toaster
@@ -97,12 +116,13 @@ export default function Page() {
         }}
       />
 
-      {/* Desktop sidebar */}
       <SidebarNav />
 
-      {/* Main content area */}
       <div className="flex-1 flex flex-col min-w-0 relative">
-        <TopBar onSearch={handleSearch} onAdd={handleAdd} />
+        <TopBar
+          onSearch={handleSearch}
+          onAddFriend={handleAddFriend}
+        />
 
         <main className="flex-1 overflow-hidden relative">
           <AnimatePresence mode="wait" initial={false}>
@@ -115,7 +135,7 @@ export default function Page() {
               className="absolute inset-0 overflow-y-auto"
             >
               {activeTab === "home" && <HomePage />}
-              {activeTab === "chat" && <ChatPage />}
+              {activeTab === "chat" && <ChatPage searchOpen={chatSearchOpen} onCloseSearch={() => setChatSearchOpen(false)} />}
               {activeTab === "market" && <MarketPage />}
               {activeTab === "discover" && <DiscoverPage />}
               {activeTab === "assets" && <AssetsPage />}
@@ -123,11 +143,13 @@ export default function Page() {
           </AnimatePresence>
         </main>
 
-        {/* Bottom nav: mobile only */}
         <div className="lg:hidden">
           <BottomNav />
         </div>
       </div>
+
+      {/* Add Friend Modal - global, accessible from TopBar */}
+      <AddFriendModal isOpen={addFriendOpen} onClose={() => setAddFriendOpen(false)} />
     </div>
   );
 }

@@ -20,10 +20,13 @@ import {
   X,
   Users,
   Send,
+  Mail,
 } from "lucide-react";
 import { useStore, type Chat } from "@/lib/store";
 import { t } from "@/lib/i18n";
 import toast from "react-hot-toast";
+import ChatRequestList from "@/components/chat/ChatRequestList";
+import WalletAddress from "@/components/chat/WalletAddress";
 
 function formatTime(ts: number, locale: "zh" | "en") {
   const now = Date.now();
@@ -88,7 +91,7 @@ function EmojiPicker({ onSelect, onClose }: { onSelect: (emoji: string) => void;
 
 // Chat Detail View
 function ChatDetail({ chat, onBack, locale }: { chat: Chat; onBack: () => void; locale: "zh" | "en" }) {
-  const { sendMessage } = useStore();
+  const { sendMessage, sendPushMessage, loadChatHistory, pushInitialized, walletAddress } = useStore();
   const [input, setInput] = useState("");
   const [showEmoji, setShowEmoji] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
@@ -104,26 +107,44 @@ function ChatDetail({ chat, onBack, locale }: { chat: Chat; onBack: () => void; 
     scrollToBottom();
   }, [chat.messages, scrollToBottom]);
 
-  const handleSend = () => {
+  // Load Push history when chat opens (only if no messages yet)
+  useEffect(() => {
+    if (pushInitialized && chat.walletAddress && chat.messages.length === 0) {
+      loadChatHistory(chat.walletAddress);
+    }
+  }, [chat.id, pushInitialized]);
+
+  const handleSend = async () => {
     if (!input.trim()) return;
-    sendMessage(chat.id, input.trim());
+    const content = input.trim();
     setInput("");
     setShowEmoji(false);
 
-    // Simulate reply
-    setIsTyping(true);
-    setTimeout(() => {
-      setIsTyping(false);
-      const replies = [
-        locale === "zh" ? "好的，收到！" : "Got it!",
-        locale === "zh" ? "有意思，继续说" : "Interesting, go on",
-        locale === "zh" ? "我也这么觉得" : "I think so too",
-        locale === "zh" ? "让我想想..." : "Let me think...",
-      ];
-      const reply = replies[Math.floor(Math.random() * replies.length)];
-      // Pass the other person's name (lowercase) as sender for mock reply
-      sendMessage(chat.id, reply, chat.name.toLowerCase());
-    }, 1500 + Math.random() * 2000);
+    if (pushInitialized && chat.walletAddress) {
+      // Send via Push Protocol
+      try {
+        await sendPushMessage(chat.walletAddress, content);
+      } catch {
+        toast.error(locale === "zh" ? "发送失败" : "Send failed");
+        setInput(content);
+      }
+    } else {
+      // Send via mock
+      sendMessage(chat.id, content);
+      // Simulate reply (mock mode only)
+      setIsTyping(true);
+      setTimeout(() => {
+        setIsTyping(false);
+        const replies = [
+          locale === "zh" ? "好的，收到！" : "Got it!",
+          locale === "zh" ? "有意思，继续说" : "Interesting, go on",
+          locale === "zh" ? "我也这么觉得" : "I think so too",
+          locale === "zh" ? "让我想想..." : "Let me think...",
+        ];
+        const reply = replies[Math.floor(Math.random() * replies.length)];
+        sendMessage(chat.id, reply, chat.name.toLowerCase());
+      }, 1500 + Math.random() * 2000);
+    }
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -155,9 +176,13 @@ function ChatDetail({ chat, onBack, locale }: { chat: Chat; onBack: () => void; 
           </div>
           <div className="min-w-0">
             <p className="text-sm font-semibold truncate">{chat.name}</p>
-            <p className="text-[10px] text-muted-foreground">
-              {chat.type === "group" ? `${chat.members} ${t("chat.members", locale)}` : chat.online ? t("chat.online", locale) : t("chat.offline", locale)}
-            </p>
+            {chat.walletAddress ? (
+              <WalletAddress address={chat.walletAddress} showCopyIcon={false} className="mt-0.5" />
+            ) : (
+              <p className="text-[10px] text-muted-foreground">
+                {chat.type === "group" ? `${chat.members} ${t("chat.members", locale)}` : chat.online ? t("chat.online", locale) : t("chat.offline", locale)}
+              </p>
+            )}
           </div>
         </div>
         <button className="rounded-full p-1.5 hover:bg-muted transition-colors">
@@ -255,72 +280,14 @@ function ChatDetail({ chat, onBack, locale }: { chat: Chat; onBack: () => void; 
   );
 }
 
-// New Chat Modal
-function NewChatModal({ open, onClose, locale, onSelectChat }: { open: boolean; onClose: () => void; locale: "zh" | "en"; onSelectChat: (id: string) => void }) {
-  const { chats } = useStore();
-  const [search, setSearch] = useState("");
-  if (!open) return null;
-  const contacts = chats.filter((c) => c.type === "personal" && c.name.toLowerCase().includes(search.toLowerCase()));
-  return (
-    <AnimatePresence>
-      {open && (
-        <motion.div className="fixed inset-0 z-50 flex items-center justify-center p-4" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-          <div className="absolute inset-0 bg-foreground/50 backdrop-blur-sm" onClick={onClose} />
-          <motion.div
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.9 }}
-            className="relative w-full max-w-sm rounded-2xl bg-card p-5 text-card-foreground max-h-[70vh] flex flex-col"
-          >
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold">{t("chat.newChat", locale)}</h3>
-              <button onClick={onClose} className="rounded-full p-1 hover:bg-muted transition-colors"><X className="w-5 h-5" /></button>
-            </div>
-            <div className="relative mb-3">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-              <input
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder={t("chat.searchContacts", locale)}
-                className="w-full rounded-xl bg-muted pl-9 pr-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-[var(--ogbo-blue)]/20"
-              />
-            </div>
-            <div className="flex-1 overflow-y-auto space-y-1">
-              {contacts.map((contact) => (
-                <button
-                  key={contact.id}
-                  onClick={() => { onSelectChat(contact.id); onClose(); }}
-                  className="w-full flex items-center gap-3 rounded-xl px-3 py-2.5 hover:bg-muted transition-colors text-left"
-                >
-                  <div className="w-9 h-9 rounded-full flex items-center justify-center text-white text-sm font-semibold" style={{ backgroundColor: contact.avatarColor }}>
-                    {contact.name[0]}
-                  </div>
-                  <span className="text-sm font-medium">{contact.name}</span>
-                  {contact.online && <span className="ml-auto w-2 h-2 rounded-full bg-[var(--ogbo-green)]" />}
-                </button>
-              ))}
-            </div>
-            <button
-              onClick={() => { toast(t("common.comingSoon", locale)); onClose(); }}
-              className="mt-3 w-full flex items-center justify-center gap-2 rounded-xl border border-dashed border-border py-2.5 text-sm text-muted-foreground hover:bg-muted transition-colors"
-            >
-              <Users className="w-4 h-4" />
-              {t("chat.newGroup", locale)}
-            </button>
-          </motion.div>
-        </motion.div>
-      )}
-    </AnimatePresence>
-  );
-}
-
-export default function ChatPage() {
-  const { chats, locale, markChatRead, pinChat, deleteChat } = useStore();
-  const [searchOpen, setSearchOpen] = useState(false);
+export default function ChatPage({ searchOpen: searchOpenProp, onCloseSearch }: { searchOpen?: boolean; onCloseSearch?: () => void }) {
+  const { chats, locale, markChatRead, pinChat, deleteChat, chatRequests, pushInitialized, isConnectingPush } = useStore();
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedChat, setSelectedChat] = useState<string | null>(null);
-  const [newChatOpen, setNewChatOpen] = useState(false);
+  const [showRequests, setShowRequests] = useState(false);
   const [swipedId, setSwipedId] = useState<string | null>(null);
+
+  const searchOpen = searchOpenProp ?? false;
 
   const sortedChats = [...chats].sort((a, b) => {
     if (a.pinned && !b.pinned) return -1;
@@ -366,13 +333,47 @@ export default function ChatPage() {
                   placeholder={t("chat.searchPlaceholder", locale)}
                   className="w-full rounded-xl bg-muted pl-9 pr-10 py-2.5 text-sm outline-none focus:ring-2 focus:ring-[var(--ogbo-blue)]/20 transition-all"
                 />
-                <button onClick={() => { setSearchOpen(false); setSearchQuery(""); }} className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-1 hover:bg-background transition-colors">
+                <button onClick={() => { if (onCloseSearch) onCloseSearch(); setSearchQuery(""); }} className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-1 hover:bg-background transition-colors">
                   <X className="w-4 h-4 text-muted-foreground" />
                 </button>
               </div>
             </motion.div>
           )}
         </AnimatePresence>
+
+        {/* Friend request entry card */}
+        {chatRequests.length > 0 && (
+          <motion.button
+            initial={{ opacity: 0, y: -8 }}
+            animate={{ opacity: 1, y: 0 }}
+            onClick={() => setShowRequests(true)}
+            className="flex items-center gap-3 bg-card rounded-2xl p-3 border-l-4 border-l-[var(--ogbo-blue)] mx-4 mt-2 mb-1 hover:bg-muted/50 transition-colors cursor-pointer w-[calc(100%-2rem)]"
+          >
+            <div className="w-9 h-9 rounded-full bg-[var(--ogbo-blue)]/10 flex items-center justify-center flex-shrink-0">
+              <Mail className="w-4 h-4 text-[var(--ogbo-blue)]" />
+            </div>
+            <div className="flex-1 min-w-0 text-left">
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-semibold">{t("chat.friendRequests", locale)}</span>
+                <span className="bg-[var(--ogbo-blue)] text-white text-[10px] rounded-full px-1.5 py-0.5 font-medium">
+                  {chatRequests.length}
+                </span>
+              </div>
+              <p className="text-xs text-muted-foreground truncate">
+                {chatRequests[0]?.fromAddress ? `${chatRequests[0].fromAddress.slice(0, 6)}...` : ''}{chatRequests.length > 1 ? ` 等${chatRequests.length}人` : ''}
+              </p>
+            </div>
+          </motion.button>
+        )}
+
+        {/* Push initialization banner */}
+        {isConnectingPush && (
+          <div className="mx-4 mt-2 mb-1 px-3 py-2 bg-[var(--ogbo-blue)]/10 rounded-xl flex items-center gap-2 text-xs text-[var(--ogbo-blue)]">
+            <motion.div animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+              className="w-3.5 h-3.5 border-2 border-[var(--ogbo-blue)]/30 border-t-[var(--ogbo-blue)] rounded-full" />
+            {t("push.initializing", locale)}
+          </div>
+        )}
 
         {/* Chat list */}
         <div className="flex-1 overflow-y-auto">
@@ -479,17 +480,6 @@ export default function ChatPage() {
             ))
           )}
         </div>
-
-        {/* FAB */}
-        <motion.button
-          whileHover={{ scale: 1.1 }}
-          whileTap={{ scale: 0.9, rotate: 360 }}
-          transition={{ duration: 0.4 }}
-          onClick={() => setNewChatOpen(true)}
-          className="absolute bottom-4 right-4 w-14 h-14 rounded-full gradient-primary text-white shadow-fab flex items-center justify-center z-10"
-        >
-          <Plus className="w-6 h-6" />
-        </motion.button>
       </div>
 
       {/* Chat Detail - overlay on mobile, inline on desktop */}
@@ -525,14 +515,13 @@ export default function ChatPage() {
         </AnimatePresence>
       </div>
 
-      {/* New Chat Modal */}
-      <NewChatModal open={newChatOpen} onClose={() => setNewChatOpen(false)} locale={locale} onSelectChat={handleOpenChat} />
+      {/* Friend Requests sub-page */}
+      <AnimatePresence>
+        {showRequests && (
+          <ChatRequestList onBack={() => setShowRequests(false)} />
+        )}
+      </AnimatePresence>
     </div>
   );
 }
 
-// Export search toggle hook for header
-export function useChatSearch() {
-  const [searchOpen, setSearchOpen] = useState(false);
-  return { searchOpen, setSearchOpen };
-}

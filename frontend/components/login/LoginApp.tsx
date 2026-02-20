@@ -8,12 +8,13 @@ import toast, { Toaster } from "react-hot-toast";
 import { useStore, type Locale } from "@/lib/store";
 import { t } from "@/lib/i18n";
 import AppDownloadBanner from "@/components/AppDownloadBanner";
+import { useConnect, useAccount } from "wagmi";
 import {
   ArrowLeft, Eye, EyeOff, Lock, Globe, ChevronDown,
   Check, X, AlertCircle, AlertTriangle, Loader2,
   Copy, Shield, ChevronRight, Key, FileText,
   Fingerprint, RotateCcw, CheckCircle, Dices, Rocket, Clipboard,
-  HelpCircle, Info, ExternalLink, Lightbulb,
+  HelpCircle, Info, ExternalLink, Lightbulb, Wallet,
 } from "lucide-react";
 
 // ======== Types ========
@@ -522,12 +523,41 @@ function WelcomeView({ goTo }: { goTo: (v: AuthView) => void }) {
 // ========================================
 // 2) LOGIN VIEW
 // ========================================
-function LoginView({ goTo, onSuccess }: { goTo: (v: AuthView) => void; onSuccess: () => void }) {
+function LoginView({ goTo, onSuccess }: { goTo: (v: AuthView) => void; onSuccess: (address?: string) => void }) {
   const { locale } = useStore();
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(false);
   const [showResetDialog, setShowResetDialog] = useState(false);
+  const [connectingWallet, setConnectingWallet] = useState(false);
+
+  const { connect, connectors } = useConnect();
+  const { address, isConnected } = useAccount();
+
+  // When wallet connects, auto-login
+  useEffect(() => {
+    if (isConnected && address) {
+      toast.success(t("wallet.connected", locale));
+      setTimeout(() => onSuccess(address), 400);
+    }
+  }, [isConnected, address]);
+
+  const handleWalletConnect = async (connectorIndex: number) => {
+    setConnectingWallet(true);
+    try {
+      const connector = connectors[connectorIndex];
+      if (connector) {
+        connect({ connector });
+      } else {
+        // Fallback: use first available connector
+        connect({ connector: connectors[0] });
+      }
+    } catch (err) {
+      toast.error(t("wallet.connectFailed", locale));
+    } finally {
+      setConnectingWallet(false);
+    }
+  };
 
   const handleUnlock = async () => {
     if (!password) { setError(true); return; }
@@ -576,8 +606,57 @@ function LoginView({ goTo, onSuccess }: { goTo: (v: AuthView) => void; onSuccess
             {loading ? (<><Loader2 className="w-5 h-5 animate-spin" /><span>{t("auth.unlocking", locale)}</span></>) : <span>{t("auth.unlockWallet", locale)}</span>}
           </motion.button>
         </div>
+
+        {/* OR divider */}
+        <div className="w-full flex items-center gap-3 mt-6">
+          <div className="flex-1 h-px bg-border" />
+          <span className="text-xs text-muted-foreground px-1">{locale === "zh" ? "或" : "or"}</span>
+          <div className="flex-1 h-px bg-border" />
+        </div>
+
+        {/* Web3 Wallet Connect */}
+        <div className="w-full mt-3 space-y-2">
+          {connectors.length > 0 ? (
+            connectors.slice(0, 3).map((connector, idx) => (
+              <motion.button
+                key={connector.id}
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                disabled={connectingWallet}
+                onClick={() => handleWalletConnect(idx)}
+                className="w-full h-11 rounded-xl border border-border bg-card hover:bg-muted flex items-center gap-3 px-4 transition-colors disabled:opacity-60"
+              >
+                {connectingWallet ? (
+                  <Loader2 className="w-5 h-5 animate-spin text-[var(--ogbo-blue)]" />
+                ) : (
+                  <Wallet className="w-5 h-5 text-[var(--ogbo-blue)]" />
+                )}
+                <span className="text-sm font-medium flex-1 text-left">{connector.name}</span>
+                <ChevronRight className="w-4 h-4 text-muted-foreground" />
+              </motion.button>
+            ))
+          ) : (
+            <motion.button
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+              disabled={connectingWallet}
+              onClick={() => handleWalletConnect(0)}
+              className="w-full h-11 rounded-xl border border-[var(--ogbo-blue)] bg-[var(--ogbo-blue)]/5 hover:bg-[var(--ogbo-blue)]/10 flex items-center gap-3 px-4 transition-colors disabled:opacity-60"
+            >
+              {connectingWallet ? (
+                <Loader2 className="w-5 h-5 animate-spin text-[var(--ogbo-blue)]" />
+              ) : (
+                <Wallet className="w-5 h-5 text-[var(--ogbo-blue)]" />
+              )}
+              <span className="text-sm font-medium text-[var(--ogbo-blue)]">
+                {locale === "zh" ? "连接钱包" : "Connect Wallet"}
+              </span>
+            </motion.button>
+          )}
+        </div>
+
         <button onClick={() => { toast.success(t("auth.loginSuccess", locale)); setTimeout(() => onSuccess(), 300); }}
-          className="mt-8 flex flex-col items-center gap-2 text-muted-foreground hover:text-foreground transition-colors">
+          className="mt-6 flex flex-col items-center gap-2 text-muted-foreground hover:text-foreground transition-colors">
           <motion.div animate={{ scale: [1, 1.1, 1] }} transition={{ duration: 2, repeat: Infinity }}>
             <Fingerprint className="w-8 h-8" />
           </motion.div>
@@ -1423,9 +1502,9 @@ export default function LoginApp() {
     setView(v);
   }, [view]);
 
-  const handleSuccess = useCallback(() => {
-    // Mark user as logged in
-    login();
+  const handleSuccess = useCallback((address?: string) => {
+    // Mark user as logged in with optional wallet address
+    login(address);
     // Force redirect to main app with full page reload using explicit filename
     window.location.replace("./index.html");
   }, [login]);

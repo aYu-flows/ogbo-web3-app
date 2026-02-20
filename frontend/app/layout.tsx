@@ -1,6 +1,7 @@
 import React from "react"
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
+import WalletProvider from "@/components/WalletProvider";
 
 export const metadata: Metadata = {
   title: "OGBOX - Web3 Social Wallet",
@@ -34,7 +35,9 @@ export default function RootLayout({
   return (
     <html lang="zh-CN">
       <body className="font-sans antialiased">
-        {children}
+        <WalletProvider>
+          {children}
+        </WalletProvider>
       </body>
     </html>
   );
