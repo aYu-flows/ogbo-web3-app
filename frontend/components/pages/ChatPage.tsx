@@ -112,7 +112,7 @@ function ChatDetail({ chat, onBack, locale }: { chat: Chat; onBack: () => void; 
     if (pushInitialized && chat.walletAddress && chat.messages.length === 0) {
       loadChatHistory(chat.walletAddress);
     }
-  }, [chat.id, pushInitialized]);
+  }, [chat.id, pushInitialized, chat.walletAddress]);
 
   const handleSend = async () => {
     if (!input.trim()) return;
@@ -120,7 +120,7 @@ function ChatDetail({ chat, onBack, locale }: { chat: Chat; onBack: () => void; 
     setInput("");
     setShowEmoji(false);
 
-    if (pushInitialized && chat.walletAddress) {
+    if (pushInitialized && walletAddress && chat.walletAddress) {
       // Send via Push Protocol
       try {
         await sendPushMessage(chat.walletAddress, content);

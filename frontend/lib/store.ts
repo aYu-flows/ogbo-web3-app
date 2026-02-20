@@ -413,8 +413,15 @@ export const useStore = create<AppState>((set, get) => ({
       const pushUser = await initPushUser(signer)
       set({ pushUser, pushInitialized: true })
 
+      // Ensure walletAddress is set - derive from signer if store doesn't have it yet
       const state = get()
-      const myAddress = state.walletAddress || ''
+      let myAddress = state.walletAddress || ''
+      if (!myAddress) {
+        try {
+          myAddress = await (signer as any).getAddress() || ''
+          if (myAddress) set({ walletAddress: myAddress })
+        } catch { /* ignore */ }
+      }
 
       // Load chats and requests
       const [rawChats, rawRequests] = await Promise.all([

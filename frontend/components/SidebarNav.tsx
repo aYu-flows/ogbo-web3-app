@@ -8,6 +8,7 @@ import { Home, MessageCircle, BarChart3, Compass, Wallet, LogOut } from "lucide-
 import { useStore, type TabType } from "@/lib/store";
 import { t } from "@/lib/i18n";
 import toast from "react-hot-toast";
+import { useDisconnect } from "wagmi";
 
 const tabs: { key: TabType; icon: typeof Home; labelKey: string }[] = [
   { key: "home", icon: Home, labelKey: "nav.home" },
@@ -18,7 +19,8 @@ const tabs: { key: TabType; icon: typeof Home; labelKey: string }[] = [
 ];
 
 export default function SidebarNav() {
-  const { activeTab, switchTab, locale, unreadChatCount, logout } = useStore();
+  const { activeTab, switchTab, locale, unreadChatCount, logout, walletAddress } = useStore();
+  const { disconnect } = useDisconnect();
   const [logoutDialogOpen, setLogoutDialogOpen] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
   const router = useRouter();
@@ -27,6 +29,8 @@ export default function SidebarNav() {
     setLoggingOut(true);
     toast(t("common.loggingOut", locale), { duration: 1200 });
     setTimeout(() => {
+      // Disconnect wagmi wallet first to clear connection state
+      disconnect();
       // Clear login state
       logout();
       setLogoutDialogOpen(false);
@@ -98,7 +102,11 @@ export default function SidebarNav() {
             <span className="text-white text-xs font-bold">U</span>
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-xs font-medium truncate">0x7F2a...9D3c</p>
+            <p className="text-xs font-medium truncate">
+              {walletAddress
+                ? `${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)}`
+                : "---"}
+            </p>
             <p className="text-[10px] text-muted-foreground">Ethereum</p>
           </div>
           <button
