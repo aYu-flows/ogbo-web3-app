@@ -8,6 +8,7 @@ import { Globe, Bell, Search, Plus, LogOut } from "lucide-react";
 import { useStore, type TabType } from "@/lib/store";
 import { t } from "@/lib/i18n";
 import toast from "react-hot-toast";
+import { useDisconnect } from "wagmi";
 
 const pageTitles: Record<TabType, { zh: string; en: string }> = {
   home: { zh: "OGBOX", en: "OGBOX" },
@@ -27,6 +28,7 @@ export default function TopBar({
   onAddFriend?: () => void;
 }) {
   const { activeTab, locale, switchLocale, notifications, logout } = useStore();
+  const { disconnect } = useDisconnect();
   const [langMenuOpen, setLangMenuOpen] = useState(false);
   const [logoutDialogOpen, setLogoutDialogOpen] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
@@ -36,6 +38,8 @@ export default function TopBar({
     setLoggingOut(true);
     toast(t("common.loggingOut", locale), { duration: 1200 });
     setTimeout(() => {
+      // Disconnect wagmi wallet first to clear connection state
+      disconnect();
       // Clear login state
       logout();
       setLogoutDialogOpen(false);

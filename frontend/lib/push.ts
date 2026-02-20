@@ -34,9 +34,10 @@ function stripEip155Prefix(did: string): string {
 // ======== Push Protocol Initialization ========
 
 export async function initPushUser(signer: Signer): Promise<PushAPI> {
-  const env = process.env.NEXT_PUBLIC_PUSH_ENV === 'prod'
-    ? CONSTANTS.ENV.PROD
-    : CONSTANTS.ENV.STAGING
+  // Default to PROD; only use STAGING if explicitly set (local dev via .env.local)
+  const env = process.env.NEXT_PUBLIC_PUSH_ENV === 'staging'
+    ? CONSTANTS.ENV.STAGING
+    : CONSTANTS.ENV.PROD
 
   const pushUser = await PushAPI.initialize(signer as any, { env })
 
