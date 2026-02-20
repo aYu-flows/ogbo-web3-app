@@ -441,21 +441,46 @@ export const useStore = create<AppState>((set, get) => ({
           const addr = s.walletAddress || ''
           const msg = pushMessageToMessage(data, addr)
           const chatId = data.chatId || data.chatid || ''
+          // Strip eip155 prefix from data.from and data.to for address matching
+          const fromAddress = (data.from || '').replace(/^eip155:\d*:?/i, '')
+          const toAddress = (Array.isArray(data.to) ? data.to[0] : data.to || '').replace(/^eip155:\d*:?/i, '')
           set((state) => {
             const chats = state.chats.map((c) => {
-              if (c.pushChatId === chatId || c.walletAddress?.toLowerCase() === data.from?.toLowerCase()) {
-                // Deduplicate by pushMessageId
-                const exists = c.messages.some((m) => m.pushMessageId && m.pushMessageId === msg.pushMessageId)
-                if (exists) return c
-                return {
-                  ...c,
-                  lastMessage: msg.content,
-                  timestamp: msg.timestamp,
-                  unread: c.unread + (msg.sender !== 'me' ? 1 : 0),
-                  messages: [...c.messages, msg],
+              const matchById = chatId && c.pushChatId === chatId
+              const matchByFrom = fromAddress && c.walletAddress?.toLowerCase() === fromAddress.toLowerCase()
+              const matchByTo = toAddress && c.walletAddress?.toLowerCase() === toAddress.toLowerCase()
+              if (!matchById && !matchByFrom && !matchByTo) return c
+
+              // Skip if already confirmed by pushMessageId (exact dedup)
+              if (msg.pushMessageId && c.messages.some((m) => m.pushMessageId === msg.pushMessageId)) {
+                return c
+              }
+
+              // For own messages: replace the matching optimistic message instead of duplicating.
+              // Optimistic messages have no pushMessageId, same content, sender='me'.
+              if (msg.sender === 'me') {
+                let optimisticIdx = -1
+                for (let i = c.messages.length - 1; i >= 0; i--) {
+                  const m = c.messages[i]
+                  if (!m.pushMessageId && m.sender === 'me' && m.content === msg.content) {
+                    optimisticIdx = i
+                    break
+                  }
+                }
+                if (optimisticIdx !== -1) {
+                  const messages = [...c.messages]
+                  messages[optimisticIdx] = msg
+                  return { ...c, lastMessage: msg.content, timestamp: msg.timestamp, messages }
                 }
               }
-              return c
+
+              return {
+                ...c,
+                lastMessage: msg.content,
+                timestamp: msg.timestamp,
+                unread: c.unread + (msg.sender !== 'me' ? 1 : 0),
+                messages: [...c.messages, msg],
+              }
             })
             return { chats, unreadChatCount: chats.reduce((acc, c) => acc + c.unread, 0) }
           })

@@ -142,6 +142,20 @@ export function setupSocketListeners(
   }
 }
 
+// ======== Helper: normalize timestamp ========
+// Push Protocol REST API returns timestamp as number (ms).
+// Stream events return timestamp as a numeric string (e.g. "1706745600000").
+// new Date("1706745600000") is Invalid Date → NaN:NaN, so we must convert to number first.
+
+function normalizeTimestamp(raw: any): number {
+  if (typeof raw === 'number' && raw > 0) return raw
+  if (raw) {
+    const parsed = Number(raw)
+    if (!isNaN(parsed) && parsed > 0) return parsed
+  }
+  return Date.now()
+}
+
 // ======== Data Adapters ========
 
 export function pushFeedToChat(feed: IFeeds, myAddress: string): Chat {
@@ -156,7 +170,7 @@ export function pushFeedToChat(feed: IFeeds, myAddress: string): Chat {
     name: shortName,
     avatarColor: addressToColor(peerAddress),
     lastMessage: (feed.msg as any)?.messageContent || '',
-    timestamp: (feed.msg as any)?.timestamp || Date.now(),
+    timestamp: normalizeTimestamp((feed.msg as any)?.timestamp),
     unread: (feed as any).count || 0,
     online: false,
     typing: false,
@@ -172,14 +186,18 @@ export function pushMessageToMessage(msg: IMessageIPFS, myAddress: string): Mess
   const fromDid = (msg as any).fromDID || (msg as any).from || ''
   const fromAddress = stripEip155Prefix(fromDid)
   const isMine = myAddress && fromAddress.toLowerCase() === myAddress.toLowerCase()
+  // REST API uses 'cid'; stream events use 'reference' for the message CID
+  const cid = (msg as any).cid || (msg as any).reference || undefined
+  const timestamp = normalizeTimestamp((msg as any).timestamp)
+  const content = (msg as any).messageContent || (msg as any).message?.content || ''
 
   return {
-    id: (msg as any).cid || String((msg as any).timestamp || Date.now()),
+    id: cid || String(timestamp),
     sender: isMine ? 'me' : fromAddress,
-    content: (msg as any).messageContent || (msg as any).message?.content || '',
-    timestamp: (msg as any).timestamp || Date.now(),
+    content,
+    timestamp,
     status: 'sent',
-    pushMessageId: (msg as any).cid,
+    pushMessageId: cid,
   }
 }
 
@@ -191,7 +209,7 @@ export function pushRequestToChatRequest(feed: IFeeds): ChatRequest {
     fromAddress,
     fromDID: fromDid,
     message: (feed.msg as any)?.messageContent || '',
-    timestamp: (feed.msg as any)?.timestamp || Date.now(),
+    timestamp: normalizeTimestamp((feed.msg as any)?.timestamp),
     chatId: feed.chatId || '',
   }
 }
