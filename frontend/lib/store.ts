@@ -279,6 +279,7 @@ interface AppState {
   chatRequests: ChatRequest[]
   pushInitialized: boolean
   isConnectingPush: boolean
+  pushInitFailed: boolean
 
   switchTab: (tab: TabType) => void
   toggleBalance: () => void
@@ -328,6 +329,7 @@ export const useStore = create<AppState>((set, get) => ({
   chatRequests: [],
   pushInitialized: false,
   isConnectingPush: false,
+  pushInitFailed: false,
 
   switchTab: (tab) => set({ activeTab: tab }),
   toggleBalance: () => set((s) => ({ isBalanceVisible: !s.isBalanceVisible })),
@@ -469,6 +471,7 @@ export const useStore = create<AppState>((set, get) => ({
       const locale = get().locale
       const msg = locale === 'zh' ? '聊天初始化失败，请重试' : 'Chat initialization failed, please retry'
       toast.error(msg)
+      set({ pushInitFailed: true })
     } finally {
       set({ isConnectingPush: false })
     }
@@ -489,6 +492,7 @@ export const useStore = create<AppState>((set, get) => ({
       chatRequests: [],
       pushInitialized: false,
       isConnectingPush: false,
+      pushInitFailed: false,
       walletAddress: null,
       chats: mockChats,
       unreadChatCount: mockChats.reduce((acc, c) => acc + c.unread, 0),

@@ -19,7 +19,7 @@ import StatusBarConfig from "@/components/StatusBarConfig";
 import AddFriendModal from "@/components/chat/AddFriendModal";
 
 export default function Page() {
-  const { activeTab, isLoggedIn, checkAuthStatus, initPush, pushInitialized, isConnectingPush, destroyPush, walletAddress, login } = useStore();
+  const { activeTab, isLoggedIn, checkAuthStatus, initPush, pushInitialized, isConnectingPush, pushInitFailed, destroyPush, walletAddress, login } = useStore();
   const [isChecking, setIsChecking] = useState(true);
   const [chatSearchOpen, setChatSearchOpen] = useState(false);
   const [addFriendOpen, setAddFriendOpen] = useState(false);
@@ -51,11 +51,11 @@ export default function Page() {
 
   // Auto-initialize Push Protocol when wallet is connected and user is logged in
   useEffect(() => {
-    if (!isLoggedIn || !isConnected || !walletClient || pushInitialized || isConnectingPush) return;
+    if (!isLoggedIn || !isConnected || !walletClient || pushInitialized || isConnectingPush || pushInitFailed) return;
     walletClientToSigner(walletClient)
       .then((signer) => initPush(signer))
       .catch(console.error);
-  }, [isLoggedIn, isConnected, walletClient, pushInitialized, isConnectingPush]);
+  }, [isLoggedIn, isConnected, walletClient, pushInitialized, pushInitFailed]);
 
   // Destroy Push when wallet disconnects
   useEffect(() => {
