@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import Image from "next/image";
 import toast, { Toaster } from "react-hot-toast";
@@ -9,6 +9,20 @@ import { useStore, type Locale } from "@/lib/store";
 import { t } from "@/lib/i18n";
 import AppDownloadBanner from "@/components/AppDownloadBanner";
 import { useConnect, useAccount } from "wagmi";
+import {
+  generateEVMWallet,
+  walletFromMnemonic,
+  walletFromPrivateKey,
+  encryptWallet,
+  decryptWallet,
+  saveWallet,
+  getStoredWallets,
+  getActiveWallet,
+  setActiveWalletId,
+  generateWalletName,
+  storeSessionKey,
+  isValidMnemonic as ethersIsValidMnemonic,
+} from "@/lib/walletCrypto";
 import {
   ArrowLeft, Eye, EyeOff, Lock, Globe, ChevronDown,
   Check, X, AlertCircle, AlertTriangle, Loader2,
@@ -138,12 +152,7 @@ const SUPPORTED_NETWORKS: BlockchainNetwork[] = [
   },
 ];
 
-// ======== Mock Data ========
-const SAMPLE_MNEMONIC = [
-  "abandon", "biology", "crystal", "deposit", "elephant", "fantasy",
-  "galaxy", "harvest", "island", "jungle", "kingdom", "lightning",
-];
-
+// ======== BIP39 Sample words for import validation hint ========
 const BIP39_SAMPLE = [
   "abandon", "ability", "able", "about", "above", "absent",
   "absorb", "abstract", "absurd", "abuse", "access", "accident",
@@ -161,13 +170,6 @@ const BIP39_SAMPLE = [
   "biology", "crystal", "deposit", "elephant", "fantasy",
   "galaxy", "harvest", "island", "jungle", "kingdom", "lightning",
 ];
-
-function generateMockAddress(network: BlockchainNetwork): string {
-  if (network.isEVM) return "0x742d35Cc6634C0532925a3b844Bc9e7595f89Ab";
-  if (network.id === "solana") return "7EqQdEULxWcraVx3mXKFjc84LhCkMGZCkRuDpvcMwJeK";
-  if (network.id === "bitcoin") return "bc1qxy2kgdygjrsqtzq2n0yrf2493p83kkfjhx0wlh";
-  return "";
-}
 
 // ======== Helpers ========
 function getPasswordStrength(pw: string): "weak" | "medium" | "strong" {
@@ -534,7 +536,10 @@ function LoginView({ goTo, onSuccess }: { goTo: (v: AuthView) => void; onSuccess
   const { connect, connectors } = useConnect();
   const { address, isConnected } = useAccount();
 
-  // When wallet connects, auto-login
+  // 获取当前存储的 active wallet
+  const activeWallet = getActiveWallet();
+
+  // When wagmi wallet connects, auto-login
   useEffect(() => {
     if (isConnected && address) {
       toast.success(t("wallet.connected", locale));
@@ -549,7 +554,6 @@ function LoginView({ goTo, onSuccess }: { goTo: (v: AuthView) => void; onSuccess
       if (connector) {
         connect({ connector });
       } else {
-        // Fallback: use first available connector
         connect({ connector: connectors[0] });
       }
     } catch (err) {
@@ -561,18 +565,23 @@ function LoginView({ goTo, onSuccess }: { goTo: (v: AuthView) => void; onSuccess
 
   const handleUnlock = async () => {
     if (!password) { setError(true); return; }
+    if (!activeWallet) return;
+
     setLoading(true);
     setError(false);
-    await new Promise((r) => setTimeout(r, 800));
-    if (password.length >= 8) {
+
+    try {
+      const wallet = await decryptWallet(activeWallet.keystore, password);
+      storeSessionKey(wallet.privateKey);
       toast.success(t("auth.loginSuccess", locale));
-      setTimeout(() => onSuccess(), 300);
-    } else {
+      setTimeout(() => onSuccess(wallet.address), 300);
+    } catch (e) {
       setError(true);
       toast.error(t("auth.incorrectPassword", locale));
       setPassword("");
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   };
 
   return (
@@ -586,26 +595,56 @@ function LoginView({ goTo, onSuccess }: { goTo: (v: AuthView) => void; onSuccess
             </div>
           </motion.div>
         </div>
-        <h2 className="text-2xl font-bold text-foreground mb-1">{t("auth.enterPassword", locale)}</h2>
-        <p className="text-sm text-muted-foreground mb-8">{t("auth.enterWalletPassword", locale)}</p>
-        <div className="w-full space-y-3">
-          <PasswordInput value={password} onChange={(v) => { setPassword(v); setError(false); }} placeholder={t("auth.enterPassword", locale)} error={error} autoFocus />
-          {error && (
-            <motion.p initial={{ opacity: 0, y: -5 }} animate={{ opacity: 1, y: 0 }} className="text-[var(--ogbo-red)] text-sm flex items-center gap-1">
-              <AlertCircle className="w-4 h-4" /><span>{t("auth.incorrectPassword", locale)}</span>
-            </motion.p>
-          )}
-        </div>
-        <button onClick={() => setShowResetDialog(true)} className="mt-3 text-sm text-[var(--ogbo-blue)] hover:text-[var(--ogbo-blue-hover)] transition-colors">
-          {t("auth.forgotPassword", locale)}
-        </button>
-        <div className="w-full mt-8">
-          <motion.button whileHover={password.length > 0 ? { scale: 1.02 } : {}} whileTap={password.length > 0 ? { scale: 0.98 } : {}}
-            disabled={loading || password.length === 0} onClick={handleUnlock}
-            className={`w-full h-12 lg:h-14 rounded-xl font-semibold flex items-center justify-center gap-2 transition-all text-base ${password.length > 0 ? "bg-[var(--ogbo-blue)] text-white shadow-md hover:bg-[var(--ogbo-blue-hover)]" : "bg-muted text-muted-foreground cursor-not-allowed"}`}>
-            {loading ? (<><Loader2 className="w-5 h-5 animate-spin" /><span>{t("auth.unlocking", locale)}</span></>) : <span>{t("auth.unlockWallet", locale)}</span>}
-          </motion.button>
-        </div>
+
+        {/* 无存储钱包时：引导信息 */}
+        {!activeWallet ? (
+          <div className="w-full flex flex-col items-center">
+            <h2 className="text-2xl font-bold text-foreground mb-1">{locale === "zh" ? "还没有钱包" : "No Wallet Found"}</h2>
+            <p className="text-sm text-muted-foreground mb-8 text-center">{locale === "zh" ? "请先创建或导入一个钱包，然后再登录" : "Please create or import a wallet first"}</p>
+            <div className="w-full space-y-3">
+              <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
+                onClick={() => goTo("create-network")}
+                className="w-full h-12 lg:h-14 rounded-xl font-semibold flex items-center justify-center gap-2 bg-[var(--ogbo-blue)] text-white shadow-md hover:bg-[var(--ogbo-blue-hover)] transition-all text-base">
+                <span>{locale === "zh" ? "创建新钱包" : "Create New Wallet"}</span>
+              </motion.button>
+              <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
+                onClick={() => goTo("import-select")}
+                className="w-full h-12 lg:h-14 rounded-xl font-semibold flex items-center justify-center gap-2 border border-border bg-card hover:bg-muted transition-all text-base">
+                <span>{locale === "zh" ? "导入已有钱包" : "Import Wallet"}</span>
+              </motion.button>
+            </div>
+          </div>
+        ) : (
+          <>
+            <h2 className="text-2xl font-bold text-foreground mb-1">{t("auth.enterPassword", locale)}</h2>
+            {/* 当前钱包地址预览 */}
+            <div className="flex items-center gap-2 mb-3 px-3 py-1.5 bg-muted rounded-lg">
+              <Wallet className="w-3.5 h-3.5 text-muted-foreground" />
+              <code className="text-xs font-mono text-muted-foreground">
+                {`${activeWallet.address.slice(0, 6)}...${activeWallet.address.slice(-4)}`}
+              </code>
+            </div>
+            <p className="text-sm text-muted-foreground mb-8">{t("auth.enterWalletPassword", locale)}</p>
+            <div className="w-full space-y-3">
+              <PasswordInput value={password} onChange={(v) => { setPassword(v); setError(false); }} placeholder={t("auth.enterPassword", locale)} error={error} autoFocus />
+              {error && (
+                <motion.p initial={{ opacity: 0, y: -5 }} animate={{ opacity: 1, y: 0 }} className="text-[var(--ogbo-red)] text-sm flex items-center gap-1">
+                  <AlertCircle className="w-4 h-4" /><span>{t("auth.incorrectPassword", locale)}</span>
+                </motion.p>
+              )}
+            </div>
+            <button onClick={() => setShowResetDialog(true)} className="mt-3 text-sm text-[var(--ogbo-blue)] hover:text-[var(--ogbo-blue-hover)] transition-colors">
+              {t("auth.forgotPassword", locale)}
+            </button>
+            <div className="w-full mt-8">
+              <motion.button whileHover={password.length > 0 ? { scale: 1.02 } : {}} whileTap={password.length > 0 ? { scale: 0.98 } : {}}
+                disabled={loading || password.length === 0} onClick={handleUnlock}
+                className={`w-full h-12 lg:h-14 rounded-xl font-semibold flex items-center justify-center gap-2 transition-all text-base ${password.length > 0 ? "bg-[var(--ogbo-blue)] text-white shadow-md hover:bg-[var(--ogbo-blue-hover)]" : "bg-muted text-muted-foreground cursor-not-allowed"}`}>
+                {loading ? (<><Loader2 className="w-5 h-5 animate-spin" /><span>{t("auth.unlocking", locale)}</span></>) : <span>{t("auth.unlockWallet", locale)}</span>}
+              </motion.button>
+            </div>
+          </>
+        )}
 
         {/* OR divider */}
         <div className="w-full flex items-center gap-3 mt-6">
@@ -704,6 +743,14 @@ function NetworkSelectionView({ goTo, nextView, descKey, onSelectNetwork }: {
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const handleSelect = (network: BlockchainNetwork) => {
+    // Solana / Bitcoin: Coming Soon
+    if (!network.isEVM) {
+      const msg = network.id === "solana"
+        ? (locale === "zh" ? "Solana 支持即将推出 🔜" : "Solana support coming soon 🔜")
+        : (locale === "zh" ? "Bitcoin 支持即将推出 🔜" : "Bitcoin support coming soon 🔜");
+      toast(msg, { duration: 2500 });
+      return;
+    }
     setSelectedId(network.id);
     onSelectNetwork(network);
     toast.success(`${t("network.selected", locale)} ${network.name}`, { duration: 1500 });
@@ -754,11 +801,18 @@ function NetworkSelectionView({ goTo, nextView, descKey, onSelectNetwork }: {
                 {/* Hover gradient overlay */}
                 <div className="absolute inset-0 opacity-0 group-hover:opacity-[0.06] transition-opacity pointer-events-none" style={{ background: network.gradient }} />
 
-                {/* Recommended badge */}
+                {/* Recommended / Coming Soon badge */}
                 {network.isRecommended && (
                   <div className="absolute top-3 right-3">
                     <span className="px-2 py-0.5 bg-gradient-to-r from-orange-400 to-pink-500 text-white text-[10px] font-semibold rounded-full shadow-sm">
                       {t("network.recommended", locale)}
+                    </span>
+                  </div>
+                )}
+                {!network.isEVM && (
+                  <div className="absolute top-3 right-3">
+                    <span className="px-2 py-0.5 bg-muted text-muted-foreground text-[10px] font-semibold rounded-full border border-border">
+                      {locale === "zh" ? "即将支持" : "Coming Soon"}
                     </span>
                   </div>
                 )}
@@ -814,9 +868,10 @@ function NetworkSelectionView({ goTo, nextView, descKey, onSelectNetwork }: {
 // ========================================
 // 3) CREATE WALLET - SET PASSWORD
 // ========================================
-function CreatePasswordView({ goTo, network, onSwitchNetwork }: {
+function CreatePasswordView({ goTo, network, onSwitchNetwork, onPasswordSet }: {
   goTo: (v: AuthView) => void; network: BlockchainNetwork;
   onSwitchNetwork: () => void;
+  onPasswordSet: (password: string) => void;
 }) {
   const { locale } = useStore();
   const [pw, setPw] = useState("");
@@ -875,7 +930,7 @@ function CreatePasswordView({ goTo, network, onSwitchNetwork }: {
           </motion.p>
         )}
         <motion.button whileHover={canProceed ? { scale: 1.02 } : {}} whileTap={canProceed ? { scale: 0.98 } : {}} disabled={!canProceed}
-          onClick={() => goTo("create-generate")}
+          onClick={() => { onPasswordSet(pw); goTo("create-generate"); }}
           className={`w-full h-12 lg:h-14 rounded-xl font-semibold mt-8 flex items-center justify-center gap-2 transition-all text-base ${canProceed ? "bg-[var(--ogbo-blue)] text-white shadow-md hover:bg-[var(--ogbo-blue-hover)]" : "bg-muted text-muted-foreground cursor-not-allowed"}`}>
           <span>{t("create.next", locale)}</span><ChevronRight className="w-5 h-5" />
         </motion.button>
@@ -887,7 +942,11 @@ function CreatePasswordView({ goTo, network, onSwitchNetwork }: {
 // ========================================
 // 4) CREATE WALLET - GENERATE PHRASE
 // ========================================
-function CreateGenerateView({ goTo, network }: { goTo: (v: AuthView) => void; network: BlockchainNetwork }) {
+function CreateGenerateView({ goTo, network, onMnemonicGenerated }: {
+  goTo: (v: AuthView) => void;
+  network: BlockchainNetwork;
+  onMnemonicGenerated: (mnemonic: string) => void;
+}) {
   const { locale } = useStore();
   const [mnemonic, setMnemonic] = useState<string[]>([]);
   const [generating, setGenerating] = useState(false);
@@ -895,8 +954,11 @@ function CreateGenerateView({ goTo, network }: { goTo: (v: AuthView) => void; ne
 
   const handleGenerate = async () => {
     setGenerating(true);
-    await new Promise((r) => setTimeout(r, 900));
-    setMnemonic([...SAMPLE_MNEMONIC]);
+    await new Promise((r) => setTimeout(r, 600));
+    const { mnemonic: phraseStr } = generateEVMWallet();
+    const words = phraseStr.split(" ");
+    setMnemonic(words);
+    onMnemonicGenerated(phraseStr); // 上传真实助记词给 LoginApp
     setGenerating(false);
   };
 
@@ -985,20 +1047,26 @@ function CreateGenerateView({ goTo, network }: { goTo: (v: AuthView) => void; ne
 // ========================================
 // 5) CREATE WALLET - VERIFY PHRASE (ENHANCED)
 // ========================================
-function CreateVerifyView({ goTo, network }: { goTo: (v: AuthView) => void; network: BlockchainNetwork }) {
+function CreateVerifyView({ goTo, network, mnemonic }: {
+  goTo: (v: AuthView) => void;
+  network: BlockchainNetwork;
+  mnemonic: string;
+}) {
   const { locale } = useStore();
   const [selectedWords, setSelectedWords] = useState<(string | null)[]>(Array(12).fill(null));
   const [verifyResult, setVerifyResult] = useState<"" | "success" | "error">("");
   const [verifying, setVerifying] = useState(false);
 
+  const mnemonicWords = useMemo(() => mnemonic.split(" "), [mnemonic]);
+
   const shuffledWords = useMemo(() => {
-    const words = [...SAMPLE_MNEMONIC];
+    const words = [...mnemonicWords];
     for (let i = words.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
       [words[i], words[j]] = [words[j], words[i]];
     }
     return words;
-  }, []);
+  }, [mnemonicWords]);
 
   const [availableWords, setAvailableWords] = useState<string[]>(shuffledWords);
 
@@ -1041,7 +1109,7 @@ function CreateVerifyView({ goTo, network }: { goTo: (v: AuthView) => void; netw
   const handleVerify = async () => {
     setVerifying(true);
     await new Promise((r) => setTimeout(r, 500));
-    const isCorrect = selectedWords.join(" ") === SAMPLE_MNEMONIC.join(" ");
+    const isCorrect = selectedWords.join(" ") === mnemonic;
     if (isCorrect) {
       setVerifyResult("success");
       toast.success(t("create.verifySuccess", locale));
@@ -1174,12 +1242,57 @@ function CreateVerifyView({ goTo, network }: { goTo: (v: AuthView) => void; netw
 // ========================================
 // 6) CREATE WALLET - COMPLETE (with network info)
 // ========================================
-function CreateCompleteView({ onSuccess, network }: { onSuccess: () => void; network: BlockchainNetwork }) {
+function CreateCompleteView({
+  onSuccess, network, mnemonic, password,
+}: {
+  onSuccess: (address?: string) => void;
+  network: BlockchainNetwork;
+  mnemonic: string;
+  password: string;
+}) {
   const { locale } = useStore();
+  const [walletAddress, setWalletAddress] = useState("");
+  const [encrypting, setEncrypting] = useState(true);
+  const [encryptError, setEncryptError] = useState("");
   const [addressCopied, setAddressCopied] = useState(false);
-  const walletAddress = generateMockAddress(network);
+  const hasExecutedRef = useRef(false);
+
+  // 实际加密存储
+  const doCreateAndSave = useCallback(async () => {
+    try {
+      setEncrypting(true);
+      setEncryptError("");
+      const wallet = walletFromMnemonic(mnemonic);
+      setWalletAddress(wallet.address); // 立即展示地址
+      const keystore = await encryptWallet(wallet, password);
+      const savedWallet = saveWallet({
+        name: generateWalletName(),
+        network: network.id,
+        address: wallet.address,
+        keystore,
+      });
+      setActiveWalletId(savedWallet.id);
+      storeSessionKey(wallet.privateKey);
+      setEncrypting(false);
+    } catch (e: any) {
+      setEncryptError(e?.message || "创建钱包时出错，请重试");
+      setEncrypting(false);
+    }
+  }, [mnemonic, password, network.id]);
+
+  useEffect(() => {
+    if (hasExecutedRef.current) return; // React 18 严格模式防重复执行
+    hasExecutedRef.current = true;
+    doCreateAndSave();
+  }, [doCreateAndSave]);
+
+  const handleRetry = () => {
+    hasExecutedRef.current = false;
+    doCreateAndSave().then(() => { hasExecutedRef.current = true; });
+  };
 
   const handleCopyAddress = async () => {
+    if (!walletAddress) return;
     await navigator.clipboard.writeText(walletAddress);
     setAddressCopied(true);
     toast.success(t("create.addressCopied", locale));
@@ -1190,70 +1303,106 @@ function CreateCompleteView({ onSuccess, network }: { onSuccess: () => void; net
     <div className="flex flex-col h-full">
       <div className="flex items-center justify-center h-14"><ProgressBar step={4} total={4} /></div>
       <div className="flex-1 flex flex-col items-center px-6 lg:px-8 lg:max-w-md lg:mx-auto lg:w-full overflow-y-auto">
+
+        {/* Success / Encrypting icon */}
         <motion.div initial={{ scale: 0, rotate: -180 }} animate={{ scale: 1, rotate: 0 }} transition={{ type: "spring", duration: 0.8, bounce: 0.5 }}
-          className="w-16 h-16 lg:w-20 lg:h-20 bg-[var(--ogbo-green)] rounded-full flex items-center justify-center shadow-lg mt-8 lg:mt-12">
-          <Check className="w-10 h-10 lg:w-12 lg:h-12 text-white" />
+          className={`w-16 h-16 lg:w-20 lg:h-20 rounded-full flex items-center justify-center shadow-lg mt-8 lg:mt-12 ${encryptError ? "bg-[var(--ogbo-red)]" : "bg-[var(--ogbo-green)]"}`}>
+          {encryptError ? <AlertCircle className="w-10 h-10 lg:w-12 lg:h-12 text-white" /> : <Check className="w-10 h-10 lg:w-12 lg:h-12 text-white" />}
         </motion.div>
-        <motion.h2 initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }} className="text-2xl font-bold mt-6">{t("create.walletCreated", locale)}</motion.h2>
-        <motion.p initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }} className="text-sm text-muted-foreground mt-1">{t("create.walletReady", locale)}</motion.p>
+
+        <motion.h2 initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }} className="text-2xl font-bold mt-6">
+          {encryptError ? (locale === "zh" ? "创建失败" : "Creation Failed") : t("create.walletCreated", locale)}
+        </motion.h2>
+        <motion.p initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }} className="text-sm text-muted-foreground mt-1 text-center">
+          {encrypting
+            ? (locale === "zh" ? "正在加密钱包，请稍候..." : "Encrypting wallet, please wait...")
+            : encryptError
+            ? encryptError
+            : t("create.walletReady", locale)}
+        </motion.p>
+
+        {/* Encrypting progress indicator */}
+        {encrypting && (
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="mt-6 flex flex-col items-center gap-3">
+            <Loader2 className="w-8 h-8 animate-spin text-[var(--ogbo-blue)]" />
+            <p className="text-xs text-muted-foreground">{locale === "zh" ? "加密可能需要 1-5 秒..." : "Encryption may take 1-5 seconds..."}</p>
+          </motion.div>
+        )}
+
+        {/* Error retry */}
+        {encryptError && !encrypting && (
+          <motion.button initial={{ opacity: 0 }} animate={{ opacity: 1 }} onClick={handleRetry}
+            className="mt-4 px-6 py-2 bg-[var(--ogbo-blue)] text-white rounded-xl font-semibold text-sm hover:bg-[var(--ogbo-blue-hover)] transition-colors">
+            {locale === "zh" ? "重试" : "Retry"}
+          </motion.button>
+        )}
 
         {/* Network info card */}
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.45 }}
-          className="w-full mt-5 bg-gradient-to-r from-muted/50 to-muted rounded-xl p-4 border border-border">
-          <p className="text-xs text-muted-foreground mb-2">{t("network.blockchainNetwork", locale)}</p>
-          <div className="flex items-center gap-3">
-            <div className="w-11 h-11 rounded-xl flex items-center justify-center text-xl text-white shadow-md" style={{ background: network.gradient }}>
-              {network.icon}
-            </div>
-            <div>
-              <h4 className="font-semibold text-sm">{network.name}</h4>
-              <p className="text-xs text-muted-foreground">{network.symbol} Network</p>
-            </div>
-          </div>
-        </motion.div>
+        {!encrypting && !encryptError && (
+          <>
+            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.45 }}
+              className="w-full mt-5 bg-gradient-to-r from-muted/50 to-muted rounded-xl p-4 border border-border">
+              <p className="text-xs text-muted-foreground mb-2">{t("network.blockchainNetwork", locale)}</p>
+              <div className="flex items-center gap-3">
+                <div className="w-11 h-11 rounded-xl flex items-center justify-center text-xl text-white shadow-md" style={{ background: network.gradient }}>
+                  {network.icon}
+                </div>
+                <div>
+                  <h4 className="font-semibold text-sm">{network.name}</h4>
+                  <p className="text-xs text-muted-foreground">{network.symbol} Network</p>
+                </div>
+              </div>
+            </motion.div>
 
-        {/* Wallet address card */}
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.5 }}
-          className="w-full mt-3 bg-gradient-to-r from-blue-50 to-purple-50 dark:from-blue-950/20 dark:to-purple-950/20 rounded-xl p-4 border border-blue-200 dark:border-blue-800">
-          <p className="text-sm text-muted-foreground mb-2">{t("create.walletAddress", locale)}</p>
-          <div className="flex items-center justify-between">
-            <code className="font-mono text-base lg:text-lg font-semibold">{formatNetworkAddress(walletAddress, network)}</code>
-            <button onClick={handleCopyAddress} className="p-2 hover:bg-white/50 dark:hover:bg-white/10 rounded-lg transition-colors">
-              {addressCopied ? <Check className="w-5 h-5 text-[var(--ogbo-green)]" /> : <Copy className="w-5 h-5 text-muted-foreground" />}
-            </button>
-          </div>
-        </motion.div>
+            {/* Wallet address card */}
+            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.5 }}
+              className="w-full mt-3 bg-gradient-to-r from-blue-50 to-purple-50 dark:from-blue-950/20 dark:to-purple-950/20 rounded-xl p-4 border border-blue-200 dark:border-blue-800">
+              <p className="text-sm text-muted-foreground mb-2">{t("create.walletAddress", locale)}</p>
+              <div className="flex items-center justify-between">
+                <code className="font-mono text-base lg:text-lg font-semibold">{formatNetworkAddress(walletAddress, network)}</code>
+                <button onClick={handleCopyAddress} className="p-2 hover:bg-white/50 dark:hover:bg-white/10 rounded-lg transition-colors">
+                  {addressCopied ? <Check className="w-5 h-5 text-[var(--ogbo-green)]" /> : <Copy className="w-5 h-5 text-muted-foreground" />}
+                </button>
+              </div>
+            </motion.div>
 
-        {/* Explorer link */}
-        <motion.a initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.55 }}
-          href={`${network.explorerUrl}/address/${walletAddress}`} target="_blank" rel="noopener noreferrer"
-          className="mt-2 flex items-center gap-1.5 text-sm text-[var(--ogbo-blue)] hover:text-[var(--ogbo-blue-hover)] transition-colors">
-          <ExternalLink className="w-3.5 h-3.5" /><span>{t("network.viewExplorer", locale)}</span>
-        </motion.a>
+            {/* Explorer link */}
+            <motion.a initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.55 }}
+              href={`${network.explorerUrl}/address/${walletAddress}`} target="_blank" rel="noopener noreferrer"
+              className="mt-2 flex items-center gap-1.5 text-sm text-[var(--ogbo-blue)] hover:text-[var(--ogbo-blue-hover)] transition-colors">
+              <ExternalLink className="w-3.5 h-3.5" /><span>{t("network.viewExplorer", locale)}</span>
+            </motion.a>
 
-        {/* Security tips */}
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.6 }}
-          className="w-full mt-4 bg-yellow-50 dark:bg-yellow-950/20 rounded-xl p-4 border border-yellow-200 dark:border-yellow-800">
-          <div className="flex items-start gap-2 mb-2">
-            <Shield className="w-5 h-5 text-[var(--ogbo-orange)] flex-shrink-0 mt-0.5" />
-            <h3 className="font-semibold text-yellow-900 dark:text-yellow-200 text-sm">{t("create.securityTips", locale)}</h3>
-          </div>
-          <ul className="space-y-2 ml-7">
-            {[t("create.tipBackup", locale), t("create.tipNoShare", locale), t("create.tipKeepPassword", locale)].map((tip, i) => (
-              <li key={i} className="text-sm text-yellow-800 dark:text-yellow-300 flex items-start gap-2">
-                <span className="text-[var(--ogbo-orange)]">{"."}</span><span>{tip}</span>
-              </li>
-            ))}
-          </ul>
-        </motion.div>
+            {/* Security tips */}
+            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.6 }}
+              className="w-full mt-4 bg-yellow-50 dark:bg-yellow-950/20 rounded-xl p-4 border border-yellow-200 dark:border-yellow-800">
+              <div className="flex items-start gap-2 mb-2">
+                <Shield className="w-5 h-5 text-[var(--ogbo-orange)] flex-shrink-0 mt-0.5" />
+                <h3 className="font-semibold text-yellow-900 dark:text-yellow-200 text-sm">{t("create.securityTips", locale)}</h3>
+              </div>
+              <ul className="space-y-2 ml-7">
+                {[t("create.tipBackup", locale), t("create.tipNoShare", locale), t("create.tipKeepPassword", locale)].map((tip, i) => (
+                  <li key={i} className="text-sm text-yellow-800 dark:text-yellow-300 flex items-start gap-2">
+                    <span className="text-[var(--ogbo-orange)]">{"."}</span><span>{tip}</span>
+                  </li>
+                ))}
+              </ul>
+            </motion.div>
 
-        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.7 }} className="w-full mt-6 pb-6">
-          <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
-            onClick={() => { toast.success(t("create.welcomeToOGBO", locale)); setTimeout(() => onSuccess(), 300); }}
-            className="w-full h-12 lg:h-14 gradient-primary text-white rounded-xl font-semibold shadow-lg flex items-center justify-center gap-2 text-base">
-            <span>{t("create.startUsing", locale)}</span><Rocket className="w-5 h-5" />
-          </motion.button>
-        </motion.div>
+            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.7 }} className="w-full mt-6 pb-6">
+              <motion.button
+                whileHover={!encrypting ? { scale: 1.02 } : {}}
+                whileTap={!encrypting ? { scale: 0.98 } : {}}
+                disabled={encrypting}
+                onClick={() => { toast.success(t("create.welcomeToOGBO", locale)); setTimeout(() => onSuccess(walletAddress), 300); }}
+                className={`w-full h-12 lg:h-14 gradient-primary text-white rounded-xl font-semibold shadow-lg flex items-center justify-center gap-2 text-base ${encrypting ? "opacity-50 cursor-not-allowed" : ""}`}>
+                {encrypting
+                  ? <><Loader2 className="w-5 h-5 animate-spin" /><span>{locale === "zh" ? "正在加密..." : "Encrypting..."}</span></>
+                  : <><span>{t("create.startUsing", locale)}</span><Rocket className="w-5 h-5" /></>}
+              </motion.button>
+            </motion.div>
+          </>
+        )}
       </div>
     </div>
   );
@@ -1298,13 +1447,18 @@ function ImportSelectView({ goTo }: { goTo: (v: AuthView) => void }) {
 // ========================================
 // 8) IMPORT - MNEMONIC
 // ========================================
-function ImportMnemonicView({ goTo }: { goTo: (v: AuthView) => void }) {
+function ImportMnemonicView({ goTo, onConfirm }: {
+  goTo: (v: AuthView) => void;
+  onConfirm: (mnemonic: string) => void;
+}) {
   const { locale } = useStore();
   const [input, setInput] = useState("");
   const words = input.trim().split(/\s+/).filter(Boolean);
   const wordCount = words.length;
+  // UI 层只做基础格式检查（12词），ethers 会在后续步骤做完整 BIP39 验证
   const validCount = words.filter((w) => BIP39_SAMPLE.includes(w.toLowerCase())).length;
-  const isValid = wordCount === 12 && validCount === 12;
+  // 主要依赖 ethers isValidMnemonic 做最终校验
+  const isValid = wordCount === 12 && ethersIsValidMnemonic(input.trim());
 
   const handlePaste = async () => {
     try { const text = await navigator.clipboard.readText(); setInput(text); toast.success(t("import.pasted", locale)); } catch { toast.error("Clipboard not available"); }
@@ -1341,7 +1495,7 @@ function ImportMnemonicView({ goTo }: { goTo: (v: AuthView) => void }) {
           ) : <span className="text-sm text-muted-foreground">{t("import.pleaseEnterMnemonic", locale)}</span>}
         </div>
         <motion.button whileHover={isValid ? { scale: 1.02 } : {}} whileTap={isValid ? { scale: 0.98 } : {}} disabled={!isValid}
-          onClick={() => goTo("import-network")}
+          onClick={() => { onConfirm(input.trim()); goTo("import-network"); }}
           className={`w-full h-12 lg:h-14 rounded-xl font-semibold mt-6 flex items-center justify-center gap-2 transition-all text-base ${isValid ? "bg-[var(--ogbo-blue)] text-white shadow-md hover:bg-[var(--ogbo-blue-hover)]" : "bg-muted text-muted-foreground cursor-not-allowed"}`}>
           <span>{t("create.next", locale)}</span><ChevronRight className="w-5 h-5" />
         </motion.button>
@@ -1353,7 +1507,10 @@ function ImportMnemonicView({ goTo }: { goTo: (v: AuthView) => void }) {
 // ========================================
 // 9) IMPORT - PRIVATE KEY
 // ========================================
-function ImportPrivateKeyView({ goTo }: { goTo: (v: AuthView) => void }) {
+function ImportPrivateKeyView({ goTo, onConfirm }: {
+  goTo: (v: AuthView) => void;
+  onConfirm: (privateKey: string) => void;
+}) {
   const { locale } = useStore();
   const [input, setInput] = useState("");
   const [show, setShow] = useState(false);
@@ -1397,7 +1554,7 @@ function ImportPrivateKeyView({ goTo }: { goTo: (v: AuthView) => void }) {
           )}
         </div>
         <motion.button whileHover={isValid ? { scale: 1.02 } : {}} whileTap={isValid ? { scale: 0.98 } : {}} disabled={!isValid}
-          onClick={() => goTo("import-network")}
+          onClick={() => { onConfirm(input.trim()); goTo("import-network"); }}
           className={`w-full h-12 lg:h-14 rounded-xl font-semibold mt-8 flex items-center justify-center gap-2 transition-all text-base ${isValid ? "bg-[var(--ogbo-blue)] text-white shadow-md hover:bg-[var(--ogbo-blue-hover)]" : "bg-muted text-muted-foreground cursor-not-allowed"}`}>
           <span>{t("create.next", locale)}</span><ChevronRight className="w-5 h-5" />
         </motion.button>
@@ -1409,7 +1566,15 @@ function ImportPrivateKeyView({ goTo }: { goTo: (v: AuthView) => void }) {
 // ========================================
 // 10) IMPORT - SET PASSWORD
 // ========================================
-function ImportPasswordView({ goTo, onSuccess, network }: { goTo: (v: AuthView) => void; onSuccess: () => void; network: BlockchainNetwork }) {
+function ImportPasswordView({
+  goTo, onSuccess, network, importInput, importType,
+}: {
+  goTo: (v: AuthView) => void;
+  onSuccess: (address?: string) => void;
+  network: BlockchainNetwork;
+  importInput: string;
+  importType: "mnemonic" | "privatekey";
+}) {
   const { locale } = useStore();
   const [pw, setPw] = useState("");
   const [confirmPw, setConfirmPw] = useState("");
@@ -1422,11 +1587,52 @@ function ImportPasswordView({ goTo, onSuccess, network }: { goTo: (v: AuthView) 
   const strengthLabel = t(`create.strength${strength.charAt(0).toUpperCase() + strength.slice(1)}`, locale);
 
   const handleComplete = async () => {
+    if (!canProceed) return;
     setLoading(true);
-    await new Promise((r) => setTimeout(r, 500));
-    toast.success(t("import.walletImported", locale));
-    setTimeout(() => onSuccess(), 300);
-    setLoading(false);
+    try {
+      // 推导钱包（ethers 做完整验证，无效时 throw）
+      const wallet = importType === "mnemonic"
+        ? walletFromMnemonic(importInput)
+        : walletFromPrivateKey(importInput);
+
+      // 检查钱包是否已存在
+      const existingWallets = getStoredWallets();
+      const duplicate = existingWallets.find(
+        w => w.address.toLowerCase() === wallet.address.toLowerCase()
+      );
+
+      if (duplicate) {
+        // 钱包已存在：更新 active 并直接登录，无需重新加密
+        setActiveWalletId(duplicate.id);
+        storeSessionKey(wallet.privateKey);
+        toast.success(locale === "zh" ? "已有该钱包，已切换到此钱包" : "Wallet already exists, switched to it");
+        setTimeout(() => onSuccess(wallet.address), 300);
+        return;
+      }
+
+      // 新钱包：加密存储
+      const keystore = await encryptWallet(wallet, pw);
+      const savedWallet = saveWallet({
+        name: generateWalletName(),
+        network: network.id,
+        address: wallet.address,
+        keystore,
+      });
+      setActiveWalletId(savedWallet.id);
+      storeSessionKey(wallet.privateKey);
+
+      toast.success(t("import.walletImported", locale));
+      setTimeout(() => onSuccess(wallet.address), 300);
+    } catch (e: any) {
+      const msg = e?.message?.includes("invalid mnemonic") || e?.message?.includes("Invalid mnemonic")
+        ? (locale === "zh" ? "助记词无效，请检查输入" : "Invalid mnemonic, please check input")
+        : e?.message?.includes("invalid private key") || e?.message?.includes("Invalid private key")
+        ? (locale === "zh" ? "私钥格式无效，请检查输入" : "Invalid private key format")
+        : (locale === "zh" ? "导入失败，请检查输入是否正确" : "Import failed, please check your input");
+      toast.error(msg);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -1490,6 +1696,19 @@ export default function LoginApp() {
   const [showNetworkSwitcher, setShowNetworkSwitcher] = useState(false);
   const { locale, login } = useStore();
 
+  // ---- Session state: 跨视图数据传递（不写入存储，只用于当前创建/导入流程）----
+  const [sessionPassword, setSessionPassword] = useState("");
+  const [sessionMnemonic, setSessionMnemonic] = useState("");
+  const [sessionImportInput, setSessionImportInput] = useState("");
+  const [sessionImportType, setSessionImportType] = useState<"mnemonic" | "privatekey">("mnemonic");
+
+  const clearSession = useCallback(() => {
+    setSessionPassword("");
+    setSessionMnemonic("");
+    setSessionImportInput("");
+    setSessionImportType("mnemonic");
+  }, []);
+
   const goTo = useCallback((v: AuthView) => {
     const viewOrder: AuthView[] = [
       "welcome", "login",
@@ -1503,11 +1722,11 @@ export default function LoginApp() {
   }, [view]);
 
   const handleSuccess = useCallback((address?: string) => {
-    // Mark user as logged in with optional wallet address
+    clearSession(); // 清除内存中的 session 状态
     login(address);
-    // Force redirect to main app with full page reload using explicit filename
     window.location.replace("./index.html");
-  }, [login]);
+  }, [login, clearSession]);
+
   const variants = direction === "right" ? slideRight : slideLeft;
 
   return (
@@ -1528,15 +1747,15 @@ export default function LoginApp() {
             {view === "welcome" && <WelcomeView goTo={goTo} />}
             {view === "login" && <LoginView goTo={goTo} onSuccess={handleSuccess} />}
             {view === "create-network" && <NetworkSelectionView goTo={goTo} nextView="create-password" descKey="network.whichChainCreate" onSelectNetwork={setSelectedNetwork} />}
-            {view === "create-password" && <CreatePasswordView goTo={goTo} network={selectedNetwork} onSwitchNetwork={() => setShowNetworkSwitcher(true)} />}
-            {view === "create-generate" && <CreateGenerateView goTo={goTo} network={selectedNetwork} />}
-            {view === "create-verify" && <CreateVerifyView goTo={goTo} network={selectedNetwork} />}
-            {view === "create-complete" && <CreateCompleteView onSuccess={handleSuccess} network={selectedNetwork} />}
+            {view === "create-password" && <CreatePasswordView goTo={goTo} network={selectedNetwork} onSwitchNetwork={() => setShowNetworkSwitcher(true)} onPasswordSet={setSessionPassword} />}
+            {view === "create-generate" && <CreateGenerateView goTo={goTo} network={selectedNetwork} onMnemonicGenerated={setSessionMnemonic} />}
+            {view === "create-verify" && <CreateVerifyView goTo={goTo} network={selectedNetwork} mnemonic={sessionMnemonic} />}
+            {view === "create-complete" && <CreateCompleteView onSuccess={handleSuccess} network={selectedNetwork} mnemonic={sessionMnemonic} password={sessionPassword} />}
             {view === "import-select" && <ImportSelectView goTo={goTo} />}
-            {view === "import-mnemonic" && <ImportMnemonicView goTo={goTo} />}
-            {view === "import-privatekey" && <ImportPrivateKeyView goTo={goTo} />}
+            {view === "import-mnemonic" && <ImportMnemonicView goTo={goTo} onConfirm={(input) => { setSessionImportInput(input); setSessionImportType("mnemonic"); }} />}
+            {view === "import-privatekey" && <ImportPrivateKeyView goTo={goTo} onConfirm={(input) => { setSessionImportInput(input); setSessionImportType("privatekey"); }} />}
             {view === "import-network" && <NetworkSelectionView goTo={goTo} nextView="import-password" descKey="network.whichChainImport" onSelectNetwork={setSelectedNetwork} />}
-            {view === "import-password" && <ImportPasswordView goTo={goTo} onSuccess={handleSuccess} network={selectedNetwork} />}
+            {view === "import-password" && <ImportPasswordView goTo={goTo} onSuccess={handleSuccess} network={selectedNetwork} importInput={sessionImportInput} importType={sessionImportType} />}
           </motion.div>
         </AnimatePresence>
       </div>

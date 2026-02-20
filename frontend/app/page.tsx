@@ -57,6 +57,23 @@ export default function Page() {
       .catch(console.error);
   }, [isLoggedIn, isConnected, walletClient, pushInitialized, pushInitFailed]);
 
+  // For local wallet login: initialize Push Protocol using sessionStorage private key
+  useEffect(() => {
+    if (!isLoggedIn || isConnected || pushInitialized || isConnectingPush || pushInitFailed) return;
+    // Only runs when user is logged in but no wagmi wallet is connected (local wallet flow)
+    Promise.all([
+      import('@/lib/walletCrypto'),
+      import('ethers'),
+    ]).then(([{ getSessionWallet }, { ethers }]) => {
+      const localWallet = getSessionWallet();
+      if (localWallet) {
+        const provider = new ethers.providers.JsonRpcProvider('https://rpc.ankr.com/eth');
+        const signer = localWallet.connect(provider);
+        initPush(signer).catch(console.error);
+      }
+    }).catch(console.error);
+  }, [isLoggedIn, isConnected, pushInitialized, isConnectingPush, pushInitFailed]);
+
   // Destroy Push when wallet disconnects
   useEffect(() => {
     if (isLoggedIn && !isConnected && pushInitialized) {

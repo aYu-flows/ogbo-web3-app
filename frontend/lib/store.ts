@@ -388,19 +388,28 @@ export const useStore = create<AppState>((set, get) => ({
     set({ isLoggedIn: true, walletAddress: address || null })
     if (typeof window !== 'undefined') {
       localStorage.setItem('ogbo_logged_in', 'true')
+      if (address) {
+        localStorage.setItem('ogbo_wallet_address', address)
+      }
     }
   },
   logout: () => {
+    // 清除 sessionStorage 中的 session key（明文私钥）
+    if (typeof window !== 'undefined') {
+      try { window.sessionStorage.removeItem('ogbo_session_pk') } catch { /* ignore */ }
+    }
     set({ isLoggedIn: false, walletAddress: null })
     if (typeof window !== 'undefined') {
       localStorage.removeItem('ogbo_logged_in')
+      localStorage.removeItem('ogbo_wallet_address')
       localStorage.removeItem('ogbox_hide_download_banner')
     }
   },
   checkAuthStatus: () => {
     if (typeof window !== 'undefined') {
       const isLoggedIn = localStorage.getItem('ogbo_logged_in') === 'true'
-      set({ isLoggedIn })
+      const walletAddress = localStorage.getItem('ogbo_wallet_address') || null
+      set({ isLoggedIn, walletAddress })
     }
   },
 
