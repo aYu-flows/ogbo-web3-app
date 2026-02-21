@@ -511,9 +511,9 @@ export default function HomePage() {
 
           <AnimatePresence mode="wait">
             <motion.div key={isBalanceVisible ? "visible" : "hidden"} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.15 }}>
-              <AnimatedNumber value={wallet.balance.cny} visible={isBalanceVisible} />
+              <AnimatedNumber value={wallet?.balance.cny ?? 0} visible={isBalanceVisible} />
               <p className="text-white/60 text-sm mt-0.5">
-                {isBalanceVisible ? `≈ $${wallet.balance.usd.toLocaleString(undefined, { minimumFractionDigits: 2 })}` : "≈ $****"}
+                {isBalanceVisible ? `≈ $${(wallet?.balance.usd ?? 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}` : "≈ $****"}
               </p>
             </motion.div>
           </AnimatePresence>
@@ -698,7 +698,7 @@ export default function HomePage() {
 
       {/* Modals */}
       <SendModal open={sendOpen} onClose={() => setSendOpen(false)} locale={locale} />
-      <ReceiveModal open={receiveOpen} onClose={() => setReceiveOpen(false)} locale={locale} address={wallet.address} />
+      <ReceiveModal open={receiveOpen} onClose={() => setReceiveOpen(false)} locale={locale} address={wallet?.address ?? ''} />
       <SwapModal open={swapOpen} onClose={() => setSwapOpen(false)} locale={locale} />
       <MeetingModal open={meetingOpen} onClose={() => setMeetingOpen(false)} locale={locale} />
       <CoinDetailModal open={!!selectedCoin} onClose={() => setSelectedCoin(null)} coin={selectedCoin} locale={locale} />

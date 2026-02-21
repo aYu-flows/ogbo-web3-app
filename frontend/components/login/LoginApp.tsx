@@ -24,6 +24,7 @@ import {
   storeSessionKey,
   clearAllWallets,
   isValidMnemonic as ethersIsValidMnemonic,
+  migrateKeystoreScrypt,
 } from "@/lib/walletCrypto";
 import {
   ArrowLeft, Eye, EyeOff, Lock, Globe, ChevronDown,
@@ -276,7 +277,7 @@ function ProgressBar({ step, total }: { step: number; total: number }) {
 function BackHeader({ onBack, rightSlot }: { onBack: () => void; rightSlot?: React.ReactNode }) {
   const { locale } = useStore();
   return (
-    <div className="flex items-center justify-between h-14 px-4 lg:px-6" style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 8px)' }}>
+    <div className="flex items-center justify-between h-14 px-4 lg:px-6" style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) * 2 + 8px)' }}>
       <button
         onClick={onBack}
         className="flex items-center gap-1 text-muted-foreground hover:text-foreground transition-colors rounded-full p-1 hover:bg-muted"
@@ -497,7 +498,7 @@ function WelcomeView({ goTo }: { goTo: (v: AuthView) => void }) {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between h-14 px-4 lg:px-6" style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 8px)' }}>
+      <div className="flex items-center justify-between h-14 px-4 lg:px-6" style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) * 2 + 8px)' }}>
         {/* Download button — left side, browser only */}
         {isBrowser ? (
           <motion.button
@@ -743,6 +744,8 @@ function PasswordLoginView({ goTo, onSuccess }: {
       storeSessionKey(wallet.privateKey);
       setRetryCount(0);
       toast.success(t("auth.loginSuccess", locale));
+      // 异步后台迁移旧 keystore 到轻量 scrypt（不阻塞登录）
+      migrateKeystoreScrypt(password).catch(() => {});
       setTimeout(() => onSuccess(wallet.address), 300);
     } catch {
       const newCount = retryCount + 1;
@@ -772,14 +775,6 @@ function PasswordLoginView({ goTo, onSuccess }: {
           </motion.div>
         </div>
         <h2 className="text-2xl font-bold text-foreground mb-1">{t("auth.enterPassword", locale)}</h2>
-        {activeWallet && (
-          <div className="flex items-center gap-2 mb-3 px-3 py-1.5 bg-muted rounded-lg">
-            <Wallet className="w-3.5 h-3.5 text-muted-foreground" />
-            <code className="text-xs font-mono text-muted-foreground">
-              {`${activeWallet.address.slice(0, 6)}...${activeWallet.address.slice(-4)}`}
-            </code>
-          </div>
-        )}
         <p className="text-sm text-muted-foreground mb-8">{t("auth.enterWalletPassword", locale)}</p>
         <div className="w-full space-y-3">
           <PasswordInput
@@ -1746,10 +1741,11 @@ function ImportPrivateKeyView({ goTo, onConfirm }: {
   const { locale } = useStore();
   const [input, setInput] = useState("");
   const [show, setShow] = useState(false);
-  const starts0x = input.startsWith("0x");
-  const hexPart = starts0x ? input.slice(2) : input;
+  // 归一化：自动补全 0x 前缀
+  const normalized = input.trim().startsWith("0x") ? input.trim() : "0x" + input.trim();
+  const hexPart = normalized.slice(2);
   const isValidHex = /^[0-9a-fA-F]*$/.test(hexPart);
-  const isValid = starts0x && hexPart.length === 64 && isValidHex;
+  const isValid = hexPart.length === 64 && isValidHex;
 
   const handlePaste = async () => {
     try { const text = await navigator.clipboard.readText(); setInput(text); toast.success(t("import.pasted", locale)); } catch { toast.error("Clipboard not available"); }
@@ -1772,10 +1768,6 @@ function ImportPrivateKeyView({ goTo, onConfirm }: {
         </div>
         <div className="mt-4 space-y-2">
           <div className="flex items-center gap-2 text-sm">
-            {starts0x ? <Check className="w-4 h-4 text-[var(--ogbo-green)]" /> : input.length > 0 ? <X className="w-4 h-4 text-[var(--ogbo-red)]" /> : <X className="w-4 h-4 text-muted-foreground" />}
-            <span className={starts0x ? "text-[var(--ogbo-green)]" : input.length > 0 ? "text-[var(--ogbo-red)]" : "text-muted-foreground"}>{t("import.startWith0x", locale)}</span>
-          </div>
-          <div className="flex items-center gap-2 text-sm">
             {hexPart.length === 64 && isValidHex ? <Check className="w-4 h-4 text-[var(--ogbo-green)]" /> : input.length > 0 ? <AlertCircle className="w-4 h-4 text-[var(--ogbo-orange)]" /> : <X className="w-4 h-4 text-muted-foreground" />}
             <span className={hexPart.length === 64 && isValidHex ? "text-[var(--ogbo-green)]" : input.length > 0 ? "text-[var(--ogbo-orange)]" : "text-muted-foreground"}>64 {t("import.hexChars", locale)} ({Math.min(hexPart.length, 64)}/64)</span>
           </div>
@@ -1786,7 +1778,7 @@ function ImportPrivateKeyView({ goTo, onConfirm }: {
           )}
         </div>
         <motion.button whileHover={isValid ? { scale: 1.02 } : {}} whileTap={isValid ? { scale: 0.98 } : {}} disabled={!isValid}
-          onClick={() => { onConfirm(input.trim()); goTo("import-network"); }}
+          onClick={() => { onConfirm(normalized); goTo("import-network"); }}
           className={`w-full h-12 lg:h-14 rounded-xl font-semibold mt-8 flex items-center justify-center gap-2 transition-all text-base ${isValid ? "bg-[var(--ogbo-blue)] text-white shadow-md hover:bg-[var(--ogbo-blue-hover)]" : "bg-muted text-muted-foreground cursor-not-allowed"}`}>
           <span>{t("create.next", locale)}</span><ChevronRight className="w-5 h-5" />
         </motion.button>

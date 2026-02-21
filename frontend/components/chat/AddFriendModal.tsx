@@ -16,7 +16,7 @@ interface AddFriendModalProps {
 const ADDRESS_REGEX = /^0x[a-fA-F0-9]{40}$/
 
 export default function AddFriendModal({ isOpen, onClose, onOpenChat }: AddFriendModalProps) {
-  const { searchUserByAddress, sendFriendRequest, chats, chatRequests, walletAddress, pushInitialized, locale, switchTab } = useStore()
+  const { searchUserByAddress, sendFriendRequest, chats, chatRequests, walletAddress, pushInitialized, isConnectingPush, pushInitFailed, locale, switchTab } = useStore()
   const [searchInput, setSearchInput] = useState('')
   const [searching, setSearching] = useState(false)
   const [searchResult, setSearchResult] = useState<any>(null)
@@ -55,7 +55,13 @@ export default function AddFriendModal({ isOpen, onClose, onOpenChat }: AddFrien
     }
 
     if (!pushInitialized) {
-      setSearchError(locale === 'zh' ? '请先连接钱包' : 'Please connect wallet first')
+      if (isConnectingPush) {
+        setSearchError(locale === 'zh' ? '聊天功能初始化中，请稍候...' : 'Chat initializing, please wait...')
+      } else if (pushInitFailed) {
+        setSearchError(locale === 'zh' ? '聊天功能暂时不可用，请刷新重试' : 'Chat unavailable. Please refresh and retry.')
+      } else {
+        setSearchError(locale === 'zh' ? '聊天连接中...' : 'Connecting...')
+      }
       return
     }
 
@@ -74,7 +80,7 @@ export default function AddFriendModal({ isOpen, onClose, onOpenChat }: AddFrien
         setSearching(false)
       }
     }, 500)
-  }, [searchInput, isOpen])
+  }, [searchInput, isOpen, pushInitialized, isConnectingPush, pushInitFailed])
 
   const handleSend = async () => {
     if (!isValidAddress || sending || sent) return
@@ -114,7 +120,7 @@ export default function AddFriendModal({ isOpen, onClose, onOpenChat }: AddFrien
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          className="fixed inset-0 z-50 flex items-end sm:items-center justify-center px-4 pb-4 sm:pb-0"
+          className="fixed inset-0 z-50 flex items-center justify-center px-4"
         >
           {/* Backdrop */}
           <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={handleClose} />
@@ -125,7 +131,7 @@ export default function AddFriendModal({ isOpen, onClose, onOpenChat }: AddFrien
             animate={{ y: 0, scale: 1 }}
             exit={{ y: '100%', scale: 0.95 }}
             transition={{ type: 'spring', damping: 28, stiffness: 300 }}
-            className="relative bg-card rounded-2xl shadow-xl w-full max-w-sm overflow-hidden"
+            className="relative bg-card rounded-2xl shadow-xl w-full max-w-sm overflow-hidden max-h-[80vh] flex flex-col"
           >
             {/* Header */}
             <div className="flex items-center justify-between px-5 pt-5 pb-4 border-b border-border">

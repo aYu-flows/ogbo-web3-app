@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import type { PushAPI } from '@pushprotocol/restapi'
 import type { Signer } from 'ethers'
+import { getStoredWallets, getActiveWallet, type StoredWallet as StoredWalletType } from '@/lib/walletCrypto'
 
 export type TabType = 'home' | 'chat' | 'market' | 'discover' | 'assets'
 export type Locale = 'zh' | 'en'
@@ -118,47 +119,18 @@ function generateChartData(points: number, basePrice: number): { time: number; p
   })
 }
 
-const mockWallets: Wallet[] = [
-  {
-    id: '1',
-    name: 'Wallet 1',
-    address: '0x7a4f9b6e8c3d2a5f1e9b4c7d2a6f8e1b5c9d3a7f',
-    balance: { cny: 125800.5, usd: 18234.7 },
-    tokens: [
-      { symbol: 'BTC', name: 'Bitcoin', amount: 0.5234, value: 23456.78, change24h: 2.5, icon: '₿' },
-      { symbol: 'ETH', name: 'Ethereum', amount: 2.1234, value: 6142.56, change24h: -0.8, icon: 'Ξ' },
-      { symbol: 'BNB', name: 'BNB', amount: 15.67, value: 4891.23, change24h: 1.2, icon: '◆' },
-      { symbol: 'USDT', name: 'Tether', amount: 1000, value: 7130.0, change24h: 0.01, icon: '₮' },
-      { symbol: 'SOL', name: 'Solana', amount: 45.2, value: 3892.1, change24h: 5.3, icon: 'S' },
-      { symbol: 'ADA', name: 'Cardano', amount: 5000, value: 2150.0, change24h: -1.5, icon: 'A' },
-    ],
-    nfts: [
-      { id: '1', name: 'Bored Ape #1234', collection: 'BAYC', floorPrice: 45, color: '#4ade80' },
-      { id: '2', name: 'CryptoPunk #5678', collection: 'CryptoPunks', floorPrice: 62, color: '#818cf8' },
-      { id: '3', name: 'Azuki #9012', collection: 'Azuki', floorPrice: 12, color: '#f472b6' },
-      { id: '4', name: 'Doodle #3456', collection: 'Doodles', floorPrice: 6, color: '#fbbf24' },
-    ],
-    transactions: [
-      { id: '1', type: 'send', amount: -0.5, symbol: 'BTC', to: '0x1a2b...c3d4', timestamp: Date.now() - 180000, status: 'completed' },
-      { id: '2', type: 'receive', amount: 2.0, symbol: 'ETH', from: '0x9f8e...7d6c', timestamp: Date.now() - 3600000, status: 'completed' },
-      { id: '3', type: 'swap', amount: -100, symbol: 'USDT', to: 'BNB', timestamp: Date.now() - 86400000, status: 'completed' },
-      { id: '4', type: 'receive', amount: 500, symbol: 'USDT', from: '0x3c4d...5e6f', timestamp: Date.now() - 172800000, status: 'completed' },
-      { id: '5', type: 'send', amount: -1.5, symbol: 'ETH', to: '0x7g8h...9i0j', timestamp: Date.now() - 259200000, status: 'completed' },
-    ],
-  },
-  {
-    id: '2',
-    name: 'Wallet 2',
-    address: '0x2b8c4d6f1a9e7b3c5d8a2f6e9b1c4d7a3f5e8b2c',
-    balance: { cny: 52308.0, usd: 7584.5 },
-    tokens: [
-      { symbol: 'ETH', name: 'Ethereum', amount: 1.5, value: 4340.0, change24h: -0.8, icon: 'Ξ' },
-      { symbol: 'USDT', name: 'Tether', amount: 3000, value: 21390.0, change24h: 0.01, icon: '₮' },
-    ],
+/** 将 localStorage StoredWallet 转换为 store Wallet 视图对象（不含私密字段） */
+function storedWalletToWallet(sw: StoredWalletType): Wallet {
+  return {
+    id: sw.id,
+    name: sw.name,
+    address: sw.address,
+    balance: { cny: 0, usd: 0 },
+    tokens: [],
     nfts: [],
     transactions: [],
-  },
-]
+  }
+}
 
 const mockChats: Chat[] = [
   {
@@ -292,7 +264,7 @@ interface AppState {
   deleteChat: (chatId: string) => void
   sendMessage: (chatId: string, content: string, sender?: string) => void
   updatePrices: () => void
-  getCurrentWallet: () => Wallet
+  getCurrentWallet: () => Wallet | undefined
   login: (address?: string) => void
   logout: () => void
   checkAuthStatus: () => void
@@ -316,8 +288,8 @@ export const useStore = create<AppState>((set, get) => ({
   activeTab: 'chat',
   locale: 'zh',
   isBalanceVisible: true,
-  currentWalletId: '1',
-  wallets: mockWallets,
+  currentWalletId: '',
+  wallets: [],        // 由 checkAuthStatus() 在客户端从 localStorage 加载，SSR 安全
   chats: mockChats,
   coins: mockCoins,
   dapps: mockDApps,
@@ -387,19 +359,31 @@ export const useStore = create<AppState>((set, get) => ({
     return s.wallets.find((w) => w.id === s.currentWalletId) || s.wallets[0]
   },
   login: (address?: string) => {
-    set((s) => ({
+    const storedWallets = getStoredWallets()
+    const activeWallet = getActiveWallet()
+    let wallets = storedWallets.map(storedWalletToWallet)
+    // wagmi/外部钱包用户：localStorage 无 keystore，构造视图用 Wallet
+    if (address && !wallets.some(w => w.address.toLowerCase() === address.toLowerCase())) {
+      wallets = [{
+        id: 'external-wallet',
+        name: 'Connected Wallet',
+        address,
+        balance: { cny: 0, usd: 0 },
+        tokens: [],
+        nfts: [],
+        transactions: [],
+      }]
+    }
+    const currentWalletId = activeWallet?.id || wallets[0]?.id || ''
+    set({
       isLoggedIn: true,
       walletAddress: address || null,
-      // Mirror real address into the active wallet so AssetsPage shows the correct address
-      wallets: address
-        ? s.wallets.map((w) => w.id === s.currentWalletId ? { ...w, address } : w)
-        : s.wallets,
-    }))
+      wallets,
+      currentWalletId,
+    })
     if (typeof window !== 'undefined') {
       localStorage.setItem('ogbo_logged_in', 'true')
-      if (address) {
-        localStorage.setItem('ogbo_wallet_address', address)
-      }
+      if (address) localStorage.setItem('ogbo_wallet_address', address)
     }
   },
   logout: () => {
@@ -415,18 +399,26 @@ export const useStore = create<AppState>((set, get) => ({
     }
   },
   checkAuthStatus: () => {
-    if (typeof window !== 'undefined') {
-      const isLoggedIn = localStorage.getItem('ogbo_logged_in') === 'true'
-      const walletAddress = localStorage.getItem('ogbo_wallet_address') || null
-      set((s) => ({
-        isLoggedIn,
-        walletAddress,
-        // Restore real address into the active wallet on page refresh
-        wallets: (isLoggedIn && walletAddress)
-          ? s.wallets.map((w) => w.id === s.currentWalletId ? { ...w, address: walletAddress } : w)
-          : s.wallets,
-      }))
+    if (typeof window === 'undefined') return
+    const isLoggedIn = localStorage.getItem('ogbo_logged_in') === 'true'
+    const savedAddress = localStorage.getItem('ogbo_wallet_address') || null
+    const storedWallets = getStoredWallets()
+    const activeWallet = getActiveWallet()
+    let wallets = storedWallets.map(storedWalletToWallet)
+    // wagmi/外部钱包用户：localStorage 无 keystore，构造视图用 Wallet
+    if (savedAddress && !wallets.some(w => w.address.toLowerCase() === savedAddress.toLowerCase())) {
+      wallets = [{
+        id: 'external-wallet',
+        name: 'Connected Wallet',
+        address: savedAddress,
+        balance: { cny: 0, usd: 0 },
+        tokens: [],
+        nfts: [],
+        transactions: [],
+      }]
     }
+    const currentWalletId = activeWallet?.id || wallets[0]?.id || ''
+    set({ isLoggedIn, walletAddress: savedAddress, wallets, currentWalletId })
   },
 
   // ======== Push Protocol Actions ========
@@ -445,11 +437,18 @@ export const useStore = create<AppState>((set, get) => ({
       if (!myAddress) {
         try {
           myAddress = await (signer as any).getAddress() || ''
-          if (myAddress) set((s) => ({
-            walletAddress: myAddress,
-            wallets: s.wallets.map((w) => w.id === s.currentWalletId ? { ...w, address: myAddress } : w),
-          }))
         } catch { /* ignore */ }
+      }
+      if (myAddress) {
+        const storedWallets = getStoredWallets()
+        const activeWallet = getActiveWallet()
+        let wallets = storedWallets.map(storedWalletToWallet)
+        if (!wallets.some(w => w.address.toLowerCase() === myAddress.toLowerCase())) {
+          wallets = [{ id: 'external-wallet', name: 'Connected Wallet', address: myAddress,
+            balance: { cny: 0, usd: 0 }, tokens: [], nfts: [], transactions: [] }]
+        }
+        const currentWalletId = activeWallet?.id || wallets[0]?.id || ''
+        set({ walletAddress: myAddress, wallets, currentWalletId })
       }
 
       // Load chats and requests
@@ -554,10 +553,6 @@ export const useStore = create<AppState>((set, get) => ({
       })
     } catch (error: any) {
       console.error('Push init failed:', error)
-      const { default: toast } = await import('react-hot-toast')
-      const locale = get().locale
-      const msg = locale === 'zh' ? '聊天初始化失败，请重试' : 'Chat initialization failed, please retry'
-      toast.error(msg)
       set({ pushInitFailed: true })
     } finally {
       set({ isConnectingPush: false })

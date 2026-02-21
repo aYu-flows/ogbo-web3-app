@@ -167,6 +167,17 @@ export default function AssetsPage() {
   const [selectedNFT, setSelectedNFT] = useState<NFT | null>(null);
   const [walletMenuOpen, setWalletMenuOpen] = useState(false);
 
+  // 钱包未加载时（新用户/初始化中）显示空态，防止 wallet.address 崩溃
+  if (!wallet) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full pb-20 text-muted-foreground">
+        <Wallet className="w-12 h-12 mb-4 opacity-30" />
+        <p className="text-sm font-medium">{locale === 'zh' ? '暂无钱包数据' : 'No wallet data'}</p>
+        <p className="text-xs mt-1 opacity-60">{locale === 'zh' ? '请先导入或创建钱包' : 'Please import or create a wallet'}</p>
+      </div>
+    );
+  }
+
   const shortAddr = wallet.address.slice(0, 6) + "..." + wallet.address.slice(-4);
 
   const handleCopy = () => {

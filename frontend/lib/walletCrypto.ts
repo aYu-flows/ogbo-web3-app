@@ -66,10 +66,15 @@ export function walletFromMnemonic(mnemonic: string): ethers.Wallet {
 
 /**
  * 从私钥创建 EVM 钱包
+ * 自动补全 0x 前缀（兼容用户粘贴不带前缀的 64 位 hex 私钥）
  * @throws Error 若私钥格式无效
  */
 export function walletFromPrivateKey(privateKey: string): ethers.Wallet {
-  const trimmed = privateKey.trim();
+  let trimmed = privateKey.trim();
+  // 64 位纯 hex 自动补 0x（兼容用户粘贴不带前缀的私钥）
+  if (/^[0-9a-fA-F]{64}$/.test(trimmed)) {
+    trimmed = '0x' + trimmed;
+  }
   if (!isValidPrivateKey(trimmed)) {
     throw new Error("Invalid private key format");
   }
@@ -80,13 +85,13 @@ export function walletFromPrivateKey(privateKey: string): ethers.Wallet {
 
 /**
  * 用密码将 Wallet 加密为 Keystore JSON 字符串
- * 使用 ethers 默认 scrypt 参数（N=2^17，安全但耗时 ~1-3s）
+ * 使用轻量 scrypt 参数（N=8192，2^13），加密约 0.1–0.3s；移动端本地存储安全性足够
  */
 export async function encryptWallet(
   wallet: ethers.Wallet,
   password: string
 ): Promise<string> {
-  return wallet.encrypt(password);
+  return wallet.encrypt(password, { scrypt: { N: 1 << 13 } });
 }
 
 /**
@@ -241,12 +246,12 @@ export function isValidMnemonic(mnemonic: string): boolean {
 }
 
 /**
- * 验证私钥格式（0x + 64 hex 字符）
+ * 验证私钥格式（支持 "0x" + 64 hex 字符，或纯 64 hex 字符无前缀两种格式）
  */
 export function isValidPrivateKey(privateKey: string): boolean {
   if (!privateKey || typeof privateKey !== "string") return false;
   const trimmed = privateKey.trim();
-  return /^0x[0-9a-fA-F]{64}$/.test(trimmed);
+  return /^(0x)?[0-9a-fA-F]{64}$/.test(trimmed);
 }
 
 // ======== 内部工具 ========
@@ -257,4 +262,30 @@ function _generateId(): string {
   }
   // fallback（Node.js 环境）
   return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+// ======== Keystore 迁移工具 ========
+
+/**
+ * 将所有重量级 keystore（scrypt N > 8192）异步迁移到轻量级（N=8192）。
+ * 调用时机：密码验证成功后，后台异步执行，不阻塞登录。
+ * 注意：仅在浏览器端调用（依赖 localStorage）。
+ */
+export async function migrateKeystoreScrypt(password: string): Promise<void> {
+  const wallets = getStoredWallets();
+  for (const stored of wallets) {
+    try {
+      // 解析 keystore，检查 scrypt N 值（兼容大小写两种 key 路径）
+      const ks = JSON.parse(stored.keystore);
+      const n = ks?.crypto?.kdfparams?.n ?? ks?.Crypto?.kdfparams?.n;
+      if (n && n <= 8192) continue; // 已是轻量，跳过
+      // 用当前密码重新加密并保存（saveWallet 会更新已有地址的 keystore）
+      const w = await decryptWallet(stored.keystore, password);
+      const newKeystore = await encryptWallet(w, password);
+      saveWallet({ ...stored, keystore: newKeystore });
+    } catch {
+      // 单条失败（keystore 损坏或密码不匹配）不影响其他钱包，静默跳过
+      console.warn('[migrateKeystoreScrypt] skipped wallet', stored.id);
+    }
+  }
 }
