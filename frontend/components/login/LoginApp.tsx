@@ -28,7 +28,7 @@ import {
   Check, X, AlertCircle, AlertTriangle, Loader2,
   Copy, Shield, ChevronRight, Key, FileText,
   Fingerprint, RotateCcw, CheckCircle, Dices, Rocket, Clipboard,
-  HelpCircle, Info, ExternalLink, Lightbulb, Wallet,
+  HelpCircle, Info, ExternalLink, Lightbulb, Wallet, Download,
 } from "lucide-react";
 
 // ======== Types ========
@@ -472,9 +472,41 @@ function NetworkSwitcherSheet({
 // ========================================
 function WelcomeView({ goTo }: { goTo: (v: AuthView) => void }) {
   const { locale } = useStore();
+  const [isBrowser, setIsBrowser] = useState(false);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      setIsBrowser(!(window as any).Capacitor);
+    }
+  }, []);
+
+  const handleDownload = () => {
+    const link = document.createElement("a");
+    link.href = "https://github.com/aYu-flows/ogbo-web3-app/releases/download/v1.0/OGBOX-v1.0.apk";
+    link.download = "OGBOX-v1.0.apk";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   return (
     <div className="flex flex-col h-full">
-      <div className="flex items-center justify-end h-14 px-4 lg:px-6" style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 8px)' }}>
+      <div className="flex items-center justify-between h-14 px-4 lg:px-6" style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 8px)' }}>
+        {/* Download button — left side, browser only */}
+        {isBrowser ? (
+          <motion.button
+            initial={{ opacity: 0, y: -6 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.4, duration: 0.25, ease: "easeOut" }}
+            onClick={handleDownload}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-[var(--ogbo-blue)] hover:bg-[var(--ogbo-blue-hover)] text-white rounded-xl text-xs font-semibold shadow-lg transition-colors"
+            aria-label={locale === "zh" ? "下载 OGBOX App" : "Download OGBOX App"}
+          >
+            <Download className="w-3.5 h-3.5" />
+            {locale === "zh" ? "下载 APP" : "Get App"}
+          </motion.button>
+        ) : <div />}
+        {/* Language switcher — right side */}
         <LangSwitcher />
       </div>
       <div className="flex-1 flex flex-col items-center justify-center px-6 lg:px-8">
@@ -539,9 +571,15 @@ function LoginView({ goTo, onSuccess }: { goTo: (v: AuthView) => void; onSuccess
   // 获取当前存储的 active wallet
   const activeWallet = getActiveWallet();
 
-  // When wagmi wallet connects, auto-login
+  // Track whether the user explicitly clicked a connect button this session.
+  // Prevents wagmi auto-reconnect (from a previous session) from firing the
+  // toast + redirect before the user actually confirms in their wallet app.
+  const userInitiatedConnect = useRef(false);
+
+  // When wagmi wallet connects, auto-login — only if user clicked connect this session
   useEffect(() => {
-    if (isConnected && address) {
+    if (isConnected && address && userInitiatedConnect.current) {
+      userInitiatedConnect.current = false;
       toast.success(t("wallet.connected", locale));
       setTimeout(() => onSuccess(address), 400);
     }
@@ -549,6 +587,7 @@ function LoginView({ goTo, onSuccess }: { goTo: (v: AuthView) => void; onSuccess
 
   const handleWalletConnect = async (connectorIndex: number) => {
     setConnectingWallet(true);
+    userInitiatedConnect.current = true; // mark that user explicitly triggered this
     try {
       const connector = connectors[connectorIndex];
       if (connector) {
@@ -557,6 +596,7 @@ function LoginView({ goTo, onSuccess }: { goTo: (v: AuthView) => void; onSuccess
         connect({ connector: connectors[0] });
       }
     } catch (err) {
+      userInitiatedConnect.current = false;
       toast.error(t("wallet.connectFailed", locale));
     } finally {
       setConnectingWallet(false);
