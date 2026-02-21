@@ -9,6 +9,7 @@ import { useStore, type Locale } from "@/lib/store";
 import { t } from "@/lib/i18n";
 import AppDownloadBanner from "@/components/AppDownloadBanner";
 import { useConnect, useAccount } from "wagmi";
+import { useAppKit } from "@reown/appkit/react";
 import {
   generateEVMWallet,
   walletFromMnemonic,
@@ -557,6 +558,21 @@ function WelcomeView({ goTo }: { goTo: (v: AuthView) => void }) {
 // ========================================
 // 2) LOGIN VIEW
 // ========================================
+// ======== Connector Display Name Mapping ========
+const CONNECTOR_NAMES: Record<string, { zh: string; en: string }> = {
+  "Injected":       { zh: "浏览器钱包",   en: "Browser Wallet" },
+  "Auth":           { zh: "邮箱/社交登录", en: "Email / Social Login" },
+  "Base account":   { zh: "智能合约账户", en: "Smart Account" },
+  "WalletConnect":  { zh: "WalletConnect", en: "WalletConnect" },
+  "Coinbase Wallet":{ zh: "Coinbase 钱包", en: "Coinbase Wallet" },
+  "Safe":           { zh: "Safe 多签钱包", en: "Safe Multisig" },
+};
+function getConnectorDisplayName(name: string, locale: string): string {
+  const mapped = CONNECTOR_NAMES[name];
+  if (mapped) return locale === "zh" ? mapped.zh : mapped.en;
+  return name;
+}
+
 function LoginView({ goTo, onSuccess }: { goTo: (v: AuthView) => void; onSuccess: (address?: string) => void }) {
   const { locale } = useStore();
   const [password, setPassword] = useState("");
@@ -565,8 +581,9 @@ function LoginView({ goTo, onSuccess }: { goTo: (v: AuthView) => void; onSuccess
   const [showResetDialog, setShowResetDialog] = useState(false);
   const [connectingWallet, setConnectingWallet] = useState(false);
 
-  const { connect, connectors } = useConnect();
+  const { connectAsync, connectors } = useConnect();
   const { address, isConnected } = useAccount();
+  const { open: openAppKit } = useAppKit();
 
   // 获取当前存储的 active wallet
   const activeWallet = getActiveWallet();
@@ -586,18 +603,43 @@ function LoginView({ goTo, onSuccess }: { goTo: (v: AuthView) => void; onSuccess
   }, [isConnected, address]);
 
   const handleWalletConnect = async (connectorIndex: number) => {
-    setConnectingWallet(true);
-    userInitiatedConnect.current = true; // mark that user explicitly triggered this
-    try {
-      const connector = connectors[connectorIndex];
-      if (connector) {
-        connect({ connector });
-      } else {
-        connect({ connector: connectors[0] });
+    const connector = connectors[connectorIndex] ?? connectors[0];
+    if (!connector) return;
+
+    const connId   = (connector.id   ?? "").toLowerCase();
+    const connName = (connector.name ?? "").toLowerCase();
+    const connType = (connector.type ?? "").toLowerCase();
+
+    // Auth connector — needs AppKit modal to render email/social login UI
+    if (connName.includes("auth") || connId.includes("auth")) {
+      openAppKit();
+      return;
+    }
+
+    // Injected connector — only works when a wallet has injected window.ethereum
+    if (connType === "injected" || connId === "injected") {
+      if (typeof window !== "undefined" && !(window as any).ethereum) {
+        toast.error(
+          locale === "zh"
+            ? "未检测到钱包插件。请在 TokenPocket 等钱包 APP 的内置浏览器中打开本页面，或在电脑浏览器上安装 MetaMask"
+            : "No wallet detected. Open this page in your wallet app's browser (e.g. TokenPocket), or install MetaMask on desktop."
+        );
+        return;
       }
-    } catch (err) {
+    }
+
+    setConnectingWallet(true);
+    userInitiatedConnect.current = true;
+    try {
+      await connectAsync({ connector });
+    } catch (err: any) {
       userInitiatedConnect.current = false;
-      toast.error(t("wallet.connectFailed", locale));
+      const msg = err?.shortMessage ?? err?.message ?? "";
+      toast.error(
+        locale === "zh"
+          ? `连接失败${msg ? "：" + msg : ""}`
+          : `Connection failed${msg ? ": " + msg : ""}`
+      );
     } finally {
       setConnectingWallet(false);
     }
@@ -710,28 +752,25 @@ function LoginView({ goTo, onSuccess }: { goTo: (v: AuthView) => void; onSuccess
                 ) : (
                   <Wallet className="w-5 h-5 text-[var(--ogbo-blue)]" />
                 )}
-                <span className="text-sm font-medium flex-1 text-left">{connector.name}</span>
+                <span className="text-sm font-medium flex-1 text-left">{getConnectorDisplayName(connector.name, locale)}</span>
                 <ChevronRight className="w-4 h-4 text-muted-foreground" />
               </motion.button>
             ))
-          ) : (
-            <motion.button
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
-              disabled={connectingWallet}
-              onClick={() => handleWalletConnect(0)}
-              className="w-full h-11 rounded-xl border border-[var(--ogbo-blue)] bg-[var(--ogbo-blue)]/5 hover:bg-[var(--ogbo-blue)]/10 flex items-center gap-3 px-4 transition-colors disabled:opacity-60"
-            >
-              {connectingWallet ? (
-                <Loader2 className="w-5 h-5 animate-spin text-[var(--ogbo-blue)]" />
-              ) : (
-                <Wallet className="w-5 h-5 text-[var(--ogbo-blue)]" />
-              )}
-              <span className="text-sm font-medium text-[var(--ogbo-blue)]">
-                {locale === "zh" ? "连接钱包" : "Connect Wallet"}
-              </span>
-            </motion.button>
-          )}
+          ) : null}
+
+          {/* WalletConnect / 扫码连接 —— for mobile wallets like TokenPocket */}
+          <motion.button
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
+            onClick={() => openAppKit()}
+            className="w-full h-11 rounded-xl border border-[var(--ogbo-blue)] bg-[var(--ogbo-blue)]/5 hover:bg-[var(--ogbo-blue)]/10 flex items-center gap-3 px-4 transition-colors"
+          >
+            <Wallet className="w-5 h-5 text-[var(--ogbo-blue)]" />
+            <span className="text-sm font-medium flex-1 text-left text-[var(--ogbo-blue)]">
+              {locale === "zh" ? "扫码/选择钱包连接（TokenPocket 等）" : "Scan QR / Choose Wallet (TokenPocket etc.)"}
+            </span>
+            <ChevronRight className="w-4 h-4 text-[var(--ogbo-blue)]" />
+          </motion.button>
         </div>
 
         <button onClick={() => { toast.success(t("auth.loginSuccess", locale)); setTimeout(() => onSuccess(), 300); }}
