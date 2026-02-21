@@ -387,7 +387,14 @@ export const useStore = create<AppState>((set, get) => ({
     return s.wallets.find((w) => w.id === s.currentWalletId) || s.wallets[0]
   },
   login: (address?: string) => {
-    set({ isLoggedIn: true, walletAddress: address || null })
+    set((s) => ({
+      isLoggedIn: true,
+      walletAddress: address || null,
+      // Mirror real address into the active wallet so AssetsPage shows the correct address
+      wallets: address
+        ? s.wallets.map((w) => w.id === s.currentWalletId ? { ...w, address } : w)
+        : s.wallets,
+    }))
     if (typeof window !== 'undefined') {
       localStorage.setItem('ogbo_logged_in', 'true')
       if (address) {
@@ -411,7 +418,14 @@ export const useStore = create<AppState>((set, get) => ({
     if (typeof window !== 'undefined') {
       const isLoggedIn = localStorage.getItem('ogbo_logged_in') === 'true'
       const walletAddress = localStorage.getItem('ogbo_wallet_address') || null
-      set({ isLoggedIn, walletAddress })
+      set((s) => ({
+        isLoggedIn,
+        walletAddress,
+        // Restore real address into the active wallet on page refresh
+        wallets: (isLoggedIn && walletAddress)
+          ? s.wallets.map((w) => w.id === s.currentWalletId ? { ...w, address: walletAddress } : w)
+          : s.wallets,
+      }))
     }
   },
 
@@ -431,7 +445,10 @@ export const useStore = create<AppState>((set, get) => ({
       if (!myAddress) {
         try {
           myAddress = await (signer as any).getAddress() || ''
-          if (myAddress) set({ walletAddress: myAddress })
+          if (myAddress) set((s) => ({
+            walletAddress: myAddress,
+            wallets: s.wallets.map((w) => w.id === s.currentWalletId ? { ...w, address: myAddress } : w),
+          }))
         } catch { /* ignore */ }
       }
 
