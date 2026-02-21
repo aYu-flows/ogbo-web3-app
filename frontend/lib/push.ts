@@ -114,13 +114,66 @@ export async function getUserInfo(
   }
 }
 
+// ======== Group Chat ========
+
+/**
+ * Create a Push Protocol group chat.
+ * Returns { chatId, name } where chatId is the unique group identifier.
+ */
+export async function createGroupChat(
+  pushUser: PushAPI,
+  groupName: string,
+  memberAddresses: string[]
+): Promise<{ chatId: string; name: string }> {
+  const response = await (pushUser.chat.group as any).create(groupName, {
+    members: memberAddresses,
+    admins: [],
+    isPublic: false,
+  })
+  // GroupDTO fields: chatId, groupName
+  const chatId: string = response.chatId || response.groupChatId || ''
+  const name: string = response.groupName || groupName
+  return { chatId, name }
+}
+
+/**
+ * Auto-accept group chat invitations from friends.
+ * Only accepts group invites where the creator is in friendAddresses.
+ * Silently continues if individual accepts fail.
+ */
+export async function autoAcceptFriendGroupInvites(
+  pushUser: PushAPI,
+  friendAddresses: string[]
+): Promise<void> {
+  try {
+    const requests = await pushUser.chat.list('REQUESTS')
+    for (const req of requests) {
+      const groupInfo = (req as any).groupInformation
+      if (!groupInfo) continue  // skip 1-on-1 requests
+      try {
+        const creatorAddr = stripEip155Prefix(groupInfo.groupCreator || '')
+        const isFriend = friendAddresses.some(
+          (f) => f.toLowerCase() === creatorAddr.toLowerCase()
+        )
+        if (isFriend && req.chatId) {
+          await pushUser.chat.accept(req.chatId)
+        }
+      } catch {
+        // individual accept failure: continue to next
+      }
+    }
+  } catch {
+    // fetch requests failed: silent, do not throw
+  }
+}
+
 // ======== Real-time Listeners ========
 
 export function setupSocketListeners(
   pushUser: PushAPI,
   callbacks: {
     onMessage: (data: any) => void
-    onRequest: (data: any) => void
+    onRequest: (data: any) => void | Promise<void>
     onAccept: (data: any) => void
   }
 ): () => void {
@@ -159,6 +212,29 @@ function normalizeTimestamp(raw: any): number {
 // ======== Data Adapters ========
 
 export function pushFeedToChat(feed: IFeeds, myAddress: string): Chat {
+  // ---- Group chat feed ----
+  const groupInfo = (feed as any).groupInformation
+  if (groupInfo) {
+    return {
+      id: feed.chatId || '',
+      name: groupInfo.groupName || 'Group Chat',
+      avatarColor: addressToColor(feed.chatId || ''),
+      lastMessage: (feed.msg as any)?.messageContent || '',
+      timestamp: normalizeTimestamp((feed.msg as any)?.timestamp),
+      unread: (feed as any).count ?? 0,
+      online: false,
+      typing: false,
+      type: 'group',
+      members: groupInfo.members?.length ?? 0,
+      pinned: false,
+      messages: [],
+      walletAddress: undefined,
+      pushChatId: feed.chatId,
+      did: undefined,
+    }
+  }
+
+  // ---- Personal (1-on-1) chat feed ----
   const peerDid = feed.did || (feed as any).walletAddress || ''
   const peerAddress = stripEip155Prefix(peerDid) || (feed as any).intentSentBy || ''
   const shortName = peerAddress

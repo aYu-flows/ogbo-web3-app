@@ -17,12 +17,14 @@ import AssetsPage from "@/components/pages/AssetsPage";
 import AppDownloadBanner from "@/components/AppDownloadBanner";
 import StatusBarConfig from "@/components/StatusBarConfig";
 import AddFriendModal from "@/components/chat/AddFriendModal";
+import CreateGroupModal from "@/components/chat/CreateGroupModal";
 
 export default function Page() {
-  const { activeTab, isLoggedIn, checkAuthStatus, initPush, pushInitialized, isConnectingPush, pushInitFailed, destroyPush, walletAddress, login } = useStore();
+  const { activeTab, isLoggedIn, checkAuthStatus, initPush, pushInitialized, isConnectingPush, pushInitFailed, destroyPush, walletAddress, login, chats } = useStore();
   const [isChecking, setIsChecking] = useState(true);
   const [chatSearchOpen, setChatSearchOpen] = useState(false);
   const [addFriendOpen, setAddFriendOpen] = useState(false);
+  const [createGroupOpen, setCreateGroupOpen] = useState(false);
   const [marketSearchOpen, setMarketSearchOpen] = useState(false);
 
   // Wagmi wallet state
@@ -90,6 +92,10 @@ export default function Page() {
     setAddFriendOpen(true);
   }, []);
 
+  const handleCreateGroup = useCallback(() => {
+    setCreateGroupOpen(true);
+  }, []);
+
   if (isChecking) {
     return (
       <div className="flex h-dvh items-center justify-center bg-background">
@@ -139,6 +145,7 @@ export default function Page() {
         <TopBar
           onSearch={handleSearch}
           onAddFriend={handleAddFriend}
+          onCreateGroup={handleCreateGroup}
         />
 
         <main className="flex-1 overflow-hidden relative">
@@ -167,6 +174,13 @@ export default function Page() {
 
       {/* Add Friend Modal - global, accessible from TopBar */}
       <AddFriendModal isOpen={addFriendOpen} onClose={() => setAddFriendOpen(false)} />
+
+      {/* Create Group Modal - global, accessible from TopBar */}
+      <CreateGroupModal
+        isOpen={createGroupOpen}
+        onClose={() => setCreateGroupOpen(false)}
+        friends={chats.filter((c) => c.type === 'personal' && !!c.walletAddress)}
+      />
     </div>
   );
 }

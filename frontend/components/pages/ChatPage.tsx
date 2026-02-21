@@ -91,7 +91,7 @@ function EmojiPicker({ onSelect, onClose }: { onSelect: (emoji: string) => void;
 
 // Chat Detail View
 function ChatDetail({ chat, onBack, locale }: { chat: Chat; onBack: () => void; locale: "zh" | "en" }) {
-  const { sendMessage, sendPushMessage, loadChatHistory, pushInitialized, walletAddress } = useStore();
+  const { sendMessage, sendPushMessage, sendGroupPushMessage, loadChatHistory, pushInitialized, walletAddress } = useStore();
   const [input, setInput] = useState("");
   const [showEmoji, setShowEmoji] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
@@ -109,10 +109,13 @@ function ChatDetail({ chat, onBack, locale }: { chat: Chat; onBack: () => void; 
 
   // Load Push history when chat opens (only if no messages yet)
   useEffect(() => {
-    if (pushInitialized && chat.walletAddress && chat.messages.length === 0) {
-      loadChatHistory(chat.walletAddress);
+    if (!pushInitialized || chat.messages.length > 0) return
+    if (chat.type === 'group' && chat.pushChatId) {
+      loadChatHistory(chat.pushChatId)
+    } else if (chat.walletAddress) {
+      loadChatHistory(chat.walletAddress)
     }
-  }, [chat.id, pushInitialized, chat.walletAddress]);
+  }, [chat.id, pushInitialized, chat.walletAddress, chat.pushChatId]);
 
   const handleSend = async () => {
     if (!input.trim()) return;
@@ -120,10 +123,16 @@ function ChatDetail({ chat, onBack, locale }: { chat: Chat; onBack: () => void; 
     setInput("");
     setShowEmoji(false);
 
-    if (pushInitialized && walletAddress && chat.walletAddress) {
+    if (pushInitialized && walletAddress) {
       // Send via Push Protocol
       try {
-        await sendPushMessage(chat.walletAddress, content);
+        if (chat.type === 'group' && chat.pushChatId) {
+          await sendGroupPushMessage(chat.pushChatId, content);
+        } else if (chat.walletAddress) {
+          await sendPushMessage(chat.walletAddress, content);
+        } else {
+          sendMessage(chat.id, content);
+        }
       } catch {
         toast.error(locale === "zh" ? "发送失败" : "Send failed");
         setInput(content);
@@ -170,7 +179,7 @@ function ChatDetail({ chat, onBack, locale }: { chat: Chat; onBack: () => void; 
         <div className="flex items-center gap-3 flex-1 min-w-0">
           <div className="relative">
             <div className="w-9 h-9 rounded-full flex items-center justify-center text-white text-sm font-semibold" style={{ backgroundColor: chat.avatarColor }}>
-              {chat.name[0]}
+              {chat.type === 'group' ? <Users className="w-4 h-4" /> : chat.name[0]}
             </div>
             {chat.online && <div className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-[var(--ogbo-green)] ring-2 ring-card" />}
           </div>

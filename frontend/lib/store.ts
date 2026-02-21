@@ -308,6 +308,8 @@ interface AppState {
   sendPushMessage: (address: string, content: string) => Promise<void>
   loadChatHistory: (address: string) => Promise<void>
   searchUserByAddress: (address: string) => Promise<any>
+  createGroup: (groupName: string, memberAddresses: string[]) => Promise<void>
+  sendGroupPushMessage: (chatId: string, content: string) => Promise<void>
 }
 
 export const useStore = create<AppState>((set, get) => ({
@@ -418,7 +420,7 @@ export const useStore = create<AppState>((set, get) => ({
   initPush: async (signer) => {
     set({ isConnectingPush: true })
     try {
-      const { initPushUser, setupSocketListeners, fetchChats: fetchPushChats, fetchChatRequests: fetchPushRequests, pushFeedToChat, pushRequestToChatRequest, pushMessageToMessage } = await import('@/lib/push')
+      const { initPushUser, setupSocketListeners, fetchChats: fetchPushChats, fetchChatRequests: fetchPushRequests, pushFeedToChat, pushRequestToChatRequest, pushMessageToMessage, autoAcceptFriendGroupInvites } = await import('@/lib/push')
       const pushUser = await initPushUser(signer)
       set({ pushUser, pushInitialized: true })
 
@@ -442,6 +444,17 @@ export const useStore = create<AppState>((set, get) => ({
       const chatRequests = rawRequests.map((feed: any) => pushRequestToChatRequest(feed))
       const unreadChatCount = chats.reduce((acc: number, c: any) => acc + (c.unread || 0), 0)
       set({ chats, chatRequests, unreadChatCount })
+
+      // Auto-accept group invites from existing friends
+      const friendAddresses = chats.filter((c: any) => c.walletAddress).map((c: any) => c.walletAddress as string)
+      if (friendAddresses.length > 0) {
+        await autoAcceptFriendGroupInvites(pushUser, friendAddresses)
+        // Re-fetch chats to include any newly joined groups
+        const updatedRawChats = await fetchPushChats(pushUser)
+        const updatedChats = updatedRawChats.map((feed: any) => pushFeedToChat(feed, myAddress))
+        const updatedUnread = updatedChats.reduce((acc: number, c: any) => acc + (c.unread || 0), 0)
+        set({ chats: updatedChats, unreadChatCount: updatedUnread })
+      }
 
       // Setup WebSocket listeners
       setupSocketListeners(pushUser, {
@@ -494,7 +507,22 @@ export const useStore = create<AppState>((set, get) => ({
             return { chats, unreadChatCount: chats.reduce((acc, c) => acc + c.unread, 0) }
           })
         },
-        onRequest: (data: any) => {
+        onRequest: async (data: any) => {
+          // Group invite: if creator is an existing friend, auto-accept silently
+          if (data.groupInformation) {
+            const creatorRaw = data.groupInformation.groupCreator || ''
+            const creatorAddr = creatorRaw.replace(/^eip155:\d*:?/i, '')
+            const s = get()
+            const isFriend = s.chats.some((c) => c.walletAddress?.toLowerCase() === creatorAddr.toLowerCase())
+            if (isFriend && s.pushUser && data.chatId) {
+              try {
+                await s.pushUser.chat.accept(data.chatId)
+                await get().refreshChats()
+              } catch { /* ignore */ }
+            }
+            return
+          }
+          // Personal friend request: add to chatRequests list
           const newRequest = pushRequestToChatRequest(data)
           set((state) => {
             const exists = state.chatRequests.some((r) => r.fromAddress.toLowerCase() === newRequest.fromAddress.toLowerCase())
@@ -666,14 +694,94 @@ export const useStore = create<AppState>((set, get) => ({
         .map((msg: any) => pushMessageToMessage(msg, state.walletAddress!))
         .reverse()
       set((s) => ({
+        chats: s.chats.map((c) => {
+          const matchByWallet = c.walletAddress?.toLowerCase() === address.toLowerCase()
+          const matchByChatId = c.pushChatId === address
+          return (matchByWallet || matchByChatId) ? { ...c, messages } : c
+        }),
+      }))
+    } catch (error) {
+      console.error('loadChatHistory failed:', error)
+    }
+  },
+
+  createGroup: async (groupName, memberAddresses) => {
+    const state = get()
+    if (!state.pushUser || !state.pushInitialized) {
+      const { default: toast } = await import('react-hot-toast')
+      const { t } = await import('@/lib/i18n')
+      toast.error(t('chat.pushNotInitialized', state.locale))
+      return
+    }
+    if (memberAddresses.length === 0) {
+      const { default: toast } = await import('react-hot-toast')
+      const { t } = await import('@/lib/i18n')
+      toast.error(t('chat.noFriendsForGroup', state.locale))
+      return
+    }
+    try {
+      const { createGroupChat, addressToColor } = await import('@/lib/push')
+      const { t } = await import('@/lib/i18n')
+      const locale = get().locale
+      const finalName = groupName.trim() ||
+        (locale === 'zh' ? `群聊（${memberAddresses.length + 1}人）` : `Group (${memberAddresses.length + 1})`)
+      const { chatId, name } = await createGroupChat(state.pushUser, finalName, memberAddresses)
+      const newChat: Chat = {
+        id: chatId,
+        name,
+        avatarColor: addressToColor(chatId),
+        lastMessage: locale === 'zh' ? '群聊已创建' : 'Group created',
+        timestamp: Date.now(),
+        unread: 0,
+        online: false,
+        typing: false,
+        type: 'group',
+        members: memberAddresses.length + 1,
+        pinned: false,
+        messages: [],
+        walletAddress: undefined,
+        pushChatId: chatId,
+        did: undefined,
+      }
+      set((s) => ({
+        chats: [newChat, ...s.chats],
+        unreadChatCount: s.unreadChatCount,
+      }))
+      const { default: toast } = await import('react-hot-toast')
+      toast.success(t('chat.groupCreated', get().locale))
+    } catch (error) {
+      console.error('createGroup failed:', error)
+      const { default: toast } = await import('react-hot-toast')
+      const { t } = await import('@/lib/i18n')
+      toast.error(t('chat.groupCreateFailed', get().locale))
+      throw error
+    }
+  },
+
+  sendGroupPushMessage: async (chatId, content) => {
+    const state = get()
+    if (!state.pushUser) return
+    try {
+      const { sendMessage: pushSend } = await import('@/lib/push')
+      await pushSend(state.pushUser, chatId, content)
+      // Optimistically add message to local state
+      const msg = {
+        id: `m${Date.now()}`,
+        sender: 'me' as const,
+        content,
+        timestamp: Date.now(),
+        status: 'sent' as const,
+      }
+      set((s) => ({
         chats: s.chats.map((c) =>
-          c.walletAddress?.toLowerCase() === address.toLowerCase()
-            ? { ...c, messages }
+          c.pushChatId === chatId
+            ? { ...c, lastMessage: content, timestamp: Date.now(), messages: [...c.messages, msg] }
             : c
         ),
       }))
     } catch (error) {
-      console.error('loadChatHistory failed:', error)
+      console.error('sendGroupPushMessage failed:', error)
+      throw error
     }
   },
 }))

@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import Image from "next/image";
-import { Globe, Bell, Search, Plus, LogOut } from "lucide-react";
+import { Globe, Bell, Search, Plus, LogOut, UserPlus, Users } from "lucide-react";
 import { useStore, type TabType } from "@/lib/store";
 import { t } from "@/lib/i18n";
 import toast from "react-hot-toast";
@@ -22,14 +22,17 @@ export default function TopBar({
   onSearch,
   onAdd,
   onAddFriend,
+  onCreateGroup,
 }: {
   onSearch?: () => void;
   onAdd?: () => void;
   onAddFriend?: () => void;
+  onCreateGroup?: () => void;
 }) {
   const { activeTab, locale, switchLocale, notifications, logout } = useStore();
   const { disconnect } = useDisconnect();
   const [langMenuOpen, setLangMenuOpen] = useState(false);
+  const [plusMenuOpen, setPlusMenuOpen] = useState(false);
   const [logoutDialogOpen, setLogoutDialogOpen] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
   const router = useRouter();
@@ -89,16 +92,56 @@ export default function TopBar({
           </motion.button>
         )}
 
-        {/* Add button for chat */}
-        {activeTab === "chat" && (onAddFriend || onAdd) && (
-          <motion.button
-            whileTap={{ scale: 0.9 }}
-            onClick={onAddFriend || onAdd}
-            className="rounded-full p-2 hover:bg-muted transition-colors"
-            aria-label="Add friend"
-          >
-            <Plus className="w-5 h-5 text-foreground" />
-          </motion.button>
+        {/* Add button for chat — dropdown with "Add Friend" + "New Group Chat" */}
+        {activeTab === "chat" && (onAddFriend || onAdd || onCreateGroup) && (
+          <div className="relative">
+            <motion.button
+              whileTap={{ scale: 0.9 }}
+              onClick={() => setPlusMenuOpen(!plusMenuOpen)}
+              className="rounded-full p-2 hover:bg-muted transition-colors"
+              aria-label="Add"
+            >
+              <Plus className="w-5 h-5 text-foreground" />
+            </motion.button>
+
+            <AnimatePresence>
+              {plusMenuOpen && (
+                <>
+                  <div className="fixed inset-0 z-40" onClick={() => setPlusMenuOpen(false)} />
+                  <motion.div
+                    initial={{ opacity: 0, y: -8, scale: 0.95 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: -8, scale: 0.95 }}
+                    transition={{ duration: 0.15 }}
+                    className="absolute right-0 top-full mt-1 w-40 rounded-xl bg-card border border-border shadow-lg z-50 overflow-hidden"
+                  >
+                    <button
+                      onClick={() => {
+                        setPlusMenuOpen(false);
+                        if (onAddFriend) onAddFriend();
+                        else if (onAdd) onAdd();
+                      }}
+                      className="w-full flex items-center gap-2.5 px-4 py-3 text-sm text-foreground hover:bg-muted transition-colors"
+                    >
+                      <UserPlus className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                      {t("chat.addFriend", locale)}
+                    </button>
+                    <div className="mx-3 h-px bg-border" />
+                    <button
+                      onClick={() => {
+                        setPlusMenuOpen(false);
+                        if (onCreateGroup) onCreateGroup();
+                      }}
+                      className="w-full flex items-center gap-2.5 px-4 py-3 text-sm text-foreground hover:bg-muted transition-colors"
+                    >
+                      <Users className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                      {t("chat.createGroup", locale)}
+                    </button>
+                  </motion.div>
+                </>
+              )}
+            </AnimatePresence>
+          </div>
         )}
 
         {/* Language switcher */}

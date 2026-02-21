@@ -291,6 +291,16 @@ const translations: Record<Locale, Record<string, string>> = {
     'chat.noRequests': '暂无好友请求',
     'chat.requestAccepted': '已接受好友请求，快去打招呼吧！',
     'chat.requestRejected': '已拒绝请求',
+    // Group Chat
+    'chat.createGroup': '发起群聊',
+    'chat.groupNamePlaceholder': '输入群名称（可选）',
+    'chat.selectFriends': '选择好友',
+    'chat.selectedCount': '已选 {n} 人（含你）',
+    'chat.noFriendsForGroup': '暂无好友，先添加好友吧',
+    'chat.creatingGroup': '正在创建...',
+    'chat.groupCreated': '群聊创建成功',
+    'chat.groupCreateFailed': '创建失败，请重试',
+    'chat.pushNotInitialized': '请先连接钱包以使用聊天功能',
     // Wallet
     'wallet.connecting': '正在连接钱包...',
     'wallet.connected': '钱包已连接',
@@ -588,6 +598,16 @@ const translations: Record<Locale, Record<string, string>> = {
     'chat.noRequests': 'No friend requests',
     'chat.requestAccepted': 'Friend request accepted! Say hi!',
     'chat.requestRejected': 'Request rejected',
+    // Group Chat
+    'chat.createGroup': 'New Group Chat',
+    'chat.groupNamePlaceholder': 'Group name (optional)',
+    'chat.selectFriends': 'Select Friends',
+    'chat.selectedCount': '{n} selected (incl. you)',
+    'chat.noFriendsForGroup': 'No friends yet. Add friends first!',
+    'chat.creatingGroup': 'Creating...',
+    'chat.groupCreated': 'Group created!',
+    'chat.groupCreateFailed': 'Failed to create group, please retry',
+    'chat.pushNotInitialized': 'Please connect your wallet to use chat',
     // Wallet
     'wallet.connecting': 'Connecting wallet...',
     'wallet.connected': 'Wallet connected',
