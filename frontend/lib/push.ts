@@ -108,10 +108,17 @@ export async function getUserInfo(
   address: string
 ): Promise<any> {
   try {
-    return await pushUser.profile.info({ overrideAccount: address })
+    const info = await pushUser.profile.info({ overrideAccount: address })
+    if (info) return info
   } catch {
-    return null
+    // ignore — fall through to synthetic fallback
   }
+  // Any valid EVM address is treated as a searchable OGBO user.
+  // Push Protocol auto-creates a profile on first message/request.
+  if (/^0x[a-fA-F0-9]{40}$/i.test(address)) {
+    return { address, did: `eip155:1:${address}`, name: null, _synthetic: true }
+  }
+  return null
 }
 
 // ======== Group Chat ========
@@ -126,13 +133,19 @@ export async function createGroupChat(
   memberAddresses: string[]
 ): Promise<{ chatId: string; name: string }> {
   const response = await (pushUser.chat.group as any).create(groupName, {
+    description: '',
     members: memberAddresses,
     admins: [],
     isPublic: false,
   })
-  // GroupDTO fields: chatId, groupName
-  const chatId: string = response.chatId || response.groupChatId || ''
+  // Log raw response to aid debugging — field names vary across SDK versions
+  console.log('[createGroupChat] raw response:', JSON.stringify(response))
+  // GroupDTO fields: chatId / groupChatId / id / chatid (varies by SDK version)
+  const chatId: string = response.chatId || response.groupChatId || response.id || response.chatid || ''
   const name: string = response.groupName || groupName
+  if (!chatId) {
+    throw new Error('createGroupChat: chatId missing from response. See console for raw response.')
+  }
   return { chatId, name }
 }
 

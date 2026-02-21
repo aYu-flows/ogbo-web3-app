@@ -16,7 +16,7 @@ interface AddFriendModalProps {
 const ADDRESS_REGEX = /^0x[a-fA-F0-9]{40}$/
 
 export default function AddFriendModal({ isOpen, onClose, onOpenChat }: AddFriendModalProps) {
-  const { searchUserByAddress, sendFriendRequest, chats, chatRequests, walletAddress, pushInitialized, isConnectingPush, pushInitFailed, locale, switchTab } = useStore()
+  const { searchUserByAddress, sendFriendRequest, chats, chatRequests, walletAddress, pushInitialized, isConnectingPush, pushInitFailed, locale, switchTab, resetPushFailed } = useStore()
   const [searchInput, setSearchInput] = useState('')
   const [searching, setSearching] = useState(false)
   const [searchResult, setSearchResult] = useState<any>(null)
@@ -153,6 +153,12 @@ export default function AddFriendModal({ isOpen, onClose, onOpenChat }: AddFrien
                   type="text"
                   value={searchInput}
                   onChange={(e) => setSearchInput(e.target.value)}
+                  onPaste={(e) => {
+                    // Explicit paste handler for Android IME compatibility:
+                    // some IME implementations bypass onChange on paste.
+                    const text = e.clipboardData?.getData('text') || ''
+                    if (text.trim()) setTimeout(() => setSearchInput(text.trim()), 0)
+                  }}
                   placeholder={t('chat.searchByAddress', locale)}
                   className="w-full bg-muted rounded-xl pl-9 pr-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--ogbo-blue)]/30"
                   autoFocus
@@ -165,6 +171,21 @@ export default function AddFriendModal({ isOpen, onClose, onOpenChat }: AddFrien
               {/* Error state */}
               {searchError && (
                 <p className="text-sm text-[var(--ogbo-red)] text-center">{searchError}</p>
+              )}
+
+              {/* Retry button — shown when push init failed and there's a valid address to search */}
+              {pushInitFailed && !isConnectingPush && isValidAddress && !isSelf && (
+                <div className="flex justify-center">
+                  <button
+                    onClick={() => {
+                      setSearchError(null)
+                      resetPushFailed()
+                    }}
+                    className="text-xs text-[var(--ogbo-blue)] underline cursor-pointer hover:opacity-80 transition-opacity"
+                  >
+                    {locale === 'zh' ? '重试连接' : 'Retry connection'}
+                  </button>
+                </div>
               )}
 
               {/* Search result */}

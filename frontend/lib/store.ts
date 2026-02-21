@@ -272,6 +272,7 @@ interface AppState {
   // Push Protocol actions
   initPush: (signer: Signer) => Promise<void>
   destroyPush: () => void
+  resetPushFailed: () => void
   refreshChats: () => Promise<void>
   refreshChatRequests: () => Promise<void>
   acceptRequest: (address: string) => Promise<void>
@@ -362,17 +363,20 @@ export const useStore = create<AppState>((set, get) => ({
     const storedWallets = getStoredWallets()
     const activeWallet = getActiveWallet()
     let wallets = storedWallets.map(storedWalletToWallet)
-    // wagmi/外部钱包用户：localStorage 无 keystore，构造视图用 Wallet
+    // wagmi/外部钱包用户：localStorage 无 keystore，构造视图用 Wallet，追加而非覆盖
     if (address && !wallets.some(w => w.address.toLowerCase() === address.toLowerCase())) {
-      wallets = [{
-        id: 'external-wallet',
-        name: 'Connected Wallet',
-        address,
-        balance: { cny: 0, usd: 0 },
-        tokens: [],
-        nfts: [],
-        transactions: [],
-      }]
+      wallets = [
+        ...wallets,
+        {
+          id: `external-${address.toLowerCase()}`,
+          name: 'Connected Wallet',
+          address,
+          balance: { cny: 0, usd: 0 },
+          tokens: [],
+          nfts: [],
+          transactions: [],
+        },
+      ]
     }
     const currentWalletId = activeWallet?.id || wallets[0]?.id || ''
     set({
@@ -405,17 +409,20 @@ export const useStore = create<AppState>((set, get) => ({
     const storedWallets = getStoredWallets()
     const activeWallet = getActiveWallet()
     let wallets = storedWallets.map(storedWalletToWallet)
-    // wagmi/外部钱包用户：localStorage 无 keystore，构造视图用 Wallet
+    // wagmi/外部钱包用户：localStorage 无 keystore，构造视图用 Wallet，追加而非覆盖
     if (savedAddress && !wallets.some(w => w.address.toLowerCase() === savedAddress.toLowerCase())) {
-      wallets = [{
-        id: 'external-wallet',
-        name: 'Connected Wallet',
-        address: savedAddress,
-        balance: { cny: 0, usd: 0 },
-        tokens: [],
-        nfts: [],
-        transactions: [],
-      }]
+      wallets = [
+        ...wallets,
+        {
+          id: `external-${savedAddress.toLowerCase()}`,
+          name: 'Connected Wallet',
+          address: savedAddress,
+          balance: { cny: 0, usd: 0 },
+          tokens: [],
+          nfts: [],
+          transactions: [],
+        },
+      ]
     }
     const currentWalletId = activeWallet?.id || wallets[0]?.id || ''
     set({ isLoggedIn, walletAddress: savedAddress, wallets, currentWalletId })
@@ -444,8 +451,18 @@ export const useStore = create<AppState>((set, get) => ({
         const activeWallet = getActiveWallet()
         let wallets = storedWallets.map(storedWalletToWallet)
         if (!wallets.some(w => w.address.toLowerCase() === myAddress.toLowerCase())) {
-          wallets = [{ id: 'external-wallet', name: 'Connected Wallet', address: myAddress,
-            balance: { cny: 0, usd: 0 }, tokens: [], nfts: [], transactions: [] }]
+          wallets = [
+            ...wallets,
+            {
+              id: `external-${myAddress.toLowerCase()}`,
+              name: 'Connected Wallet',
+              address: myAddress,
+              balance: { cny: 0, usd: 0 },
+              tokens: [],
+              nfts: [],
+              transactions: [],
+            },
+          ]
         }
         const currentWalletId = activeWallet?.id || wallets[0]?.id || ''
         set({ walletAddress: myAddress, wallets, currentWalletId })
@@ -579,6 +596,12 @@ export const useStore = create<AppState>((set, get) => ({
       chats: [],
       unreadChatCount: 0,
     })
+  },
+
+  resetPushFailed: () => {
+    // Resets the push-failed flag so page.tsx useEffect can retry initPush automatically.
+    // Does NOT call initPush directly - the page-level effects handle re-initialization.
+    set({ pushInitFailed: false, pushInitialized: false })
   },
 
   refreshChats: async () => {
@@ -764,6 +787,7 @@ export const useStore = create<AppState>((set, get) => ({
       toast.success(t('chat.groupCreated', get().locale))
     } catch (error) {
       console.error('createGroup failed:', error)
+      if (error instanceof Error) console.error('[createGroup] message:', error.message)
       const { default: toast } = await import('react-hot-toast')
       const { t } = await import('@/lib/i18n')
       toast.error(t('chat.groupCreateFailed', get().locale))
