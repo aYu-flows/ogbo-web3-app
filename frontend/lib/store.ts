@@ -418,7 +418,8 @@ export const useStore = create<AppState>((set, get) => ({
   // ======== Push Protocol Actions ========
 
   initPush: async (signer) => {
-    set({ isConnectingPush: true })
+    // Clear any stale/mock chat data immediately so the user never sees mock chats
+    set({ isConnectingPush: true, chats: [], chatRequests: [], unreadChatCount: 0 })
     try {
       const { initPushUser, setupSocketListeners, fetchChats: fetchPushChats, fetchChatRequests: fetchPushRequests, pushFeedToChat, pushRequestToChatRequest, pushMessageToMessage, autoAcceptFriendGroupInvites } = await import('@/lib/push')
       const pushUser = await initPushUser(signer)
@@ -563,8 +564,8 @@ export const useStore = create<AppState>((set, get) => ({
       isConnectingPush: false,
       pushInitFailed: false,
       walletAddress: null,
-      chats: mockChats,
-      unreadChatCount: mockChats.reduce((acc, c) => acc + c.unread, 0),
+      chats: [],
+      unreadChatCount: 0,
     })
   },
 

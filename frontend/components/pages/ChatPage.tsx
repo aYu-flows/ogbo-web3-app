@@ -387,10 +387,18 @@ export default function ChatPage({ searchOpen: searchOpenProp, onCloseSearch }: 
         {/* Chat list */}
         <div className="flex-1 overflow-y-auto">
           {filteredChats.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
-              <Search className="w-12 h-12 mb-3 opacity-30" />
-              <p className="text-sm">{locale === "zh" ? "无匹配结果" : "No matches found"}</p>
-            </div>
+            searchQuery ? (
+              <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
+                <Search className="w-12 h-12 mb-3 opacity-30" />
+                <p className="text-sm">{locale === "zh" ? "无匹配结果" : "No matches found"}</p>
+              </div>
+            ) : (
+              <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
+                <MessageCircle className="w-12 h-12 mb-3 opacity-20" />
+                <p className="text-sm font-medium">{locale === "zh" ? "暂无聊天" : "No conversations yet"}</p>
+                <p className="text-xs mt-1 opacity-60">{locale === "zh" ? "点击 + 添加好友，开始聊天吧" : "Tap + to add friends and start chatting"}</p>
+              </div>
+            )
           ) : (
             filteredChats.map((chat) => (
               <div key={chat.id} className="relative overflow-hidden">

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Toaster } from "react-hot-toast";
 import { useAccount, useWalletClient } from "wagmi";
@@ -30,6 +30,13 @@ export default function Page() {
   // Wagmi wallet state
   const { address: wagmiAddress, isConnected } = useAccount();
   const { data: walletClient } = useWalletClient();
+
+  // Track whether wagmi was ever connected this session.
+  // Used to distinguish "local wallet user (never wagmi)" from "wagmi user who disconnected".
+  const wasWagmiConnectedRef = useRef(false);
+  useEffect(() => {
+    if (isConnected) wasWagmiConnectedRef.current = true;
+  }, [isConnected]);
 
   useEffect(() => {
     checkAuthStatus();
@@ -76,9 +83,11 @@ export default function Page() {
     }).catch(console.error);
   }, [isLoggedIn, isConnected, pushInitialized, isConnectingPush, pushInitFailed]);
 
-  // Destroy Push when wallet disconnects
+  // Destroy Push only when wagmi wallet actually disconnects.
+  // Local wallet users always have isConnected=false, so we must guard with the ref
+  // to avoid triggering destroyPush immediately after initPush completes (infinite loop).
   useEffect(() => {
-    if (isLoggedIn && !isConnected && pushInitialized) {
+    if (isLoggedIn && !isConnected && pushInitialized && wasWagmiConnectedRef.current) {
       destroyPush();
     }
   }, [isConnected, isLoggedIn, pushInitialized]);
