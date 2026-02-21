@@ -30,6 +30,12 @@ createAppKit({
     analytics: false,
   },
   themeMode: 'light',
+  featuredWalletIds: [
+    "971e689d0a5be527bac79dbb1d59ffa3f290fbe6cb2fb928c0c32d5a28a3b7b3", // OKX Wallet
+    "20459438007b75f4f4acb98bf29aa3b800550309646d375da5fd4aac6c2a2c66", // Token Pocket
+    "c57ca95b47569778a828d19178114f4db188b89b763c899ba0be274e97267d96", // MetaMask
+    "8a0ee50d1f22f6651afcae7eb4253e52a3310b90af5daef78a8c4929a9bb99d4", // Binance Wallet
+  ],
 })
 
 export const wagmiConfig = wagmiAdapter.wagmiConfig
