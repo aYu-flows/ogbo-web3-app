@@ -8,7 +8,7 @@ import toast, { Toaster } from "react-hot-toast";
 import { useStore, type Locale } from "@/lib/store";
 import { t } from "@/lib/i18n";
 import AppDownloadBanner from "@/components/AppDownloadBanner";
-import { useConnect, useAccount } from "wagmi";
+import { useConnect, useAccount, useWalletClient } from "wagmi";
 import { useAppKit } from "@reown/appkit/react";
 import {
   generateEVMWallet,
@@ -277,7 +277,7 @@ function ProgressBar({ step, total }: { step: number; total: number }) {
 function BackHeader({ onBack, rightSlot }: { onBack: () => void; rightSlot?: React.ReactNode }) {
   const { locale } = useStore();
   return (
-    <div className="flex items-center justify-between h-14 px-4 lg:px-6" style={{ paddingTop: 'calc(var(--ogbo-safe-area-top, env(safe-area-inset-top, 0px)) * 1.4 + 8px)' }}>
+    <div className="flex items-center justify-between h-14 px-4 lg:px-6" style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 8px)' }}>
       <button
         onClick={onBack}
         className="flex items-center gap-1 text-muted-foreground hover:text-foreground transition-colors rounded-full p-1 hover:bg-muted"
@@ -498,7 +498,7 @@ function WelcomeView({ goTo }: { goTo: (v: AuthView) => void }) {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between h-14 px-4 lg:px-6" style={{ paddingTop: 'calc(var(--ogbo-safe-area-top, env(safe-area-inset-top, 0px)) * 1.4 + 8px)' }}>
+      <div className="flex items-center justify-between h-14 px-4 lg:px-6" style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 8px)' }}>
         {/* Download button — left side, browser only */}
         {isBrowser ? (
           <motion.button
@@ -648,24 +648,96 @@ function WalletConnectButton({
 function LoginView({ goTo, onSuccess }: { goTo: (v: AuthView) => void; onSuccess: (address?: string) => void }) {
   const { locale } = useStore();
   const { address, isConnected } = useAccount();
+  const { data: walletClient } = useWalletClient();
   const { open: openAppKit } = useAppKit();
   const userInitiatedConnect = useRef(false);
+  const hasTriggeredRef = useRef(false);
+  const isMountedRef = useRef(true);
+  const walletClientTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [pushPreInit, setPushPreInit] = useState<'idle' | 'loading' | 'done' | 'error'>('idle');
 
+  // Cleanup on unmount
   useEffect(() => {
-    if (isConnected && address && userInitiatedConnect.current) {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+      if (walletClientTimeoutRef.current) clearTimeout(walletClientTimeoutRef.current);
+    };
+  }, []);
+
+  // Effect 1: walletClient arrival timeout guard (5s)
+  // If walletClient doesn't arrive within 5s after connection, skip pre-init and proceed
+  useEffect(() => {
+    if (!isConnected || !address || !userInitiatedConnect.current || hasTriggeredRef.current) return;
+    // Start 5s fallback timer in case walletClient never arrives
+    walletClientTimeoutRef.current = setTimeout(() => {
+      if (!isMountedRef.current || hasTriggeredRef.current) return;
+      hasTriggeredRef.current = true;
       userInitiatedConnect.current = false;
       toast.success(t("wallet.connected", locale));
-      setTimeout(() => onSuccess(address), 400);
+      setTimeout(() => { if (isMountedRef.current) onSuccess(address); }, 300);
+    }, 5000);
+    return () => {
+      if (walletClientTimeoutRef.current) clearTimeout(walletClientTimeoutRef.current);
+    };
+  }, [isConnected, address]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Effect 2: Main flow — runs when walletClient is available
+  useEffect(() => {
+    if (!isConnected || !address || !walletClient || !userInitiatedConnect.current || hasTriggeredRef.current) return;
+
+    // Cancel the walletClient arrival timeout (walletClient arrived in time)
+    if (walletClientTimeoutRef.current) {
+      clearTimeout(walletClientTimeoutRef.current);
+      walletClientTimeoutRef.current = null;
     }
-  }, [isConnected, address]);
+
+    hasTriggeredRef.current = true;
+    userInitiatedConnect.current = false;
+
+    if (!isMountedRef.current) return;
+    setPushPreInit('loading');
+
+    const pushTimeoutRef = { current: null as ReturnType<typeof setTimeout> | null };
+
+    const finalize = (addr: string) => {
+      if (!isMountedRef.current) return;
+      toast.success(t("wallet.connected", locale));
+      setTimeout(() => { if (isMountedRef.current) onSuccess(addr); }, 300);
+    };
+
+    // 10s timeout for Push pre-init
+    pushTimeoutRef.current = setTimeout(() => {
+      if (!isMountedRef.current) return;
+      setPushPreInit('error');
+      finalize(address);
+    }, 10000);
+
+    Promise.all([
+      import('@/lib/wagmi'),
+      import('@/lib/push'),
+    ]).then(async ([{ walletClientToSigner }, { preinitPushUser }]) => {
+      const signer = await walletClientToSigner(walletClient);
+      await preinitPushUser(signer);
+      if (pushTimeoutRef.current) clearTimeout(pushTimeoutRef.current);
+      if (!isMountedRef.current) return;
+      setPushPreInit('done');
+      finalize(address);
+    }).catch(() => {
+      if (pushTimeoutRef.current) clearTimeout(pushTimeoutRef.current);
+      if (isMountedRef.current) setPushPreInit('error');
+      finalize(address);
+    });
+  }, [isConnected, address, walletClient]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleConnect = () => {
     userInitiatedConnect.current = true;
+    hasTriggeredRef.current = false; // allow re-trigger if user retries
     openAppKit();
   };
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full relative">
       <BackHeader onBack={() => goTo("welcome")} />
       <div className="flex-1 flex flex-col items-center px-6 lg:px-8 lg:max-w-md lg:mx-auto lg:w-full">
         <div className="mt-8 lg:mt-16 mb-6 flex justify-center">
@@ -699,6 +771,31 @@ function LoginView({ goTo, onSuccess }: { goTo: (v: AuthView) => void; onSuccess
           </motion.button>
         </div>
       </div>
+
+      {/* Push 预初始化加载覆盖层 */}
+      <AnimatePresence>
+        {pushPreInit === 'loading' && (
+          <motion.div
+            className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-background/95 backdrop-blur-sm px-8"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+          >
+            <div className="w-16 h-16 rounded-2xl bg-[var(--ogbo-blue)]/10 flex items-center justify-center mb-5">
+              <Loader2 className="w-8 h-8 text-[var(--ogbo-blue)] animate-spin" />
+            </div>
+            <p className="text-base font-semibold text-foreground mb-1.5 text-center">
+              {locale === "zh" ? "正在初始化聊天服务..." : "Initializing chat service..."}
+            </p>
+            <p className="text-xs text-muted-foreground text-center leading-relaxed">
+              {locale === "zh"
+                ? "首次使用需要进行钱包身份验证，请在钱包中确认"
+                : "Wallet signature required for first-time setup. Please confirm in your wallet."}
+            </p>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -2042,8 +2139,18 @@ function ImportConfirmPasswordView({
 // ========================================
 // MAIN LOGIN APP
 // ========================================
-export default function LoginApp() {
-  const [view, setView] = useState<AuthView>("welcome");
+export default function LoginApp({
+  initialView,
+  isModal,
+  onModalSuccess,
+  onModalClose,
+}: {
+  initialView?: AuthView;
+  isModal?: boolean;
+  onModalSuccess?: () => void;
+  onModalClose?: () => void;
+} = {}) {
+  const [view, setView] = useState<AuthView>(initialView ?? "welcome");
   const [direction, setDirection] = useState<"right" | "left">("right");
   const [selectedNetwork, setSelectedNetwork] = useState<BlockchainNetwork>(SUPPORTED_NETWORKS[0]);
   const [showNetworkSwitcher, setShowNetworkSwitcher] = useState(false);
@@ -2075,11 +2182,25 @@ export default function LoginApp() {
     setView(v);
   }, [view]);
 
+  // Modal 模式下：当子视图尝试返回 "welcome"（即最顶层）时，关闭 modal 而不是显示欢迎页
+  // Standalone 模式下：行为与 goTo 完全一致
+  const effectiveGoTo = useCallback((v: AuthView) => {
+    if (isModal && v === "welcome") {
+      onModalClose?.();
+      return;
+    }
+    goTo(v);
+  }, [isModal, onModalClose, goTo]);
+
   const handleSuccess = useCallback((address?: string) => {
     clearSession(); // 清除内存中的 session 状态
     login(address);
-    window.location.replace("./index.html");
-  }, [login, clearSession]);
+    if (isModal) {
+      onModalSuccess?.();
+    } else {
+      window.location.replace("./index.html");
+    }
+  }, [login, clearSession, isModal, onModalSuccess]);
 
   // SSR 安全：每次渲染时动态检测已存钱包（反映最新 localStorage 状态）
   const hasExistingWallet = () => {
@@ -2091,58 +2212,76 @@ export default function LoginApp() {
 
   return (
     <div className="h-dvh w-full bg-background flex items-center justify-center">
-      {/* App Download Banner - Web only */}
-      <AppDownloadBanner />
+      {/* App Download Banner - Web only (hidden in modal mode) */}
+      {!isModal && <AppDownloadBanner />}
 
-      <Toaster position="top-center" toastOptions={{
-        duration: 2500,
-        style: { background: "hsl(var(--card))", color: "hsl(var(--card-foreground))", border: "1px solid hsl(var(--border))", borderRadius: "12px", fontSize: "13px", fontWeight: 500, boxShadow: "0 4px 12px rgba(0,0,0,0.1)" },
-      }} />
+      {/* Toaster - only render when standalone (modal mode reuses parent page's Toaster) */}
+      {!isModal && (
+        <Toaster position="top-center" toastOptions={{
+          duration: 2500,
+          style: { background: "hsl(var(--card))", color: "hsl(var(--card-foreground))", border: "1px solid hsl(var(--border))", borderRadius: "12px", fontSize: "13px", fontWeight: 500, boxShadow: "0 4px 12px rgba(0,0,0,0.1)" },
+        }} />
+      )}
 
       <div className="w-full h-full lg:max-w-lg lg:h-[720px] lg:max-h-[90vh] lg:rounded-2xl lg:border lg:border-border lg:shadow-2xl lg:overflow-hidden relative bg-background">
+        {/* Modal close button */}
+        {isModal && (
+          <button
+            onClick={() => onModalClose?.()}
+            className="absolute z-20 text-muted-foreground hover:text-foreground hover:bg-muted rounded-full p-1.5 transition-colors"
+            style={{
+              top: 'calc(env(safe-area-inset-top, 0px) + 12px)',
+              right: '12px',
+            }}
+            aria-label="关闭"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        )}
+
         <AnimatePresence mode="wait" initial={false}>
           <motion.div key={view} variants={variants} initial="initial" animate="animate" exit="exit"
             transition={{ type: "spring", stiffness: 300, damping: 30 }}
             className="absolute inset-0 overflow-hidden">
-            {view === "welcome" && <WelcomeView goTo={goTo} />}
-            {view === "password-login" && <PasswordLoginView goTo={goTo} onSuccess={handleSuccess} />}
-            {view === "login" && <LoginView goTo={goTo} onSuccess={handleSuccess} />}
+            {view === "welcome" && <WelcomeView goTo={effectiveGoTo} />}
+            {view === "password-login" && <PasswordLoginView goTo={effectiveGoTo} onSuccess={handleSuccess} />}
+            {view === "login" && <LoginView goTo={effectiveGoTo} onSuccess={handleSuccess} />}
             {view === "create-network" && (
               <NetworkSelectionView
-                goTo={goTo}
+                goTo={effectiveGoTo}
                 nextView={hasExistingWallet() ? "create-generate" : "create-password"}
                 backView="welcome"
                 descKey="network.whichChainCreate"
                 onSelectNetwork={setSelectedNetwork}
               />
             )}
-            {view === "create-password" && <CreatePasswordView goTo={goTo} network={selectedNetwork} onSwitchNetwork={() => setShowNetworkSwitcher(true)} onPasswordSet={setSessionPassword} />}
+            {view === "create-password" && <CreatePasswordView goTo={effectiveGoTo} network={selectedNetwork} onSwitchNetwork={() => setShowNetworkSwitcher(true)} onPasswordSet={setSessionPassword} />}
             {view === "create-generate" && (
               <CreateGenerateView
-                goTo={goTo}
+                goTo={effectiveGoTo}
                 network={selectedNetwork}
                 onMnemonicGenerated={setSessionMnemonic}
                 backView={hasExistingWallet() ? "create-network" : "create-password"}
               />
             )}
-            {view === "create-verify" && <CreateVerifyView goTo={goTo} network={selectedNetwork} mnemonic={sessionMnemonic} />}
+            {view === "create-verify" && <CreateVerifyView goTo={effectiveGoTo} network={selectedNetwork} mnemonic={sessionMnemonic} />}
             {view === "create-complete" && <CreateCompleteView onSuccess={handleSuccess} network={selectedNetwork} mnemonic={sessionMnemonic} password={sessionPassword} />}
-            {view === "import-select" && <ImportSelectView goTo={goTo} />}
-            {view === "import-mnemonic" && <ImportMnemonicView goTo={goTo} onConfirm={(input) => { setSessionImportInput(input); setSessionImportType("mnemonic"); }} />}
-            {view === "import-privatekey" && <ImportPrivateKeyView goTo={goTo} onConfirm={(input) => { setSessionImportInput(input); setSessionImportType("privatekey"); }} />}
+            {view === "import-select" && <ImportSelectView goTo={effectiveGoTo} />}
+            {view === "import-mnemonic" && <ImportMnemonicView goTo={effectiveGoTo} onConfirm={(input) => { setSessionImportInput(input); setSessionImportType("mnemonic"); }} />}
+            {view === "import-privatekey" && <ImportPrivateKeyView goTo={effectiveGoTo} onConfirm={(input) => { setSessionImportInput(input); setSessionImportType("privatekey"); }} />}
             {view === "import-network" && (
               <NetworkSelectionView
-                goTo={goTo}
+                goTo={effectiveGoTo}
                 nextView={hasExistingWallet() ? "import-confirm-password" : "import-password"}
                 backView="import-select"
                 descKey="network.whichChainImport"
                 onSelectNetwork={setSelectedNetwork}
               />
             )}
-            {view === "import-password" && <ImportPasswordView goTo={goTo} onSuccess={handleSuccess} network={selectedNetwork} importInput={sessionImportInput} importType={sessionImportType} />}
+            {view === "import-password" && <ImportPasswordView goTo={effectiveGoTo} onSuccess={handleSuccess} network={selectedNetwork} importInput={sessionImportInput} importType={sessionImportType} />}
             {view === "import-confirm-password" && (
               <ImportConfirmPasswordView
-                goTo={goTo}
+                goTo={effectiveGoTo}
                 onSuccess={handleSuccess}
                 network={selectedNetwork}
                 importInput={sessionImportInput}

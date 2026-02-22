@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import dynamic from "next/dynamic";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Eye,
@@ -23,6 +24,20 @@ import {
 import { useStore, type Transaction, type NFT } from "@/lib/store";
 import { t } from "@/lib/i18n";
 import toast from "react-hot-toast";
+
+// Dynamic import to avoid pulling LoginApp into the initial bundle
+// ssr: false because LoginApp uses window, localStorage, etc.
+const LoginApp = dynamic(
+  () => import("@/components/login/LoginApp"),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="flex h-full items-center justify-center">
+        <div className="w-8 h-8 border-2 border-[var(--ogbo-blue)] border-t-transparent rounded-full animate-spin" />
+      </div>
+    ),
+  }
+);
 
 function formatTimeAgo(ts: number, locale: "zh" | "en") {
   const diff = Date.now() - ts;
@@ -166,6 +181,7 @@ export default function AssetsPage() {
   const [selectedTx, setSelectedTx] = useState<Transaction | null>(null);
   const [selectedNFT, setSelectedNFT] = useState<NFT | null>(null);
   const [walletMenuOpen, setWalletMenuOpen] = useState(false);
+  const [walletFlowModal, setWalletFlowModal] = useState<'import' | 'create' | null>(null);
 
   // 钱包未加载时（新用户/初始化中）显示空态，防止 wallet.address 崩溃
   if (!wallet) {
@@ -285,10 +301,10 @@ export default function AssetsPage() {
                 ))}
               </div>
               <div className="flex gap-2">
-                <button onClick={() => { toast(t("common.comingSoon", locale)); setWalletMenuOpen(false); }} className="flex-1 rounded-xl border border-dashed border-border py-2 text-xs text-muted-foreground hover:bg-muted transition-colors">
+                <button onClick={() => { setWalletMenuOpen(false); setWalletFlowModal('import'); }} className="flex-1 rounded-xl border border-dashed border-border py-2 text-xs text-muted-foreground hover:bg-muted transition-colors">
                   + {t("assets.importWallet", locale)}
                 </button>
-                <button onClick={() => { toast(t("common.comingSoon", locale)); setWalletMenuOpen(false); }} className="flex-1 rounded-xl border border-dashed border-border py-2 text-xs text-muted-foreground hover:bg-muted transition-colors">
+                <button onClick={() => { setWalletMenuOpen(false); setWalletFlowModal('create'); }} className="flex-1 rounded-xl border border-dashed border-border py-2 text-xs text-muted-foreground hover:bg-muted transition-colors">
                   + {t("assets.createWallet", locale)}
                 </button>
               </div>
@@ -466,10 +482,10 @@ export default function AssetsPage() {
           ))}
         </div>
         <div className="flex gap-3 mt-3">
-          <button onClick={() => toast(t("common.comingSoon", locale))} className="flex-1 rounded-xl border border-dashed border-border py-3 text-sm text-muted-foreground hover:bg-muted transition-colors flex items-center justify-center gap-2">
+          <button onClick={() => setWalletFlowModal('import')} className="flex-1 rounded-xl border border-dashed border-border py-3 text-sm text-muted-foreground hover:bg-muted transition-colors flex items-center justify-center gap-2">
             <Plus className="w-4 h-4" /> {t("assets.importWallet", locale)}
           </button>
-          <button onClick={() => toast(t("common.comingSoon", locale))} className="flex-1 rounded-xl border border-dashed border-border py-3 text-sm text-muted-foreground hover:bg-muted transition-colors flex items-center justify-center gap-2">
+          <button onClick={() => setWalletFlowModal('create')} className="flex-1 rounded-xl border border-dashed border-border py-3 text-sm text-muted-foreground hover:bg-muted transition-colors flex items-center justify-center gap-2">
             <Plus className="w-4 h-4" /> {t("assets.createWallet", locale)}
           </button>
         </div>
@@ -477,6 +493,29 @@ export default function AssetsPage() {
 
       <TxDetailModal open={!!selectedTx} onClose={() => setSelectedTx(null)} tx={selectedTx} locale={locale} />
       <NFTDetailModal open={!!selectedNFT} onClose={() => setSelectedNFT(null)} nft={selectedNFT} locale={locale} />
+
+      {/* 全屏 Modal：导入/创建钱包流程 */}
+      <AnimatePresence>
+        {walletFlowModal && (
+          <motion.div
+            className="fixed inset-0 z-[100] bg-background"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+          >
+            <LoginApp
+              initialView={walletFlowModal === 'import' ? 'import-select' : 'create-network'}
+              isModal={true}
+              onModalSuccess={() => {
+                setWalletFlowModal(null);
+                toast.success(locale === 'zh' ? '钱包添加成功' : 'Wallet added successfully');
+              }}
+              onModalClose={() => setWalletFlowModal(null)}
+            />
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

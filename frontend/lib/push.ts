@@ -49,6 +49,20 @@ export async function initPushUser(signer: Signer): Promise<PushAPI> {
   return pushUser
 }
 
+/**
+ * Pre-initialize Push Protocol user during login flow.
+ * Only calls PushAPI.initialize (triggers one-time wallet signing + caches user data in localStorage).
+ * Does NOT set up streams (they would be destroyed on page navigation anyway).
+ * After calling this on the login page, initPushUser on the main page will read from cache
+ * and not require a wallet signature again.
+ */
+export async function preinitPushUser(signer: Signer): Promise<void> {
+  const env = process.env.NEXT_PUBLIC_PUSH_ENV === 'staging'
+    ? CONSTANTS.ENV.STAGING
+    : CONSTANTS.ENV.PROD
+  await PushAPI.initialize(signer as any, { env })
+}
+
 // ======== Chat List ========
 
 export async function fetchChats(pushUser: PushAPI): Promise<IFeeds[]> {
