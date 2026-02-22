@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import type { PushAPI } from '@pushprotocol/restapi'
 import type { Signer } from 'ethers'
-import { getStoredWallets, getActiveWallet, type StoredWallet as StoredWalletType } from '@/lib/walletCrypto'
+import { getStoredWallets, getActiveWallet, saveExternalWallet, removeExternalWallet, type StoredWallet as StoredWalletType } from '@/lib/walletCrypto'
 
 export type TabType = 'home' | 'chat' | 'market' | 'discover' | 'assets'
 export type Locale = 'zh' | 'en'
@@ -50,6 +50,7 @@ export interface Wallet {
   tokens: Token[]
   nfts: NFT[]
   transactions: Transaction[]
+  type?: 'imported' | 'external'
 }
 
 export interface Message {
@@ -129,6 +130,7 @@ function storedWalletToWallet(sw: StoredWalletType): Wallet {
     tokens: [],
     nfts: [],
     transactions: [],
+    type: sw.type,
   }
 }
 
@@ -268,6 +270,7 @@ interface AppState {
   login: (address?: string) => void
   logout: () => void
   checkAuthStatus: () => void
+  cleanupExternalWallet: (address: string) => void
 
   // Push Protocol actions
   initPush: (signer: Signer) => Promise<void>
@@ -360,24 +363,14 @@ export const useStore = create<AppState>((set, get) => ({
     return s.wallets.find((w) => w.id === s.currentWalletId) || s.wallets[0]
   },
   login: (address?: string) => {
-    const storedWallets = getStoredWallets()
-    const activeWallet = getActiveWallet()
-    let wallets = storedWallets.map(storedWalletToWallet)
-    // wagmi/外部钱包用户：localStorage 无 keystore，构造视图用 Wallet，追加而非覆盖
-    if (address && !wallets.some(w => w.address.toLowerCase() === address.toLowerCase())) {
-      wallets = [
-        ...wallets,
-        {
-          id: `external-${address.toLowerCase()}`,
-          name: 'Connected Wallet',
-          address,
-          balance: { cny: 0, usd: 0 },
-          tokens: [],
-          nfts: [],
-          transactions: [],
-        },
-      ]
+    let storedWallets = getStoredWallets()
+    // 若 address 是外部钱包地址且尚未持久化到 localStorage，则先持久化
+    if (address && !storedWallets.some(w => w.address.toLowerCase() === address.toLowerCase())) {
+      saveExternalWallet(address)
+      storedWallets = getStoredWallets() // 重新加载以包含新记录
     }
+    const activeWallet = getActiveWallet()
+    const wallets = storedWallets.map(storedWalletToWallet)
     const currentWalletId = activeWallet?.id || wallets[0]?.id || ''
     set({
       isLoggedIn: true,
@@ -406,26 +399,34 @@ export const useStore = create<AppState>((set, get) => ({
     if (typeof window === 'undefined') return
     const isLoggedIn = localStorage.getItem('ogbo_logged_in') === 'true'
     const savedAddress = localStorage.getItem('ogbo_wallet_address') || null
-    const storedWallets = getStoredWallets()
-    const activeWallet = getActiveWallet()
-    let wallets = storedWallets.map(storedWalletToWallet)
-    // wagmi/外部钱包用户：localStorage 无 keystore，构造视图用 Wallet，追加而非覆盖
-    if (savedAddress && !wallets.some(w => w.address.toLowerCase() === savedAddress.toLowerCase())) {
-      wallets = [
-        ...wallets,
-        {
-          id: `external-${savedAddress.toLowerCase()}`,
-          name: 'Connected Wallet',
-          address: savedAddress,
-          balance: { cny: 0, usd: 0 },
-          tokens: [],
-          nfts: [],
-          transactions: [],
-        },
-      ]
+    let storedWallets = getStoredWallets()
+    // 向后兼容：存量外部钱包用户的地址可能未写入 localStorage，在此补存
+    if (savedAddress && !storedWallets.some(w => w.address.toLowerCase() === savedAddress.toLowerCase())) {
+      saveExternalWallet(savedAddress)
+      storedWallets = getStoredWallets()
     }
+    const activeWallet = getActiveWallet()
+    const wallets = storedWallets.map(storedWalletToWallet)
     const currentWalletId = activeWallet?.id || wallets[0]?.id || ''
     set({ isLoggedIn, walletAddress: savedAddress, wallets, currentWalletId })
+  },
+
+  cleanupExternalWallet: (address: string) => {
+    removeExternalWallet(address)
+    const storedWallets = getStoredWallets()
+    const activeWallet = getActiveWallet()
+    const wallets = storedWallets.map(storedWalletToWallet)
+    const currentWalletId = activeWallet?.id || wallets[0]?.id || ''
+    // 同步更新 ogbo_wallet_address：改为第一个 imported 钱包地址，防止页面刷新时 checkAuthStatus 重新添加已断连的外部钱包
+    if (typeof window !== 'undefined') {
+      const firstImported = storedWallets.find((w) => w.type !== 'external' && w.keystore)
+      if (firstImported) {
+        localStorage.setItem('ogbo_wallet_address', firstImported.address)
+      } else {
+        localStorage.removeItem('ogbo_wallet_address')
+      }
+    }
+    set({ wallets, currentWalletId })
   },
 
   // ======== Push Protocol Actions ========
@@ -447,25 +448,7 @@ export const useStore = create<AppState>((set, get) => ({
         } catch { /* ignore */ }
       }
       if (myAddress) {
-        const storedWallets = getStoredWallets()
-        const activeWallet = getActiveWallet()
-        let wallets = storedWallets.map(storedWalletToWallet)
-        if (!wallets.some(w => w.address.toLowerCase() === myAddress.toLowerCase())) {
-          wallets = [
-            ...wallets,
-            {
-              id: `external-${myAddress.toLowerCase()}`,
-              name: 'Connected Wallet',
-              address: myAddress,
-              balance: { cny: 0, usd: 0 },
-              tokens: [],
-              nfts: [],
-              transactions: [],
-            },
-          ]
-        }
-        const currentWalletId = activeWallet?.id || wallets[0]?.id || ''
-        set({ walletAddress: myAddress, wallets, currentWalletId })
+        set({ walletAddress: myAddress })
       }
 
       // Load chats and requests

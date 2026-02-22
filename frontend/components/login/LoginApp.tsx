@@ -483,7 +483,7 @@ function WelcomeView({ goTo }: { goTo: (v: AuthView) => void }) {
   useEffect(() => {
     if (typeof window !== "undefined") {
       setIsBrowser(!(window as any).Capacitor);
-      setHasWallet(getStoredWallets().length > 0);
+      setHasWallet(getStoredWallets().filter((w) => w.type !== 'external' && !!w.keystore).length > 0);
     }
   }, []);
 
@@ -1492,8 +1492,8 @@ function CreateCompleteView({
   const [addressCopied, setAddressCopied] = useState(false);
   const hasExecutedRef = useRef(false);
 
-  // 有已存钱包 & password 为空时，先进入密码确认阶段
-  const needPasswordConfirm = password === "" && (typeof window !== "undefined" ? getStoredWallets().length > 0 : false);
+  // 有已存钱包 & password 为空时，先进入密码确认阶段（外部钱包不计入，无 keystore 无法验证密码）
+  const needPasswordConfirm = password === "" && (typeof window !== "undefined" ? getStoredWallets().filter((w) => w.type !== 'external' && !!w.keystore).length > 0 : false);
   const [confirmingPassword, setConfirmingPassword] = useState(needPasswordConfirm);
   const [pendingPw, setPendingPw] = useState("");
   const [pwConfirmError, setPwConfirmError] = useState(false);
@@ -1777,6 +1777,7 @@ function ImportMnemonicView({ goTo, onConfirm }: {
 }) {
   const { locale } = useStore();
   const [input, setInput] = useState("");
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const words = input.trim().split(/\s+/).filter(Boolean);
   const wordCount = words.length;
   // UI 层只做基础格式检查（12词），ethers 会在后续步骤做完整 BIP39 验证
@@ -1788,6 +1789,28 @@ function ImportMnemonicView({ goTo, onConfirm }: {
     try { const text = await navigator.clipboard.readText(); setInput(text); toast.success(t("import.pasted", locale)); } catch { toast.error("Clipboard not available"); }
   };
 
+  const handleNext = () => {
+    // 优先读取 DOM 原始值，兼容输入法粘贴未触发 onChange 的边缘情况
+    const domValue = textareaRef.current?.value ?? input;
+    if (domValue !== input) setInput(domValue);
+    const trimmed = domValue.trim();
+    if (!trimmed) {
+      toast.error(t("import.pleaseEnterMnemonic", locale));
+      return;
+    }
+    const ws = trimmed.split(/\s+/).filter(Boolean);
+    if (ws.length !== 12) {
+      toast.error(t("import.mustBe12Words", locale));
+      return;
+    }
+    if (!ethersIsValidMnemonic(trimmed)) {
+      toast.error(t("import.someWordsInvalid", locale));
+      return;
+    }
+    onConfirm(trimmed);
+    goTo("import-network");
+  };
+
   return (
     <div className="flex flex-col h-full">
       <BackHeader onBack={() => goTo("import-select")} />
@@ -1795,7 +1818,7 @@ function ImportMnemonicView({ goTo, onConfirm }: {
         <h2 className="text-2xl font-bold mt-4 lg:mt-8">{t("import.viaMnemonic", locale)}</h2>
         <p className="text-sm text-muted-foreground mt-1 mb-6">{t("import.enter12Words", locale)}</p>
         <div className="relative">
-          <textarea value={input} onChange={(e) => setInput(e.target.value)} placeholder={t("import.mnemonicPlaceholder", locale)} spellCheck={false}
+          <textarea ref={textareaRef} value={input} onChange={(e) => setInput(e.target.value)} placeholder={t("import.mnemonicPlaceholder", locale)} spellCheck={false}
             className="w-full h-40 lg:h-48 p-4 pr-20 border-2 border-border rounded-xl focus:border-[var(--ogbo-blue)] focus:ring-2 focus:ring-[var(--ogbo-blue)]/20 resize-none font-mono text-sm bg-card outline-none transition-all" />
           <button onClick={handlePaste} className="absolute top-3 right-3 px-3 py-1.5 bg-muted hover:bg-accent rounded-lg flex items-center gap-1 text-sm text-muted-foreground transition-colors">
             <Clipboard className="w-4 h-4" /><span>{t("import.paste", locale)}</span>
@@ -1818,9 +1841,9 @@ function ImportMnemonicView({ goTo, onConfirm }: {
             </div>
           ) : <span className="text-sm text-muted-foreground">{t("import.pleaseEnterMnemonic", locale)}</span>}
         </div>
-        <motion.button whileHover={isValid ? { scale: 1.02 } : {}} whileTap={isValid ? { scale: 0.98 } : {}} disabled={!isValid}
-          onClick={() => { onConfirm(input.trim()); goTo("import-network"); }}
-          className={`w-full h-12 lg:h-14 rounded-xl font-semibold mt-6 flex items-center justify-center gap-2 transition-all text-base ${isValid ? "bg-[var(--ogbo-blue)] text-white shadow-md hover:bg-[var(--ogbo-blue-hover)]" : "bg-muted text-muted-foreground cursor-not-allowed"}`}>
+        <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
+          onClick={handleNext}
+          className="w-full h-12 lg:h-14 rounded-xl font-semibold mt-6 flex items-center justify-center gap-2 transition-all text-base bg-[var(--ogbo-blue)] text-white shadow-md hover:bg-[var(--ogbo-blue-hover)]">
           <span>{t("create.next", locale)}</span><ChevronRight className="w-5 h-5" />
         </motion.button>
       </div>
@@ -1838,7 +1861,8 @@ function ImportPrivateKeyView({ goTo, onConfirm }: {
   const { locale } = useStore();
   const [input, setInput] = useState("");
   const [show, setShow] = useState(false);
-  // 归一化：自动补全 0x 前缀
+  const inputRef = useRef<HTMLInputElement>(null);
+  // 归一化：自动补全 0x 前缀（用于实时反馈指示器）
   const normalized = input.trim().startsWith("0x") ? input.trim() : "0x" + input.trim();
   const hexPart = normalized.slice(2);
   const isValidHex = /^[0-9a-fA-F]*$/.test(hexPart);
@@ -1846,6 +1870,25 @@ function ImportPrivateKeyView({ goTo, onConfirm }: {
 
   const handlePaste = async () => {
     try { const text = await navigator.clipboard.readText(); setInput(text); toast.success(t("import.pasted", locale)); } catch { toast.error("Clipboard not available"); }
+  };
+
+  const handleNext = () => {
+    // 优先读取 DOM 原始值，兼容输入法粘贴未触发 onChange 的边缘情况
+    const domValue = inputRef.current?.value ?? input;
+    if (domValue !== input) setInput(domValue);
+    const trimmed = domValue.trim();
+    if (!trimmed) {
+      toast.error(t("import.pleaseEnterPrivateKey", locale));
+      return;
+    }
+    const norm = trimmed.startsWith("0x") ? trimmed : "0x" + trimmed;
+    const hex = norm.slice(2);
+    if (hex.length !== 64 || !/^[0-9a-fA-F]*$/.test(hex)) {
+      toast.error(t("import.invalidPrivateKey", locale));
+      return;
+    }
+    onConfirm(norm);
+    goTo("import-network");
   };
 
   return (
@@ -1856,7 +1899,7 @@ function ImportPrivateKeyView({ goTo, onConfirm }: {
         <p className="text-sm text-muted-foreground mt-1 mb-6">{t("import.enter64Chars", locale)}</p>
         <div className="relative">
           <Key className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
-          <input type={show ? "text" : "password"} value={input} onChange={(e) => setInput(e.target.value)} placeholder={t("import.privateKeyPlaceholder", locale)} spellCheck={false}
+          <input ref={inputRef} type={show ? "text" : "password"} value={input} onChange={(e) => setInput(e.target.value)} placeholder={t("import.privateKeyPlaceholder", locale)} spellCheck={false}
             className="w-full h-14 pl-12 pr-24 border-2 border-border rounded-xl focus:border-[var(--ogbo-blue)] focus:ring-2 focus:ring-[var(--ogbo-blue)]/20 font-mono text-sm bg-card outline-none transition-all" />
           <div className="absolute right-3 top-1/2 -translate-y-1/2 flex gap-2">
             <button onClick={handlePaste} className="px-2 py-1 bg-muted hover:bg-accent rounded text-xs text-muted-foreground transition-colors"><Clipboard className="w-4 h-4" /></button>
@@ -1874,9 +1917,9 @@ function ImportPrivateKeyView({ goTo, onConfirm }: {
             </motion.div>
           )}
         </div>
-        <motion.button whileHover={isValid ? { scale: 1.02 } : {}} whileTap={isValid ? { scale: 0.98 } : {}} disabled={!isValid}
-          onClick={() => { onConfirm(normalized); goTo("import-network"); }}
-          className={`w-full h-12 lg:h-14 rounded-xl font-semibold mt-8 flex items-center justify-center gap-2 transition-all text-base ${isValid ? "bg-[var(--ogbo-blue)] text-white shadow-md hover:bg-[var(--ogbo-blue-hover)]" : "bg-muted text-muted-foreground cursor-not-allowed"}`}>
+        <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
+          onClick={handleNext}
+          className="w-full h-12 lg:h-14 rounded-xl font-semibold mt-8 flex items-center justify-center gap-2 transition-all text-base bg-[var(--ogbo-blue)] text-white shadow-md hover:bg-[var(--ogbo-blue-hover)]">
           <span>{t("create.next", locale)}</span><ChevronRight className="w-5 h-5" />
         </motion.button>
       </div>
@@ -1916,10 +1959,12 @@ function ImportPasswordView({
         ? walletFromMnemonic(importInput)
         : walletFromPrivateKey(importInput);
 
-      // 检查钱包是否已存在
+      // 检查钱包是否已存在（排除外部钱包：外部钱包无 keystore，允许导入同地址私钥进行升级）
       const existingWallets = getStoredWallets();
       const duplicate = existingWallets.find(
         w => w.address.toLowerCase() === wallet.address.toLowerCase()
+          && w.type !== 'external'
+          && !!w.keystore
       );
 
       if (duplicate) {
@@ -2043,10 +2088,12 @@ function ImportConfirmPasswordView({
         ? walletFromMnemonic(importInput)
         : walletFromPrivateKey(importInput);
 
-      // 检查是否重复地址
+      // 检查是否重复地址（排除外部钱包，允许导入同地址私钥升级为 imported 类型）
       const existingWallets = getStoredWallets();
       const duplicate = existingWallets.find(
         w => w.address.toLowerCase() === wallet.address.toLowerCase()
+          && w.type !== 'external'
+          && !!w.keystore
       );
 
       if (duplicate) {
@@ -2202,10 +2249,10 @@ export default function LoginApp({
     }
   }, [login, clearSession, isModal, onModalSuccess]);
 
-  // SSR 安全：每次渲染时动态检测已存钱包（反映最新 localStorage 状态）
+  // SSR 安全：每次渲染时动态检测已存钱包（仅统计有 keystore 的 imported 钱包，外部钱包不影响路由）
   const hasExistingWallet = () => {
     if (typeof window === "undefined") return false;
-    return getStoredWallets().length > 0;
+    return getStoredWallets().filter((w) => w.type !== 'external' && !!w.keystore).length > 0;
   };
 
   const variants = direction === "right" ? slideRight : slideLeft;

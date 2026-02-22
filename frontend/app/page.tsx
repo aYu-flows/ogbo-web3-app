@@ -20,7 +20,7 @@ import AddFriendModal from "@/components/chat/AddFriendModal";
 import CreateGroupModal from "@/components/chat/CreateGroupModal";
 
 export default function Page() {
-  const { activeTab, isLoggedIn, checkAuthStatus, initPush, pushInitialized, isConnectingPush, pushInitFailed, destroyPush, walletAddress, login, chats } = useStore();
+  const { activeTab, isLoggedIn, checkAuthStatus, initPush, pushInitialized, isConnectingPush, pushInitFailed, destroyPush, walletAddress, login, chats, cleanupExternalWallet } = useStore();
   const [isChecking, setIsChecking] = useState(true);
   const [chatSearchOpen, setChatSearchOpen] = useState(false);
   const [addFriendOpen, setAddFriendOpen] = useState(false);
@@ -34,9 +34,14 @@ export default function Page() {
   // Track whether wagmi was ever connected this session.
   // Used to distinguish "local wallet user (never wagmi)" from "wagmi user who disconnected".
   const wasWagmiConnectedRef = useRef(false);
+  // Track the last connected wagmi address for cleanup on disconnect.
+  const lastWagmiAddressRef = useRef<string | undefined>(undefined);
   useEffect(() => {
     if (isConnected) wasWagmiConnectedRef.current = true;
   }, [isConnected]);
+  useEffect(() => {
+    if (wagmiAddress) lastWagmiAddressRef.current = wagmiAddress;
+  }, [wagmiAddress]);
 
   useEffect(() => {
     checkAuthStatus();
@@ -88,6 +93,11 @@ export default function Page() {
   // to avoid triggering destroyPush immediately after initPush completes (infinite loop).
   useEffect(() => {
     if (isLoggedIn && !isConnected && pushInitialized && wasWagmiConnectedRef.current) {
+      // Clean up the external wallet record from localStorage before destroying Push.
+      // This prevents checkAuthStatus (on next page refresh) from re-persisting the disconnected wallet.
+      if (lastWagmiAddressRef.current) {
+        cleanupExternalWallet(lastWagmiAddressRef.current);
+      }
       destroyPush();
     }
   }, [isConnected, isLoggedIn, pushInitialized]);

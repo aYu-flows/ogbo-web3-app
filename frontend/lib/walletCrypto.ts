@@ -13,8 +13,9 @@ export interface StoredWallet {
   name: string;     // "Wallet 1", "Wallet 2" ...
   network: string;  // "ethereum" | "bsc" | "polygon"
   address: string;  // 钱包地址，明文（非敏感）
-  keystore: string; // ethers 加密的 Keystore JSON（含私钥，已加密）
+  keystore: string; // ethers 加密的 Keystore JSON（含私钥，已加密）；外部钱包为空字符串
   createdAt: number;
+  type?: 'imported' | 'external'; // 未定义时向后兼容，视为 'imported'
 }
 
 // ======== localStorage 键 ========
@@ -140,10 +141,12 @@ export function saveWallet(
 
   if (existingIdx >= 0) {
     // 更新已有钱包的 keystore（密码可能不同）
+    // 若提供了非空 keystore，则强制将 type 升级为 'imported'（支持 external → imported 路径）
     savedWallet = {
       ...wallets[existingIdx],
       keystore: data.keystore,
       network: data.network,
+      type: data.keystore ? 'imported' : (wallets[existingIdx].type ?? 'imported'),
     };
     wallets[existingIdx] = savedWallet;
   } else {
@@ -152,6 +155,7 @@ export function saveWallet(
       ...data,
       id: _generateId(),
       createdAt: Date.now(),
+      type: data.type ?? 'imported',
     };
     wallets.push(savedWallet);
   }
@@ -197,9 +201,77 @@ export function clearAllWallets(): void {
   ls?.removeItem(LS_ACTIVE_KEY);
 }
 
-/** 生成钱包显示名（"Wallet 1", "Wallet 2"...）*/
-export function generateWalletName(): string {
+/**
+ * 保存第三方 App 连接的外部钱包（无私钥/keystore）到 localStorage。
+ * 若相同地址已存在（任意 type）则直接返回已有记录，不重复写入。
+ * 不调用 setActiveWalletId，外部钱包不自动成为 active 钱包。
+ * localStorage 写入失败时静默捕获（外部钱包无私钥，丢失可重建）。
+ */
+export function saveExternalWallet(address: string, network: string = 'ethereum'): StoredWallet {
   const wallets = getStoredWallets();
+
+  // 地址已存在（任意 type）→ 直接返回，避免重复写入
+  const existing = wallets.find(
+    (w) => w.address.toLowerCase() === address.toLowerCase()
+  );
+  if (existing) return existing;
+
+  const savedWallet: StoredWallet = {
+    id: `external-${address.toLowerCase()}`,
+    name: 'Connected Wallet',
+    network,
+    address,
+    keystore: '',
+    createdAt: Date.now(),
+    type: 'external',
+  };
+  wallets.push(savedWallet);
+
+  try {
+    _ls()?.setItem(LS_WALLETS_KEY, JSON.stringify(wallets));
+  } catch {
+    // localStorage 配额超限，静默忽略（外部钱包无私钥，不阻断正常流程）
+  }
+
+  return savedWallet;
+}
+
+/**
+ * 移除指定地址的外部钱包（type === 'external'）。
+ * 不会删除同地址的 imported 类型记录（保护已升级的钱包）。
+ * 若被删记录是当前 active wallet，则自动将 active 更新为第一个 imported 钱包；若无则清除 active key。
+ */
+export function removeExternalWallet(address: string): void {
+  const ls = _ls();
+  if (!ls) return;
+
+  const wallets = getStoredWallets();
+  const targetId = `external-${address.toLowerCase()}`;
+  const filtered = wallets.filter(
+    (w) => !(w.type === 'external' && w.address.toLowerCase() === address.toLowerCase())
+  );
+
+  try {
+    ls.setItem(LS_WALLETS_KEY, JSON.stringify(filtered));
+  } catch {
+    return;
+  }
+
+  // 若 active wallet 是被删的外部钱包，则更新 active 为第一个 imported 钱包
+  const activeId = ls.getItem(LS_ACTIVE_KEY);
+  if (activeId === targetId) {
+    const firstImported = filtered.find((w) => w.type !== 'external' && w.keystore);
+    if (firstImported) {
+      setActiveWalletId(firstImported.id);
+    } else {
+      ls.removeItem(LS_ACTIVE_KEY);
+    }
+  }
+}
+
+/** 生成钱包显示名（"Wallet 1", "Wallet 2"...），仅统计 imported 类型，外部钱包不占编号 */
+export function generateWalletName(): string {
+  const wallets = getStoredWallets().filter((w) => w.type !== 'external');
   return `Wallet ${wallets.length + 1}`;
 }
 
@@ -275,6 +347,8 @@ export async function migrateKeystoreScrypt(password: string): Promise<void> {
   const wallets = getStoredWallets();
   for (const stored of wallets) {
     try {
+      // 跳过外部钱包（keystore 为空，无法迁移）
+      if (!stored.keystore) continue;
       // 解析 keystore，检查 scrypt N 值（兼容大小写两种 key 路径）
       const ks = JSON.parse(stored.keystore);
       const n = ks?.crypto?.kdfparams?.n ?? ks?.Crypto?.kdfparams?.n;

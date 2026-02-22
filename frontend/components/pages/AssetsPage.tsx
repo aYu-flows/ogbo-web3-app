@@ -293,7 +293,14 @@ export default function AssetsPage() {
                       <Wallet className="w-4 h-4 text-white" />
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium">{w.name}</p>
+                      <div className="flex items-center gap-1.5">
+                        <p className="text-sm font-medium">{w.name}</p>
+                        {w.type === 'external' && (
+                          <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-500 font-medium border border-emerald-500/20">
+                            {locale === 'zh' ? '已连接' : 'Connected'}
+                          </span>
+                        )}
+                      </div>
                       <p className="text-[10px] text-muted-foreground font-mono">{w.address.slice(0, 8)}...{w.address.slice(-4)}</p>
                     </div>
                     {w.id === currentWalletId && <Check className="w-4 h-4 text-[var(--ogbo-blue)]" />}
@@ -471,6 +478,11 @@ export default function AssetsPage() {
                   <span className="text-sm font-semibold">{w.name}</span>
                   {w.id === currentWalletId && (
                     <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-[var(--ogbo-blue)] text-white font-medium">{t("assets.current", locale)}</span>
+                  )}
+                  {w.type === 'external' && (
+                    <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-emerald-500/15 text-emerald-500 font-medium border border-emerald-500/20">
+                      {locale === 'zh' ? '已连接' : 'Connected'}
+                    </span>
                   )}
                 </div>
                 <p className="text-[10px] text-muted-foreground font-mono">{w.address.slice(0, 10)}...{w.address.slice(-6)}</p>
