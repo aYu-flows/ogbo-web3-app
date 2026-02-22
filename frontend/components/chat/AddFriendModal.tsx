@@ -35,6 +35,14 @@ export default function AddFriendModal({ isOpen, onClose, onOpenChat }: AddFrien
   const alreadyFriend = chats.some((c) => c.walletAddress?.toLowerCase() === searchInput.trim().toLowerCase())
   const alreadySent = chatRequests.some((r) => r.fromAddress.toLowerCase() === searchInput.trim().toLowerCase())
 
+  // Auto-retry Push initialization when modal opens (if previously failed)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (isOpen && pushInitFailed && !isConnectingPush) {
+      resetPushFailed()
+    }
+  }, [isOpen])
+
   // Debounced search with EIP-55 address normalization
   useEffect(() => {
     if (!isOpen) return
@@ -186,8 +194,25 @@ export default function AddFriendModal({ isOpen, onClose, onOpenChat }: AddFrien
                 )}
               </div>
 
-              {/* Push init failed banner — always visible when push init fails, no address required */}
-              {pushInitFailed && !isConnectingPush && (
+              {/* Connecting indicator — shown during auto-retry or manual retry */}
+              <AnimatePresence>
+                {isConnectingPush && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -4 }}
+                    className="flex items-center gap-2 px-1 py-1"
+                  >
+                    <Loader2 className="w-3 h-3 animate-spin text-muted-foreground" />
+                    <p className="text-xs text-muted-foreground">
+                      {locale === 'zh' ? '聊天连接中...' : 'Connecting chat...'}
+                    </p>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              {/* Push init failed banner — only shown when user has typed something, to avoid alarming on empty input */}
+              {pushInitFailed && !isConnectingPush && searchInput.length > 0 && (
                 <motion.div
                   initial={{ opacity: 0, y: -4 }}
                   animate={{ opacity: 1, y: 0 }}

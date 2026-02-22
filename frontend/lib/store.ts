@@ -552,7 +552,13 @@ export const useStore = create<AppState>((set, get) => ({
         },
       })
     } catch (error: any) {
-      console.error('Push init failed:', error)
+      console.error('[Push] initPush FAILED', {
+        timestamp: new Date().toISOString(),
+        message: error?.message || String(error),
+        code: error?.code ?? '',
+        name: error?.name ?? '',
+        stack: error?.stack ?? '',
+      })
       set({ pushInitFailed: true })
     } finally {
       set({ isConnectingPush: false })

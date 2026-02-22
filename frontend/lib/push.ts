@@ -40,11 +40,28 @@ export async function initPushUser(signer: Signer): Promise<PushAPI> {
     ? CONSTANTS.ENV.STAGING
     : CONSTANTS.ENV.PROD
 
-  const pushUser = await PushAPI.initialize(signer as any, { env })
+  console.log('[Push] initPushUser start | env:', env)
 
-  // Initialize stream for real-time events, then connect
-  await pushUser.initStream([CONSTANTS.STREAM.CHAT])
+  let pushUser: PushAPI
+  try {
+    pushUser = await PushAPI.initialize(signer as any, { env })
+    console.log('[Push] PushAPI.initialize OK')
+  } catch (e: any) {
+    console.error('[Push] FAILED at PushAPI.initialize:', e?.message || e)
+    throw e
+  }
+
+  try {
+    await pushUser.initStream([CONSTANTS.STREAM.CHAT])
+    console.log('[Push] initStream OK')
+  } catch (e: any) {
+    console.error('[Push] FAILED at initStream:', e?.message || e)
+    throw e
+  }
+
+  // stream.connect() triggers async socket connection; errors surface via stream events, not throw
   pushUser.stream.connect()
+  console.log('[Push] stream.connect() called')
 
   return pushUser
 }
