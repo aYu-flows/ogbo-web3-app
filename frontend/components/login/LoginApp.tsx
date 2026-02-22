@@ -277,7 +277,7 @@ function ProgressBar({ step, total }: { step: number; total: number }) {
 function BackHeader({ onBack, rightSlot }: { onBack: () => void; rightSlot?: React.ReactNode }) {
   const { locale } = useStore();
   return (
-    <div className="flex items-center justify-between h-14 px-4 lg:px-6" style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 8px)' }}>
+    <div className="flex items-center justify-between h-14 px-4 lg:px-6" style={{ paddingTop: 'calc(var(--safe-top, env(safe-area-inset-top, 0px)) + 8px)' }}>
       <button
         onClick={onBack}
         className="flex items-center gap-1 text-muted-foreground hover:text-foreground transition-colors rounded-full p-1 hover:bg-muted"
@@ -498,7 +498,7 @@ function WelcomeView({ goTo }: { goTo: (v: AuthView) => void }) {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between h-14 px-4 lg:px-6" style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 8px)' }}>
+      <div className="flex items-center justify-between h-14 px-4 lg:px-6" style={{ paddingTop: 'calc(var(--safe-top, env(safe-area-inset-top, 0px)) + 8px)' }}>
         {/* Download button — left side, browser only */}
         {isBrowser ? (
           <motion.button
@@ -2230,7 +2230,7 @@ export default function LoginApp({
             onClick={() => onModalClose?.()}
             className="absolute z-20 text-muted-foreground hover:text-foreground hover:bg-muted rounded-full p-1.5 transition-colors"
             style={{
-              top: 'calc(env(safe-area-inset-top, 0px) + 12px)',
+              top: 'calc(var(--safe-top, env(safe-area-inset-top, 0px)) + 12px)',
               right: '12px',
             }}
             aria-label="关闭"
