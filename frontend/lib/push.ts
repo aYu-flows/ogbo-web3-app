@@ -3,6 +3,7 @@ import type { Signer } from 'ethers'
 import { utils as ethersUtils } from 'ethers'
 import type { IFeeds, IMessageIPFS } from '@pushprotocol/restapi'
 import type { Chat, Message, ChatRequest } from '@/lib/store'
+import { getPushLogger } from '@/lib/debugLogger'
 
 // ======== Helper: address color from hash ========
 
@@ -41,27 +42,33 @@ export async function initPushUser(signer: Signer): Promise<PushAPI> {
     : CONSTANTS.ENV.PROD
 
   console.log('[Push] initPushUser start | env:', env)
+  const logger = getPushLogger()
 
   let pushUser: PushAPI
   try {
     pushUser = await PushAPI.initialize(signer as any, { env })
     console.log('[Push] PushAPI.initialize OK')
+    logger?.log('push_api_initialize', 'PushAPI.initialize OK', { env: String(env) })
   } catch (e: any) {
     console.error('[Push] FAILED at PushAPI.initialize:', e?.message || e)
+    logger?.error('push_api_initialize', 'PushAPI.initialize FAILED', e)
     throw e
   }
 
   try {
     await pushUser.initStream([CONSTANTS.STREAM.CHAT])
     console.log('[Push] initStream OK')
+    logger?.log('push_init_stream', 'initStream OK')
   } catch (e: any) {
     console.error('[Push] FAILED at initStream:', e?.message || e)
+    logger?.error('push_init_stream', 'initStream FAILED', e)
     throw e
   }
 
   // stream.connect() triggers async socket connection; errors surface via stream events, not throw
   pushUser.stream.connect()
   console.log('[Push] stream.connect() called')
+  logger?.log('push_stream_connect', 'stream.connect() called')
 
   return pushUser
 }

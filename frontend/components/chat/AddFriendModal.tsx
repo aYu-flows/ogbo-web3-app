@@ -7,6 +7,7 @@ import { utils as ethersUtils } from 'ethers'
 import { useStore } from '@/lib/store'
 import { t } from '@/lib/i18n'
 import WalletAddress from '@/components/chat/WalletAddress'
+import { getPushLogger } from '@/lib/debugLogger'
 
 interface AddFriendModalProps {
   isOpen: boolean
@@ -39,7 +40,18 @@ export default function AddFriendModal({ isOpen, onClose, onOpenChat }: AddFrien
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (isOpen && pushInitFailed && !isConnectingPush) {
+      getPushLogger()?.log('add_friend_modal_open', 'Modal open — Push failed, triggering auto-retry', {
+        pushInitFailed,
+        pushInitialized,
+        isConnectingPush,
+      })
       resetPushFailed()
+    } else if (isOpen) {
+      getPushLogger()?.log('add_friend_modal_open', 'Modal open', {
+        pushInitialized,
+        isConnectingPush,
+        pushInitFailed,
+      })
     }
   }, [isOpen])
 

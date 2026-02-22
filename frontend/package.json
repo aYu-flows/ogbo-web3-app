@@ -78,12 +78,15 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.1.13",
+    "@types/jest": "^30.0.0",
     "@types/node": "^22",
     "@types/react": "19.2.7",
     "@types/react-dom": "19.2.3",
+    "jest": "^30.2.0",
     "postcss": "^8.5",
     "sharp": "^0.34.5",
     "tailwindcss": "^3.4.17",
+    "ts-jest": "^29.4.6",
     "typescript": "5.7.3"
   },
   "pnpm": {

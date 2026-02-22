@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import type { PushAPI } from '@pushprotocol/restapi'
 import type { Signer } from 'ethers'
 import { getStoredWallets, getActiveWallet, saveExternalWallet, removeExternalWallet, type StoredWallet as StoredWalletType } from '@/lib/walletCrypto'
+import { createPushLogger } from '@/lib/debugLogger'
 
 export type TabType = 'home' | 'chat' | 'market' | 'discover' | 'assets'
 export type Locale = 'zh' | 'en'
@@ -434,9 +435,20 @@ export const useStore = create<AppState>((set, get) => ({
   initPush: async (signer) => {
     // Clear any stale/mock chat data immediately so the user never sees mock chats
     set({ isConnectingPush: true, chats: [], chatRequests: [], unreadChatCount: 0 })
+
+    // Create remote debug logger (silently no-ops when Supabase env vars are not configured)
+    let loggerWallet = get().walletAddress || ''
+    if (!loggerWallet) {
+      try { loggerWallet = await (signer as any).getAddress() } catch { /* keep '' */ }
+    }
+    const pushEnvLabel = process.env.NEXT_PUBLIC_PUSH_ENV === 'staging' ? 'staging' : 'prod'
+    const logger = createPushLogger(loggerWallet, pushEnvLabel)
+    logger.log('push_init_start', 'initPush started', { pushEnv: pushEnvLabel })
+
     try {
       const { initPushUser, setupSocketListeners, fetchChats: fetchPushChats, fetchChatRequests: fetchPushRequests, pushFeedToChat, pushRequestToChatRequest, pushMessageToMessage, autoAcceptFriendGroupInvites } = await import('@/lib/push')
       const pushUser = await initPushUser(signer)
+      logger.log('push_init_success', 'initPush completed successfully')
       set({ pushUser, pushInitialized: true })
 
       // Ensure walletAddress is set - derive from signer if store doesn't have it yet
@@ -559,6 +571,7 @@ export const useStore = create<AppState>((set, get) => ({
         name: error?.name ?? '',
         stack: error?.stack ?? '',
       })
+      logger.error('push_init_failed', 'initPush catch block', error)
       set({ pushInitFailed: true })
     } finally {
       set({ isConnectingPush: false })
