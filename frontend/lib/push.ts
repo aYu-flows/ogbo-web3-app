@@ -1,5 +1,6 @@
 import { PushAPI, CONSTANTS } from '@pushprotocol/restapi'
 import type { Signer } from 'ethers'
+import { utils as ethersUtils } from 'ethers'
 import type { IFeeds, IMessageIPFS } from '@pushprotocol/restapi'
 import type { Chat, Message, ChatRequest } from '@/lib/store'
 
@@ -65,8 +66,14 @@ export async function sendChatRequest(
   address: string,
   message: string
 ): Promise<void> {
+  // Normalize to EIP-55 checksum format before sending
+  let normalizedAddress = address
+  try {
+    normalizedAddress = ethersUtils.getAddress(address)
+  } catch { /* keep original */ }
+
   const content = message.trim() || '你好，我想加你为好友'
-  await pushUser.chat.send(address, { content, type: 'Text' })
+  await pushUser.chat.send(normalizedAddress, { content, type: 'Text' })
 }
 
 export async function acceptChatRequest(
@@ -107,16 +114,22 @@ export async function getUserInfo(
   pushUser: PushAPI,
   address: string
 ): Promise<any> {
+  // Normalize to EIP-55 checksum format before calling Push Protocol API
+  let normalizedAddress = address
   try {
-    const info = await pushUser.profile.info({ overrideAccount: address })
+    normalizedAddress = ethersUtils.getAddress(address)
+  } catch { /* keep original */ }
+
+  try {
+    const info = await pushUser.profile.info({ overrideAccount: normalizedAddress })
     if (info) return info
   } catch {
     // ignore — fall through to synthetic fallback
   }
   // Any valid EVM address is treated as a searchable OGBO user.
   // Push Protocol auto-creates a profile on first message/request.
-  if (/^0x[a-fA-F0-9]{40}$/i.test(address)) {
-    return { address, did: `eip155:1:${address}`, name: null, _synthetic: true }
+  if (/^0x[a-fA-F0-9]{40}$/i.test(normalizedAddress)) {
+    return { address: normalizedAddress, did: `eip155:1:${normalizedAddress}`, name: null, _synthetic: true }
   }
   return null
 }
@@ -132,19 +145,52 @@ export async function createGroupChat(
   groupName: string,
   memberAddresses: string[]
 ): Promise<{ chatId: string; name: string }> {
+  // Runtime guard: ensure group.create API exists in this SDK version
+  if (typeof (pushUser.chat as any)?.group?.create !== 'function') {
+    throw new Error('Push Protocol group.create API is not available in this environment')
+  }
+
+  // EIP-55 checksum normalization + deduplication
+  // (Push Protocol API rejects non-checksummed addresses)
+  const seen = new Set<string>()
+  const normalizedMembers: string[] = []
+  for (const addr of memberAddresses) {
+    try {
+      const checksummed = ethersUtils.getAddress(addr)
+      const key = checksummed.toLowerCase()
+      if (!seen.has(key)) {
+        seen.add(key)
+        normalizedMembers.push(checksummed)
+      }
+    } catch {
+      // Invalid address format: keep original, let API return the error
+      const key = addr.toLowerCase()
+      if (!seen.has(key)) {
+        seen.add(key)
+        normalizedMembers.push(addr)
+      }
+    }
+  }
+
   const response = await (pushUser.chat.group as any).create(groupName, {
     description: '',
-    members: memberAddresses,
+    members: normalizedMembers,
     admins: [],
     isPublic: false,
   })
+
   // Log raw response to aid debugging — field names vary across SDK versions
   console.log('[createGroupChat] raw response:', JSON.stringify(response))
+
   // GroupDTO fields: chatId / groupChatId / id / chatid (varies by SDK version)
-  const chatId: string = response.chatId || response.groupChatId || response.id || response.chatid || ''
-  const name: string = response.groupName || groupName
+  const chatId: string =
+    response?.chatId || response?.groupChatId || response?.id || response?.chatid || ''
+  const name: string = response?.groupName || groupName
+
   if (!chatId) {
-    throw new Error('createGroupChat: chatId missing from response. See console for raw response.')
+    throw new Error(
+      'createGroupChat: chatId missing from response. Raw: ' + JSON.stringify(response)
+    )
   }
   return { chatId, name }
 }

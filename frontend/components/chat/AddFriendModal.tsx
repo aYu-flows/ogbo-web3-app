@@ -3,6 +3,7 @@
 import { motion, AnimatePresence } from 'framer-motion'
 import { X, Search, Send, MessageCircle, Loader2, ChevronDown, ChevronUp } from 'lucide-react'
 import { useState, useEffect, useRef } from 'react'
+import { utils as ethersUtils } from 'ethers'
 import { useStore } from '@/lib/store'
 import { t } from '@/lib/i18n'
 import WalletAddress from '@/components/chat/WalletAddress'
@@ -18,6 +19,7 @@ const ADDRESS_REGEX = /^0x[a-fA-F0-9]{40}$/
 export default function AddFriendModal({ isOpen, onClose, onOpenChat }: AddFriendModalProps) {
   const { searchUserByAddress, sendFriendRequest, chats, chatRequests, walletAddress, pushInitialized, isConnectingPush, pushInitFailed, locale, switchTab, resetPushFailed } = useStore()
   const [searchInput, setSearchInput] = useState('')
+  const [normalizedAddr, setNormalizedAddr] = useState('')
   const [searching, setSearching] = useState(false)
   const [searchResult, setSearchResult] = useState<any>(null)
   const [searchError, setSearchError] = useState<string | null>(null)
@@ -27,44 +29,58 @@ export default function AddFriendModal({ isOpen, onClose, onOpenChat }: AddFrien
   const [showMsgInput, setShowMsgInput] = useState(false)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  // Determine state of this address
+  // Determine state of this address (use lowercase comparison for case-insensitive matching)
   const isValidAddress = ADDRESS_REGEX.test(searchInput.trim())
   const isSelf = walletAddress && searchInput.trim().toLowerCase() === walletAddress.toLowerCase()
   const alreadyFriend = chats.some((c) => c.walletAddress?.toLowerCase() === searchInput.trim().toLowerCase())
   const alreadySent = chatRequests.some((r) => r.fromAddress.toLowerCase() === searchInput.trim().toLowerCase())
 
-  // Debounced search
+  // Debounced search with EIP-55 address normalization
   useEffect(() => {
     if (!isOpen) return
-    const addr = searchInput.trim()
+    const rawAddr = searchInput.trim()
     if (debounceRef.current) clearTimeout(debounceRef.current)
     setSearchResult(null)
     setSearchError(null)
+    setNormalizedAddr('')  // Reset normalized address on every input change
     setSent(false)
 
-    if (!addr) return
+    if (!rawAddr) return
 
-    if (!ADDRESS_REGEX.test(addr)) {
-      if (addr.length > 0) setSearchError(t('chat.invalidAddress', locale))
+    if (!ADDRESS_REGEX.test(rawAddr)) {
+      if (rawAddr.length > 0) setSearchError(t('chat.invalidAddress', locale))
       return
     }
 
-    if (isSelf) {
-      setSearchError(t('chat.selfAddress', locale))
+    // EIP-55 checksum normalization (compatible with all-lowercase and mixed-case input)
+    let addr = rawAddr
+    try {
+      addr = ethersUtils.getAddress(rawAddr)
+    } catch {
+      setSearchError(t('chat.invalidAddress', locale))
       return
     }
+    setNormalizedAddr(addr)
+
+    // pushInitFailed: banner handles the UI, no need to also set searchError
+    if (pushInitFailed) return
 
     if (!pushInitialized) {
       if (isConnectingPush) {
         setSearchError(locale === 'zh' ? '聊天功能初始化中，请稍候...' : 'Chat initializing, please wait...')
-      } else if (pushInitFailed) {
-        setSearchError(locale === 'zh' ? '聊天功能暂时不可用，请刷新重试' : 'Chat unavailable. Please refresh and retry.')
       } else {
         setSearchError(locale === 'zh' ? '聊天连接中...' : 'Connecting...')
       }
       return
     }
 
+    // isSelf check (using normalized address)
+    if (walletAddress && addr.toLowerCase() === walletAddress.toLowerCase()) {
+      setSearchError(t('chat.selfAddress', locale))
+      return
+    }
+
+    // Debounced search using normalized (checksummed) address
     debounceRef.current = setTimeout(async () => {
       setSearching(true)
       try {
@@ -84,9 +100,10 @@ export default function AddFriendModal({ isOpen, onClose, onOpenChat }: AddFrien
 
   const handleSend = async () => {
     if (!isValidAddress || sending || sent) return
+    if (!normalizedAddr) return  // Normalization failed, do not send
     setSending(true)
     try {
-      await sendFriendRequest(searchInput.trim(), requestMsg)
+      await sendFriendRequest(normalizedAddr, requestMsg)  // Use checksummed address
       setSent(true)
       const { default: toast } = await import('react-hot-toast')
       toast.success(locale === 'zh' ? '好友请求已发送！' : 'Friend request sent!')
@@ -105,6 +122,7 @@ export default function AddFriendModal({ isOpen, onClose, onOpenChat }: AddFrien
 
   const handleClose = () => {
     setSearchInput('')
+    setNormalizedAddr('')
     setSearchResult(null)
     setSearchError(null)
     setSent(false)
@@ -168,24 +186,31 @@ export default function AddFriendModal({ isOpen, onClose, onOpenChat }: AddFrien
                 )}
               </div>
 
-              {/* Error state */}
-              {searchError && (
-                <p className="text-sm text-[var(--ogbo-red)] text-center">{searchError}</p>
-              )}
-
-              {/* Retry button — shown when push init failed and there's a valid address to search */}
-              {pushInitFailed && !isConnectingPush && isValidAddress && !isSelf && (
-                <div className="flex justify-center">
+              {/* Push init failed banner — always visible when push init fails, no address required */}
+              {pushInitFailed && !isConnectingPush && (
+                <motion.div
+                  initial={{ opacity: 0, y: -4 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="flex items-center justify-between bg-[var(--ogbo-red)]/10 rounded-xl px-3 py-2.5"
+                >
+                  <p className="text-xs text-[var(--ogbo-red)]">
+                    {locale === 'zh' ? '聊天功能暂时不可用' : 'Chat unavailable'}
+                  </p>
                   <button
                     onClick={() => {
                       setSearchError(null)
                       resetPushFailed()
                     }}
-                    className="text-xs text-[var(--ogbo-blue)] underline cursor-pointer hover:opacity-80 transition-opacity"
+                    className="text-xs text-[var(--ogbo-blue)] font-medium hover:opacity-80 transition-opacity ml-2 flex-shrink-0"
                   >
-                    {locale === 'zh' ? '重试连接' : 'Retry connection'}
+                    {locale === 'zh' ? '重试连接' : 'Retry'}
                   </button>
-                </div>
+                </motion.div>
+              )}
+
+              {/* Error state (non-pushInitFailed errors) */}
+              {searchError && (
+                <p className="text-sm text-[var(--ogbo-red)] text-center">{searchError}</p>
               )}
 
               {/* Search result */}
@@ -195,7 +220,8 @@ export default function AddFriendModal({ isOpen, onClose, onOpenChat }: AddFrien
                   animate={{ opacity: 1, y: 0 }}
                   className="bg-muted/50 rounded-xl p-4 space-y-3"
                 >
-                  <WalletAddress address={searchInput.trim()} />
+                  {/* Show checksummed address for consistent display */}
+                  <WalletAddress address={normalizedAddr || searchInput.trim()} />
 
                   {alreadyFriend ? (
                     <motion.button

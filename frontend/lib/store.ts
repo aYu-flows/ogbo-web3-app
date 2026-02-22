@@ -786,8 +786,13 @@ export const useStore = create<AppState>((set, get) => ({
       const { default: toast } = await import('react-hot-toast')
       toast.success(t('chat.groupCreated', get().locale))
     } catch (error) {
-      console.error('createGroup failed:', error)
-      if (error instanceof Error) console.error('[createGroup] message:', error.message)
+      console.error('[createGroup] failed:', error)
+      if (error instanceof Error) {
+        console.error('[createGroup] message:', error.message)
+        console.error('[createGroup] stack:', error.stack)
+      }
+      if ((error as any)?.response) console.error('[createGroup] response:', (error as any).response)
+      if ((error as any)?.data) console.error('[createGroup] data:', (error as any).data)
       const { default: toast } = await import('react-hot-toast')
       const { t } = await import('@/lib/i18n')
       toast.error(t('chat.groupCreateFailed', get().locale))

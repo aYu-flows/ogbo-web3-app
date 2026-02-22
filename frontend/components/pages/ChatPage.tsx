@@ -12,8 +12,6 @@ import {
   MoreVertical,
   ArrowLeft,
   Smile,
-  Mic,
-  Camera,
   Pin,
   Check,
   Trash2,
@@ -118,7 +116,10 @@ function ChatDetail({ chat, onBack, locale }: { chat: Chat; onBack: () => void; 
   }, [chat.id, pushInitialized, chat.walletAddress, chat.pushChatId]);
 
   const handleSend = async () => {
-    if (!input.trim()) return;
+    if (!input.trim()) {
+      toast(locale === 'zh' ? '请先输入消息内容' : 'Please enter a message first')
+      return
+    }
     const content = input.trim();
     setInput("");
     setShowEmoji(false);
@@ -157,7 +158,7 @@ function ChatDetail({ chat, onBack, locale }: { chat: Chat; onBack: () => void; 
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && !e.shiftKey) {
+    if (e.key === "Enter" && !e.shiftKey && !isComposing) {
       e.preventDefault();
       handleSend();
     }
@@ -263,26 +264,14 @@ function ChatDetail({ chat, onBack, locale }: { chat: Chat; onBack: () => void; 
             placeholder={t("chat.inputPlaceholder", locale)}
             className="flex-1 min-w-0 bg-muted rounded-full px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[var(--ogbo-blue)]/20 transition-all"
           />
-          {input.trim() || isComposing ? (
-            <motion.button
-              initial={{ scale: 0 }}
-              animate={{ scale: 1 }}
-              whileTap={{ scale: 0.9 }}
-              onClick={handleSend}
-              className="rounded-full p-1.5 bg-[var(--ogbo-blue)] text-white hover:bg-[var(--ogbo-blue-hover)] transition-colors flex-shrink-0"
-            >
-              <Send className="w-4 h-4" />
-            </motion.button>
-          ) : (
-            <>
-              <button onClick={() => toast(t("common.comingSoon", locale))} className="rounded-full p-1.5 hover:bg-muted transition-colors flex-shrink-0">
-                <Mic className="w-5 h-5 text-muted-foreground" />
-              </button>
-              <button onClick={() => toast(t("common.comingSoon", locale))} className="rounded-full p-1.5 hover:bg-muted transition-colors flex-shrink-0">
-                <Camera className="w-5 h-5 text-muted-foreground" />
-              </button>
-            </>
-          )}
+          {/* Send button: always visible regardless of input state */}
+          <motion.button
+            whileTap={{ scale: 0.9 }}
+            onClick={handleSend}
+            className="rounded-full p-1.5 bg-[var(--ogbo-blue)] text-white hover:bg-[var(--ogbo-blue-hover)] transition-colors flex-shrink-0"
+          >
+            <Send className="w-4 h-4" />
+          </motion.button>
         </div>
       </div>
     </motion.div>
