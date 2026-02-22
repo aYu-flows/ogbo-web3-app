@@ -8,7 +8,7 @@ import toast, { Toaster } from "react-hot-toast";
 import { useStore, type Locale } from "@/lib/store";
 import { t } from "@/lib/i18n";
 import AppDownloadBanner from "@/components/AppDownloadBanner";
-import { useConnect, useAccount, useWalletClient } from "wagmi";
+import { useConnect, useAccount } from "wagmi";
 import { useAppKit } from "@reown/appkit/react";
 import {
   generateEVMWallet,
@@ -648,87 +648,28 @@ function WalletConnectButton({
 function LoginView({ goTo, onSuccess }: { goTo: (v: AuthView) => void; onSuccess: (address?: string) => void }) {
   const { locale } = useStore();
   const { address, isConnected } = useAccount();
-  const { data: walletClient } = useWalletClient();
   const { open: openAppKit } = useAppKit();
   const userInitiatedConnect = useRef(false);
   const hasTriggeredRef = useRef(false);
   const isMountedRef = useRef(true);
-  const walletClientTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [pushPreInit, setPushPreInit] = useState<'idle' | 'loading' | 'done' | 'error'>('idle');
 
   // Cleanup on unmount
   useEffect(() => {
     isMountedRef.current = true;
     return () => {
       isMountedRef.current = false;
-      if (walletClientTimeoutRef.current) clearTimeout(walletClientTimeoutRef.current);
     };
   }, []);
 
-  // Effect 1: walletClient arrival timeout guard (5s)
-  // If walletClient doesn't arrive within 5s after connection, skip pre-init and proceed
+  // Proceed to app as soon as wallet connects — no pre-initialization needed
   useEffect(() => {
     if (!isConnected || !address || !userInitiatedConnect.current || hasTriggeredRef.current) return;
-    // Start 5s fallback timer in case walletClient never arrives
-    walletClientTimeoutRef.current = setTimeout(() => {
-      if (!isMountedRef.current || hasTriggeredRef.current) return;
-      hasTriggeredRef.current = true;
-      userInitiatedConnect.current = false;
-      toast.success(t("wallet.connected", locale));
-      setTimeout(() => { if (isMountedRef.current) onSuccess(address); }, 300);
-    }, 5000);
-    return () => {
-      if (walletClientTimeoutRef.current) clearTimeout(walletClientTimeoutRef.current);
-    };
-  }, [isConnected, address]); // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Effect 2: Main flow — runs when walletClient is available
-  useEffect(() => {
-    if (!isConnected || !address || !walletClient || !userInitiatedConnect.current || hasTriggeredRef.current) return;
-
-    // Cancel the walletClient arrival timeout (walletClient arrived in time)
-    if (walletClientTimeoutRef.current) {
-      clearTimeout(walletClientTimeoutRef.current);
-      walletClientTimeoutRef.current = null;
-    }
-
     hasTriggeredRef.current = true;
     userInitiatedConnect.current = false;
-
     if (!isMountedRef.current) return;
-    setPushPreInit('loading');
-
-    const pushTimeoutRef = { current: null as ReturnType<typeof setTimeout> | null };
-
-    const finalize = (addr: string) => {
-      if (!isMountedRef.current) return;
-      toast.success(t("wallet.connected", locale));
-      setTimeout(() => { if (isMountedRef.current) onSuccess(addr); }, 300);
-    };
-
-    // 10s timeout for Push pre-init
-    pushTimeoutRef.current = setTimeout(() => {
-      if (!isMountedRef.current) return;
-      setPushPreInit('error');
-      finalize(address);
-    }, 10000);
-
-    Promise.all([
-      import('@/lib/wagmi'),
-      import('@/lib/push'),
-    ]).then(async ([{ walletClientToSigner }, { preinitPushUser }]) => {
-      const signer = await walletClientToSigner(walletClient);
-      await preinitPushUser(signer);
-      if (pushTimeoutRef.current) clearTimeout(pushTimeoutRef.current);
-      if (!isMountedRef.current) return;
-      setPushPreInit('done');
-      finalize(address);
-    }).catch(() => {
-      if (pushTimeoutRef.current) clearTimeout(pushTimeoutRef.current);
-      if (isMountedRef.current) setPushPreInit('error');
-      finalize(address);
-    });
-  }, [isConnected, address, walletClient]); // eslint-disable-line react-hooks/exhaustive-deps
+    toast.success(t("wallet.connected", locale));
+    setTimeout(() => { if (isMountedRef.current) onSuccess(address); }, 300);
+  }, [isConnected, address]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleConnect = () => {
     userInitiatedConnect.current = true;
@@ -772,30 +713,6 @@ function LoginView({ goTo, onSuccess }: { goTo: (v: AuthView) => void; onSuccess
         </div>
       </div>
 
-      {/* Push 预初始化加载覆盖层 */}
-      <AnimatePresence>
-        {pushPreInit === 'loading' && (
-          <motion.div
-            className="absolute inset-0 z-30 flex flex-col items-center justify-center bg-background/95 backdrop-blur-sm px-8"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.2 }}
-          >
-            <div className="w-16 h-16 rounded-2xl bg-[var(--ogbo-blue)]/10 flex items-center justify-center mb-5">
-              <Loader2 className="w-8 h-8 text-[var(--ogbo-blue)] animate-spin" />
-            </div>
-            <p className="text-base font-semibold text-foreground mb-1.5 text-center">
-              {locale === "zh" ? "正在初始化聊天服务..." : "Initializing chat service..."}
-            </p>
-            <p className="text-xs text-muted-foreground text-center leading-relaxed">
-              {locale === "zh"
-                ? "首次使用需要进行钱包身份验证，请在钱包中确认"
-                : "Wallet signature required for first-time setup. Please confirm in your wallet."}
-            </p>
-          </motion.div>
-        )}
-      </AnimatePresence>
     </div>
   );
 }

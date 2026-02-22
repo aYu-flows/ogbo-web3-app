@@ -7,7 +7,6 @@ import { utils as ethersUtils } from 'ethers'
 import { useStore } from '@/lib/store'
 import { t } from '@/lib/i18n'
 import WalletAddress from '@/components/chat/WalletAddress'
-import { getPushLogger } from '@/lib/debugLogger'
 
 interface AddFriendModalProps {
   isOpen: boolean
@@ -18,7 +17,7 @@ interface AddFriendModalProps {
 const ADDRESS_REGEX = /^0x[a-fA-F0-9]{40}$/
 
 export default function AddFriendModal({ isOpen, onClose, onOpenChat }: AddFriendModalProps) {
-  const { searchUserByAddress, sendFriendRequest, chats, chatRequests, walletAddress, pushInitialized, isConnectingPush, pushInitFailed, locale, switchTab, resetPushFailed } = useStore()
+  const { searchUserByAddress, sendFriendRequest, chats, chatRequests, walletAddress, locale, switchTab } = useStore()
   const [searchInput, setSearchInput] = useState('')
   const [normalizedAddr, setNormalizedAddr] = useState('')
   const [searching, setSearching] = useState(false)
@@ -35,25 +34,6 @@ export default function AddFriendModal({ isOpen, onClose, onOpenChat }: AddFrien
   const isSelf = walletAddress && searchInput.trim().toLowerCase() === walletAddress.toLowerCase()
   const alreadyFriend = chats.some((c) => c.walletAddress?.toLowerCase() === searchInput.trim().toLowerCase())
   const alreadySent = chatRequests.some((r) => r.fromAddress.toLowerCase() === searchInput.trim().toLowerCase())
-
-  // Auto-retry Push initialization when modal opens (if previously failed)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => {
-    if (isOpen && pushInitFailed && !isConnectingPush) {
-      getPushLogger()?.log('add_friend_modal_open', 'Modal open — Push failed, triggering auto-retry', {
-        pushInitFailed,
-        pushInitialized,
-        isConnectingPush,
-      })
-      resetPushFailed()
-    } else if (isOpen) {
-      getPushLogger()?.log('add_friend_modal_open', 'Modal open', {
-        pushInitialized,
-        isConnectingPush,
-        pushInitFailed,
-      })
-    }
-  }, [isOpen])
 
   // Debounced search with EIP-55 address normalization
   useEffect(() => {
@@ -82,18 +62,6 @@ export default function AddFriendModal({ isOpen, onClose, onOpenChat }: AddFrien
     }
     setNormalizedAddr(addr)
 
-    // pushInitFailed: banner handles the UI, no need to also set searchError
-    if (pushInitFailed) return
-
-    if (!pushInitialized) {
-      if (isConnectingPush) {
-        setSearchError(locale === 'zh' ? '聊天功能初始化中，请稍候...' : 'Chat initializing, please wait...')
-      } else {
-        setSearchError(locale === 'zh' ? '聊天连接中...' : 'Connecting...')
-      }
-      return
-    }
-
     // isSelf check (using normalized address)
     if (walletAddress && addr.toLowerCase() === walletAddress.toLowerCase()) {
       setSearchError(t('chat.selfAddress', locale))
@@ -115,8 +83,8 @@ export default function AddFriendModal({ isOpen, onClose, onOpenChat }: AddFrien
       } finally {
         setSearching(false)
       }
-    }, 500)
-  }, [searchInput, isOpen, pushInitialized, isConnectingPush, pushInitFailed])
+    }, 300)
+  }, [searchInput, isOpen])
 
   const handleSend = async () => {
     if (!isValidAddress || sending || sent) return
@@ -206,46 +174,7 @@ export default function AddFriendModal({ isOpen, onClose, onOpenChat }: AddFrien
                 )}
               </div>
 
-              {/* Connecting indicator — shown during auto-retry or manual retry */}
-              <AnimatePresence>
-                {isConnectingPush && (
-                  <motion.div
-                    initial={{ opacity: 0, y: -4 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0, y: -4 }}
-                    className="flex items-center gap-2 px-1 py-1"
-                  >
-                    <Loader2 className="w-3 h-3 animate-spin text-muted-foreground" />
-                    <p className="text-xs text-muted-foreground">
-                      {locale === 'zh' ? '聊天连接中...' : 'Connecting chat...'}
-                    </p>
-                  </motion.div>
-                )}
-              </AnimatePresence>
-
-              {/* Push init failed banner — only shown when user has typed something, to avoid alarming on empty input */}
-              {pushInitFailed && !isConnectingPush && searchInput.length > 0 && (
-                <motion.div
-                  initial={{ opacity: 0, y: -4 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="flex items-center justify-between bg-[var(--ogbo-red)]/10 rounded-xl px-3 py-2.5"
-                >
-                  <p className="text-xs text-[var(--ogbo-red)]">
-                    {locale === 'zh' ? '聊天功能暂时不可用' : 'Chat unavailable'}
-                  </p>
-                  <button
-                    onClick={() => {
-                      setSearchError(null)
-                      resetPushFailed()
-                    }}
-                    className="text-xs text-[var(--ogbo-blue)] font-medium hover:opacity-80 transition-opacity ml-2 flex-shrink-0"
-                  >
-                    {locale === 'zh' ? '重试连接' : 'Retry'}
-                  </button>
-                </motion.div>
-              )}
-
-              {/* Error state (non-pushInitFailed errors) */}
+              {/* Error state */}
               {searchError && (
                 <p className="text-sm text-[var(--ogbo-red)] text-center">{searchError}</p>
               )}

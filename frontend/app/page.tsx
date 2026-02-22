@@ -3,9 +3,8 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Toaster } from "react-hot-toast";
-import { useAccount, useWalletClient } from "wagmi";
+import { useAccount } from "wagmi";
 import { useStore } from "@/lib/store";
-import { walletClientToSigner } from "@/lib/wagmi";
 import TopBar from "@/components/TopBar";
 import BottomNav from "@/components/BottomNav";
 import SidebarNav from "@/components/SidebarNav";
@@ -20,7 +19,7 @@ import AddFriendModal from "@/components/chat/AddFriendModal";
 import CreateGroupModal from "@/components/chat/CreateGroupModal";
 
 export default function Page() {
-  const { activeTab, isLoggedIn, checkAuthStatus, initPush, pushInitialized, isConnectingPush, pushInitFailed, destroyPush, walletAddress, login, chats, cleanupExternalWallet } = useStore();
+  const { activeTab, isLoggedIn, checkAuthStatus, initChat, chatReady, isConnectingChat, destroyChat, walletAddress, login, chats, cleanupExternalWallet } = useStore();
   const [isChecking, setIsChecking] = useState(true);
   const [chatSearchOpen, setChatSearchOpen] = useState(false);
   const [addFriendOpen, setAddFriendOpen] = useState(false);
@@ -29,7 +28,6 @@ export default function Page() {
 
   // Wagmi wallet state
   const { address: wagmiAddress, isConnected } = useAccount();
-  const { data: walletClient } = useWalletClient();
 
   // Track whether wagmi was ever connected this session.
   // Used to distinguish "local wallet user (never wagmi)" from "wagmi user who disconnected".
@@ -63,44 +61,25 @@ export default function Page() {
     }
   }, [isConnected, wagmiAddress, isLoggedIn]);
 
-  // Auto-initialize Push Protocol when wallet is connected and user is logged in
+  // Initialize Supabase chat when user is logged in and wallet address is available
   useEffect(() => {
-    if (!isLoggedIn || !isConnected || !walletClient || pushInitialized || isConnectingPush || pushInitFailed) return;
-    walletClientToSigner(walletClient)
-      .then((signer) => initPush(signer))
-      .catch(console.error);
-  }, [isLoggedIn, isConnected, walletClient, pushInitialized, pushInitFailed]);
+    if (!isLoggedIn || !walletAddress || chatReady || isConnectingChat) return;
+    initChat(walletAddress).catch(console.error);
+  }, [isLoggedIn, walletAddress, chatReady, isConnectingChat]);
 
-  // For local wallet login: initialize Push Protocol using sessionStorage private key
-  useEffect(() => {
-    if (!isLoggedIn || isConnected || pushInitialized || isConnectingPush || pushInitFailed) return;
-    // Only runs when user is logged in but no wagmi wallet is connected (local wallet flow)
-    Promise.all([
-      import('@/lib/walletCrypto'),
-      import('ethers'),
-    ]).then(([{ getSessionWallet }, { ethers }]) => {
-      const localWallet = getSessionWallet();
-      if (localWallet) {
-        const provider = new ethers.providers.JsonRpcProvider('https://rpc.ankr.com/eth');
-        const signer = localWallet.connect(provider);
-        initPush(signer).catch(console.error);
-      }
-    }).catch(console.error);
-  }, [isLoggedIn, isConnected, pushInitialized, isConnectingPush, pushInitFailed]);
-
-  // Destroy Push only when wagmi wallet actually disconnects.
+  // Destroy chat only when wagmi wallet actually disconnects.
   // Local wallet users always have isConnected=false, so we must guard with the ref
-  // to avoid triggering destroyPush immediately after initPush completes (infinite loop).
+  // to avoid triggering destroyChat immediately after initChat completes (infinite loop).
   useEffect(() => {
-    if (isLoggedIn && !isConnected && pushInitialized && wasWagmiConnectedRef.current) {
-      // Clean up the external wallet record from localStorage before destroying Push.
+    if (isLoggedIn && !isConnected && chatReady && wasWagmiConnectedRef.current) {
+      // Clean up the external wallet record from localStorage before destroying chat.
       // This prevents checkAuthStatus (on next page refresh) from re-persisting the disconnected wallet.
       if (lastWagmiAddressRef.current) {
         cleanupExternalWallet(lastWagmiAddressRef.current);
       }
-      destroyPush();
+      destroyChat();
     }
-  }, [isConnected, isLoggedIn, pushInitialized]);
+  }, [isConnected, isLoggedIn, chatReady]);
 
   const handleSearch = useCallback(() => {
     if (activeTab === "chat") setChatSearchOpen((p) => !p);

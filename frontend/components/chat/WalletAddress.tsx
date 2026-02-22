@@ -3,7 +3,7 @@
 import { motion } from 'framer-motion'
 import { Copy, Check } from 'lucide-react'
 import { useState } from 'react'
-import { addressToColor } from '@/lib/push'
+import { addressToColor } from '@/lib/chat'
 import toast from 'react-hot-toast'
 import { useStore } from '@/lib/store'
 import { t } from '@/lib/i18n'

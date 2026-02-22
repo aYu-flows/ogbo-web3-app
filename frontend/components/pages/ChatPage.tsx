@@ -89,7 +89,7 @@ function EmojiPicker({ onSelect, onClose }: { onSelect: (emoji: string) => void;
 
 // Chat Detail View
 function ChatDetail({ chat, onBack, locale }: { chat: Chat; onBack: () => void; locale: "zh" | "en" }) {
-  const { sendMessage, sendPushMessage, sendGroupPushMessage, loadChatHistory, pushInitialized, walletAddress } = useStore();
+  const { sendMessage, sendPushMessage, sendGroupPushMessage, loadChatHistory, chatReady, walletAddress } = useStore();
   const [input, setInput] = useState("");
   const [showEmoji, setShowEmoji] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
@@ -105,15 +105,11 @@ function ChatDetail({ chat, onBack, locale }: { chat: Chat; onBack: () => void; 
     scrollToBottom();
   }, [chat.messages, scrollToBottom]);
 
-  // Load Push history when chat opens (only if no messages yet)
+  // Load message history when chat opens (only if no messages yet)
   useEffect(() => {
-    if (!pushInitialized || chat.messages.length > 0) return
-    if (chat.type === 'group' && chat.pushChatId) {
-      loadChatHistory(chat.pushChatId)
-    } else if (chat.walletAddress) {
-      loadChatHistory(chat.walletAddress)
-    }
-  }, [chat.id, pushInitialized, chat.walletAddress, chat.pushChatId]);
+    if (!chatReady || chat.messages.length > 0) return
+    loadChatHistory(chat.id)
+  }, [chat.id, chatReady]);
 
   const handleSend = async () => {
     if (!input.trim()) {
@@ -124,11 +120,11 @@ function ChatDetail({ chat, onBack, locale }: { chat: Chat; onBack: () => void; 
     setInput("");
     setShowEmoji(false);
 
-    if (pushInitialized && walletAddress) {
-      // Send via Push Protocol
+    if (chatReady && walletAddress) {
+      // Send via Supabase Realtime
       try {
-        if (chat.type === 'group' && chat.pushChatId) {
-          await sendGroupPushMessage(chat.pushChatId, content);
+        if (chat.type === 'group') {
+          await sendGroupPushMessage(chat.id, content);
         } else if (chat.walletAddress) {
           await sendPushMessage(chat.walletAddress, content);
         } else {
@@ -139,21 +135,8 @@ function ChatDetail({ chat, onBack, locale }: { chat: Chat; onBack: () => void; 
         setInput(content);
       }
     } else {
-      // Send via mock
+      // Fallback local message (chat not ready)
       sendMessage(chat.id, content);
-      // Simulate reply (mock mode only)
-      setIsTyping(true);
-      setTimeout(() => {
-        setIsTyping(false);
-        const replies = [
-          locale === "zh" ? "好的，收到！" : "Got it!",
-          locale === "zh" ? "有意思，继续说" : "Interesting, go on",
-          locale === "zh" ? "我也这么觉得" : "I think so too",
-          locale === "zh" ? "让我想想..." : "Let me think...",
-        ];
-        const reply = replies[Math.floor(Math.random() * replies.length)];
-        sendMessage(chat.id, reply, chat.name.toLowerCase());
-      }, 1500 + Math.random() * 2000);
     }
   };
 
@@ -279,7 +262,7 @@ function ChatDetail({ chat, onBack, locale }: { chat: Chat; onBack: () => void; 
 }
 
 export default function ChatPage({ searchOpen: searchOpenProp, onCloseSearch }: { searchOpen?: boolean; onCloseSearch?: () => void }) {
-  const { chats, locale, markChatRead, pinChat, deleteChat, chatRequests, pushInitialized, isConnectingPush } = useStore();
+  const { chats, locale, markChatRead, pinChat, deleteChat, chatRequests } = useStore();
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedChat, setSelectedChat] = useState<string | null>(null);
   const [showRequests, setShowRequests] = useState(false);
@@ -362,15 +345,6 @@ export default function ChatPage({ searchOpen: searchOpenProp, onCloseSearch }: 
               </p>
             </div>
           </motion.button>
-        )}
-
-        {/* Push initialization banner */}
-        {isConnectingPush && (
-          <div className="mx-4 mt-2 mb-1 px-3 py-2 bg-[var(--ogbo-blue)]/10 rounded-xl flex items-center gap-2 text-xs text-[var(--ogbo-blue)]">
-            <motion.div animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
-              className="w-3.5 h-3.5 border-2 border-[var(--ogbo-blue)]/30 border-t-[var(--ogbo-blue)] rounded-full" />
-            {t("push.initializing", locale)}
-          </div>
         )}
 
         {/* Chat list */}

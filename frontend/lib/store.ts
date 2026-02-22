@@ -1,18 +1,19 @@
 import { create } from 'zustand'
-import type { PushAPI } from '@pushprotocol/restapi'
+import type { RealtimeChannel } from '@supabase/supabase-js'
 import type { Signer } from 'ethers'
 import { getStoredWallets, getActiveWallet, saveExternalWallet, removeExternalWallet, type StoredWallet as StoredWalletType } from '@/lib/walletCrypto'
-import { createPushLogger } from '@/lib/debugLogger'
+import { supabase } from '@/lib/supabaseClient'
+import { getChatId, addressToColor } from '@/lib/chat'
+import type { ContactRow, MessageRow, GroupRow } from '@/lib/chat'
 
 export type TabType = 'home' | 'chat' | 'market' | 'discover' | 'assets'
 export type Locale = 'zh' | 'en'
 
 export interface ChatRequest {
+  id: number
   fromAddress: string
-  fromDID: string
   message: string
   timestamp: number
-  chatId: string
 }
 
 export interface Token {
@@ -60,7 +61,6 @@ export interface Message {
   content: string
   timestamp: number
   status: 'sent' | 'delivered' | 'read'
-  pushMessageId?: string
 }
 
 export interface Chat {
@@ -77,8 +77,6 @@ export interface Chat {
   pinned?: boolean
   messages: Message[]
   walletAddress?: string
-  pushChatId?: string
-  did?: string
 }
 
 export interface Coin {
@@ -135,71 +133,42 @@ function storedWalletToWallet(sw: StoredWalletType): Wallet {
   }
 }
 
-const mockChats: Chat[] = [
-  {
-    id: '1', name: 'Alice', avatarColor: '#3b82f6', lastMessage: '嗨，今天行情不错！',
-    timestamp: Date.now() - 120000, unread: 3, online: true, typing: false, type: 'personal',
-    messages: [
-      { id: 'm1', sender: 'alice', content: '你好！最近怎么样？', timestamp: Date.now() - 7200000, status: 'read' },
-      { id: 'm2', sender: 'me', content: '挺好的，在看行情', timestamp: Date.now() - 7000000, status: 'read' },
-      { id: 'm3', sender: 'alice', content: 'BTC今天涨了不少', timestamp: Date.now() - 6800000, status: 'read' },
-      { id: 'm4', sender: 'me', content: '是啊，我也注意到了', timestamp: Date.now() - 6600000, status: 'read' },
-      { id: 'm5', sender: 'alice', content: '嗨，今天行情不错！', timestamp: Date.now() - 120000, status: 'read' },
-    ],
-  },
-  {
-    id: '2', name: 'Crypto Group', avatarColor: '#8b5cf6', lastMessage: 'Bob: 大家准备好了吗？',
-    timestamp: Date.now() - 86400000, unread: 15, online: false, typing: false, type: 'group', members: 24,
-    messages: [
-      { id: 'm1', sender: 'bob', content: '大家好！', timestamp: Date.now() - 172800000, status: 'read' },
-      { id: 'm2', sender: 'carol', content: '新项目发布了', timestamp: Date.now() - 90000000, status: 'read' },
-      { id: 'm3', sender: 'bob', content: '大家准备好了吗？', timestamp: Date.now() - 86400000, status: 'read' },
-    ],
-  },
-  {
-    id: '3', name: 'Carol', avatarColor: '#ec4899', lastMessage: '好的，我知道了',
-    timestamp: Date.now() - 172800000, unread: 0, online: false, typing: false, type: 'personal',
-    messages: [
-      { id: 'm1', sender: 'me', content: '明天有空吗？', timestamp: Date.now() - 180000000, status: 'read' },
-      { id: 'm2', sender: 'carol', content: '好的，我知道了', timestamp: Date.now() - 172800000, status: 'read' },
-    ],
-  },
-  {
-    id: '4', name: 'David', avatarColor: '#f59e0b', lastMessage: '那个NFT项目你看了吗？',
-    timestamp: Date.now() - 259200000, unread: 1, online: true, typing: false, type: 'personal',
-    messages: [
-      { id: 'm1', sender: 'david', content: '那个NFT项目你看了吗？', timestamp: Date.now() - 259200000, status: 'delivered' },
-    ],
-  },
-  {
-    id: '5', name: 'DeFi研究院', avatarColor: '#10b981', lastMessage: 'Eva: 新的协议分析报告已发布',
-    timestamp: Date.now() - 345600000, unread: 8, online: false, typing: false, type: 'group', members: 156,
-    messages: [
-      { id: 'm1', sender: 'eva', content: '新的协议分析报告已发布', timestamp: Date.now() - 345600000, status: 'read' },
-    ],
-  },
-  {
-    id: '6', name: 'Frank', avatarColor: '#06b6d4', lastMessage: '转账已确认',
-    timestamp: Date.now() - 432000000, unread: 0, online: false, typing: false, type: 'personal',
-    messages: [
-      { id: 'm1', sender: 'frank', content: '转账已确认', timestamp: Date.now() - 432000000, status: 'read' },
-    ],
-  },
-  {
-    id: '7', name: 'Grace', avatarColor: '#f97316', lastMessage: '周末一起聊聊新项目？',
-    timestamp: Date.now() - 518400000, unread: 0, online: true, typing: false, type: 'personal',
-    messages: [
-      { id: 'm1', sender: 'grace', content: '周末一起聊聊新项目？', timestamp: Date.now() - 518400000, status: 'read' },
-    ],
-  },
-  {
-    id: '8', name: 'NFT交流群', avatarColor: '#ef4444', lastMessage: 'Henry: 这个系列值得关注',
-    timestamp: Date.now() - 604800000, unread: 42, online: false, typing: false, type: 'group', members: 89,
-    messages: [
-      { id: 'm1', sender: 'henry', content: '这个系列值得关注', timestamp: Date.now() - 604800000, status: 'read' },
-    ],
-  },
-]
+// ======== Helper: map DB rows to Chat objects ========
+
+function contactToChat(contact: ContactRow, myAddress: string, lastMsg: MessageRow | null): Chat {
+  const me = myAddress.toLowerCase()
+  const peerAddr = contact.wallet_a.toLowerCase() === me ? contact.wallet_b : contact.wallet_a
+  const chatId = getChatId(me, peerAddr)
+  return {
+    id: chatId,
+    name: `${peerAddr.slice(0, 6)}...${peerAddr.slice(-4)}`,
+    avatarColor: addressToColor(peerAddr),
+    lastMessage: lastMsg?.content || '',
+    timestamp: lastMsg ? new Date(lastMsg.created_at).getTime() : new Date(contact.created_at).getTime(),
+    unread: 0,
+    online: false,
+    typing: false,
+    type: 'personal',
+    walletAddress: peerAddr,
+    messages: [],
+  }
+}
+
+function groupToChat(group: GroupRow, lastMsg: MessageRow | null): Chat {
+  return {
+    id: group.id,
+    name: group.name,
+    avatarColor: addressToColor(group.id),
+    lastMessage: lastMsg?.content || '',
+    timestamp: lastMsg ? new Date(lastMsg.created_at).getTime() : new Date(group.created_at).getTime(),
+    unread: 0,
+    online: false,
+    typing: false,
+    type: 'group',
+    members: group.members.length,
+    messages: [],
+  }
+}
 
 const mockCoins: Coin[] = [
   { id: 'btc', symbol: 'BTC', name: 'Bitcoin', price: 45234.56, change24h: 2.5, volume: '28.3B', marketCap: '890B', high24h: 46234, low24h: 44123, supply: '19.2M', maxSupply: '21M', icon: '₿', chartData: generateChartData(24, 45000), favorited: false },
@@ -249,12 +218,11 @@ interface AppState {
   isLoggedIn: boolean
   walletAddress: string | null
 
-  // Push Protocol state
-  pushUser: PushAPI | null
+  // Supabase Realtime chat state
+  chatReady: boolean
+  isConnectingChat: boolean
+  chatChannel: RealtimeChannel | null
   chatRequests: ChatRequest[]
-  pushInitialized: boolean
-  isConnectingPush: boolean
-  pushInitFailed: boolean
 
   switchTab: (tab: TabType) => void
   toggleBalance: () => void
@@ -273,20 +241,19 @@ interface AppState {
   checkAuthStatus: () => void
   cleanupExternalWallet: (address: string) => void
 
-  // Push Protocol actions
-  initPush: (signer: Signer) => Promise<void>
-  destroyPush: () => void
-  resetPushFailed: () => void
+  // Supabase chat actions
+  initChat: (walletAddress: string) => Promise<void>
+  destroyChat: () => void
   refreshChats: () => Promise<void>
   refreshChatRequests: () => Promise<void>
-  acceptRequest: (address: string) => Promise<void>
-  rejectRequest: (address: string) => Promise<void>
+  acceptRequest: (fromAddress: string) => Promise<void>
+  rejectRequest: (fromAddress: string) => Promise<void>
   sendFriendRequest: (address: string, message?: string) => Promise<void>
   sendPushMessage: (address: string, content: string) => Promise<void>
-  loadChatHistory: (address: string) => Promise<void>
+  sendGroupPushMessage: (chatId: string, content: string) => Promise<void>
+  loadChatHistory: (chatId: string) => Promise<void>
   searchUserByAddress: (address: string) => Promise<any>
   createGroup: (groupName: string, memberAddresses: string[]) => Promise<void>
-  sendGroupPushMessage: (chatId: string, content: string) => Promise<void>
 }
 
 export const useStore = create<AppState>((set, get) => ({
@@ -295,20 +262,19 @@ export const useStore = create<AppState>((set, get) => ({
   isBalanceVisible: true,
   currentWalletId: '',
   wallets: [],        // 由 checkAuthStatus() 在客户端从 localStorage 加载，SSR 安全
-  chats: mockChats,
+  chats: [],
   coins: mockCoins,
   dapps: mockDApps,
-  unreadChatCount: mockChats.reduce((acc, c) => acc + c.unread, 0),
+  unreadChatCount: 0,
   notifications: 3,
   isLoggedIn: false,
   walletAddress: null,
 
-  // Push Protocol initial state
-  pushUser: null,
+  // Supabase chat initial state
+  chatReady: false,
+  isConnectingChat: false,
+  chatChannel: null,
   chatRequests: [],
-  pushInitialized: false,
-  isConnectingPush: false,
-  pushInitFailed: false,
 
   switchTab: (tab) => set({ activeTab: tab }),
   toggleBalance: () => set((s) => ({ isBalanceVisible: !s.isBalanceVisible })),
@@ -385,11 +351,25 @@ export const useStore = create<AppState>((set, get) => ({
     }
   },
   logout: () => {
+    // Clean up chat subscription
+    const state = get()
+    if (state.chatChannel) {
+      supabase.removeChannel(state.chatChannel)
+    }
     // 清除 sessionStorage 中的 session key（明文私钥）
     if (typeof window !== 'undefined') {
       try { window.sessionStorage.removeItem('ogbo_session_pk') } catch { /* ignore */ }
     }
-    set({ isLoggedIn: false, walletAddress: null })
+    set({
+      isLoggedIn: false,
+      walletAddress: null,
+      chatChannel: null,
+      chatReady: false,
+      isConnectingChat: false,
+      chats: [],
+      chatRequests: [],
+      unreadChatCount: 0,
+    })
     if (typeof window !== 'undefined') {
       localStorage.removeItem('ogbo_logged_in')
       localStorage.removeItem('ogbo_wallet_address')
@@ -430,191 +410,256 @@ export const useStore = create<AppState>((set, get) => ({
     set({ wallets, currentWalletId })
   },
 
-  // ======== Push Protocol Actions ========
+  // ======== Supabase Realtime Chat Actions ========
 
-  initPush: async (signer) => {
-    // Clear any stale/mock chat data immediately so the user never sees mock chats
-    set({ isConnectingPush: true, chats: [], chatRequests: [], unreadChatCount: 0 })
+  initChat: async (walletAddress) => {
+    const state = get()
+    // Prevent double-init
+    if (state.chatReady || state.isConnectingChat) return
 
-    // Create remote debug logger (silently no-ops when Supabase env vars are not configured)
-    let loggerWallet = get().walletAddress || ''
-    if (!loggerWallet) {
-      try { loggerWallet = await (signer as any).getAddress() } catch { /* keep '' */ }
-    }
-    const pushEnvLabel = process.env.NEXT_PUBLIC_PUSH_ENV === 'staging' ? 'staging' : 'prod'
-    const logger = createPushLogger(loggerWallet, pushEnvLabel)
-    logger.log('push_init_start', 'initPush started', { pushEnv: pushEnvLabel })
+    const me = walletAddress.toLowerCase()
+    set({ isConnectingChat: true, chats: [], chatRequests: [], unreadChatCount: 0 })
 
     try {
-      const { initPushUser, setupSocketListeners, fetchChats: fetchPushChats, fetchChatRequests: fetchPushRequests, pushFeedToChat, pushRequestToChatRequest, pushMessageToMessage, autoAcceptFriendGroupInvites } = await import('@/lib/push')
-      const pushUser = await initPushUser(signer)
-      logger.log('push_init_success', 'initPush completed successfully')
-      set({ pushUser, pushInitialized: true })
+      const {
+        fetchContacts,
+        fetchGroups,
+        fetchPendingRequests,
+        fetchLastMessages,
+      } = await import('@/lib/chat')
 
-      // Ensure walletAddress is set - derive from signer if store doesn't have it yet
-      const state = get()
-      let myAddress = state.walletAddress || ''
-      if (!myAddress) {
-        try {
-          myAddress = await (signer as any).getAddress() || ''
-        } catch { /* ignore */ }
-      }
-      if (myAddress) {
-        set({ walletAddress: myAddress })
-      }
-
-      // Load chats and requests
-      const [rawChats, rawRequests] = await Promise.all([
-        fetchPushChats(pushUser),
-        fetchPushRequests(pushUser),
+      // Load contacts, groups, and pending requests in parallel
+      const [contacts, groups, pendingRequests] = await Promise.all([
+        fetchContacts(me),
+        fetchGroups(me),
+        fetchPendingRequests(me),
       ])
 
-      const chats = rawChats.map((feed: any) => pushFeedToChat(feed, myAddress))
-      const chatRequests = rawRequests.map((feed: any) => pushRequestToChatRequest(feed))
-      const unreadChatCount = chats.reduce((acc: number, c: any) => acc + (c.unread || 0), 0)
-      set({ chats, chatRequests, unreadChatCount })
+      // Compute all chat IDs
+      const personalChatIds = contacts.map(c => {
+        const peerAddr = c.wallet_a.toLowerCase() === me ? c.wallet_b : c.wallet_a
+        return getChatId(me, peerAddr)
+      })
+      const groupChatIds = groups.map(g => g.id)
+      const allChatIds = [...personalChatIds, ...groupChatIds]
 
-      // Auto-accept group invites from existing friends
-      const friendAddresses = chats.filter((c: any) => c.walletAddress).map((c: any) => c.walletAddress as string)
-      if (friendAddresses.length > 0) {
-        await autoAcceptFriendGroupInvites(pushUser, friendAddresses)
-        // Re-fetch chats to include any newly joined groups
-        const updatedRawChats = await fetchPushChats(pushUser)
-        const updatedChats = updatedRawChats.map((feed: any) => pushFeedToChat(feed, myAddress))
-        const updatedUnread = updatedChats.reduce((acc: number, c: any) => acc + (c.unread || 0), 0)
-        set({ chats: updatedChats, unreadChatCount: updatedUnread })
-      }
+      // Fetch last messages for all chats
+      const lastMsgs = allChatIds.length > 0 ? await fetchLastMessages(allChatIds) : {}
 
-      // Setup WebSocket listeners
-      setupSocketListeners(pushUser, {
-        onMessage: (data: any) => {
-          const s = get()
-          const addr = s.walletAddress || ''
-          const msg = pushMessageToMessage(data, addr)
-          const chatId = data.chatId || data.chatid || ''
-          // Strip eip155 prefix from data.from and data.to for address matching
-          const fromAddress = (data.from || '').replace(/^eip155:\d*:?/i, '')
-          const toAddress = (Array.isArray(data.to) ? data.to[0] : data.to || '').replace(/^eip155:\d*:?/i, '')
-          set((state) => {
-            const chats = state.chats.map((c) => {
-              const matchById = chatId && c.pushChatId === chatId
-              const matchByFrom = fromAddress && c.walletAddress?.toLowerCase() === fromAddress.toLowerCase()
-              const matchByTo = toAddress && c.walletAddress?.toLowerCase() === toAddress.toLowerCase()
-              if (!matchById && !matchByFrom && !matchByTo) return c
+      // Build Chat objects
+      const personalChats = contacts.map(c => {
+        const peerAddr = c.wallet_a.toLowerCase() === me ? c.wallet_b : c.wallet_a
+        const chatId = getChatId(me, peerAddr)
+        return contactToChat(c, me, lastMsgs[chatId] || null)
+      })
+      const groupChats = groups.map(g => groupToChat(g, lastMsgs[g.id] || null))
+      const chats = [...personalChats, ...groupChats].sort((a, b) => b.timestamp - a.timestamp)
 
-              // Skip if already confirmed by pushMessageId (exact dedup)
-              if (msg.pushMessageId && c.messages.some((m) => m.pushMessageId === msg.pushMessageId)) {
-                return c
-              }
+      // Build ChatRequest objects from pending incoming requests
+      const chatRequests: ChatRequest[] = pendingRequests.map(c => ({
+        id: c.id,
+        fromAddress: c.wallet_a,
+        message: c.request_msg || '',
+        timestamp: new Date(c.created_at).getTime(),
+      }))
 
-              // For own messages: replace the matching optimistic message instead of duplicating.
-              // Optimistic messages have no pushMessageId, same content, sender='me'.
-              if (msg.sender === 'me') {
-                let optimisticIdx = -1
-                for (let i = c.messages.length - 1; i >= 0; i--) {
-                  const m = c.messages[i]
-                  if (!m.pushMessageId && m.sender === 'me' && m.content === msg.content) {
-                    optimisticIdx = i
-                    break
+      set({ chats, chatRequests, chatReady: true })
+
+      // Subscribe to Realtime events
+      const channel = supabase
+        .channel(`chat-${me}-${Date.now()}`)
+        // New messages in any chat
+        .on(
+          'postgres_changes',
+          { event: 'INSERT', schema: 'public', table: 'messages' },
+          (payload) => {
+            const msg = payload.new as MessageRow
+            const currentState = get()
+            // Dynamic filter: check if this message belongs to a chat we're in
+            if (!currentState.chats.some(c => c.id === msg.chat_id)) return
+
+            const myAddr = currentState.walletAddress?.toLowerCase() || ''
+            const isMe = msg.sender.toLowerCase() === myAddr
+
+            const newMsg: Message = {
+              id: `db-${msg.id}`,
+              sender: isMe ? 'me' : msg.sender,
+              content: msg.content,
+              timestamp: new Date(msg.created_at).getTime(),
+              status: 'sent',
+            }
+
+            set((s) => {
+              const chats = s.chats.map((c) => {
+                if (c.id !== msg.chat_id) return c
+
+                // Deduplicate own messages: replace optimistic message with confirmed one
+                if (isMe) {
+                  const optIdx = c.messages.reduceRight((found, m, idx) => {
+                    if (found !== -1) return found
+                    if (m.sender === 'me' && m.content === msg.content && m.id.startsWith('opt-')) return idx
+                    return -1
+                  }, -1)
+                  if (optIdx !== -1) {
+                    const messages = [...c.messages]
+                    messages[optIdx] = newMsg
+                    return { ...c, lastMessage: msg.content, timestamp: newMsg.timestamp, messages }
                   }
                 }
-                if (optimisticIdx !== -1) {
-                  const messages = [...c.messages]
-                  messages[optimisticIdx] = msg
-                  return { ...c, lastMessage: msg.content, timestamp: msg.timestamp, messages }
-                }
-              }
 
+                return {
+                  ...c,
+                  lastMessage: msg.content,
+                  timestamp: newMsg.timestamp,
+                  unread: c.unread + (isMe ? 0 : 1),
+                  messages: [...c.messages, newMsg],
+                }
+              })
+              return { chats, unreadChatCount: chats.reduce((acc, c) => acc + c.unread, 0) }
+            })
+          }
+        )
+        // New incoming friend request (wallet_b = me)
+        .on(
+          'postgres_changes',
+          {
+            event: 'INSERT',
+            schema: 'public',
+            table: 'contacts',
+            filter: `wallet_b=eq.${me}`,
+          },
+          (payload) => {
+            const contact = payload.new as ContactRow
+            if (contact.status !== 'pending') return
+            set((s) => {
+              const exists = s.chatRequests.some(
+                r => r.fromAddress.toLowerCase() === contact.wallet_a.toLowerCase()
+              )
+              if (exists) return {}
               return {
-                ...c,
-                lastMessage: msg.content,
-                timestamp: msg.timestamp,
-                unread: c.unread + (msg.sender !== 'me' ? 1 : 0),
-                messages: [...c.messages, msg],
+                chatRequests: [
+                  ...s.chatRequests,
+                  {
+                    id: contact.id,
+                    fromAddress: contact.wallet_a,
+                    message: contact.request_msg || '',
+                    timestamp: new Date(contact.created_at).getTime(),
+                  },
+                ],
               }
             })
-            return { chats, unreadChatCount: chats.reduce((acc, c) => acc + c.unread, 0) }
-          })
-        },
-        onRequest: async (data: any) => {
-          // Group invite: if creator is an existing friend, auto-accept silently
-          if (data.groupInformation) {
-            const creatorRaw = data.groupInformation.groupCreator || ''
-            const creatorAddr = creatorRaw.replace(/^eip155:\d*:?/i, '')
-            const s = get()
-            const isFriend = s.chats.some((c) => c.walletAddress?.toLowerCase() === creatorAddr.toLowerCase())
-            if (isFriend && s.pushUser && data.chatId) {
-              try {
-                await s.pushUser.chat.accept(data.chatId)
-                await get().refreshChats()
-              } catch { /* ignore */ }
-            }
-            return
           }
-          // Personal friend request: add to chatRequests list
-          const newRequest = pushRequestToChatRequest(data)
-          set((state) => {
-            const exists = state.chatRequests.some((r) => r.fromAddress.toLowerCase() === newRequest.fromAddress.toLowerCase())
-            if (exists) return {}
-            return { chatRequests: [...state.chatRequests, newRequest] }
-          })
-        },
-        onAccept: () => {
-          get().refreshChats()
-        },
-      })
-    } catch (error: any) {
-      console.error('[Push] initPush FAILED', {
-        timestamp: new Date().toISOString(),
-        message: error?.message || String(error),
-        code: error?.code ?? '',
-        name: error?.name ?? '',
-        stack: error?.stack ?? '',
-      })
-      logger.error('push_init_failed', 'initPush catch block', error)
-      set({ pushInitFailed: true })
+        )
+        // Our sent request was accepted (wallet_a = me, status → accepted)
+        .on(
+          'postgres_changes',
+          {
+            event: 'UPDATE',
+            schema: 'public',
+            table: 'contacts',
+            filter: `wallet_a=eq.${me}`,
+          },
+          (payload) => {
+            const contact = payload.new as ContactRow
+            if (contact.status === 'accepted') {
+              // Re-fetch chats to add the newly accepted friend
+              get().refreshChats()
+            }
+          }
+        )
+        .subscribe()
+
+      set({ chatChannel: channel })
+    } catch (error) {
+      console.error('[Chat] initChat FAILED', error)
     } finally {
-      set({ isConnectingPush: false })
+      set({ isConnectingChat: false })
     }
   },
 
-  destroyPush: () => {
+  destroyChat: () => {
     const state = get()
-    if (state.pushUser) {
-      try {
-        state.pushUser.stream?.removeAllListeners?.()
-        state.pushUser.stream?.disconnect?.()
-      } catch {
-        // ignore
-      }
+    if (state.chatChannel) {
+      supabase.removeChannel(state.chatChannel)
     }
     set({
-      pushUser: null,
+      chatChannel: null,
       chatRequests: [],
-      pushInitialized: false,
-      isConnectingPush: false,
-      pushInitFailed: false,
+      chatReady: false,
+      isConnectingChat: false,
       walletAddress: null,
       chats: [],
       unreadChatCount: 0,
     })
   },
 
-  resetPushFailed: () => {
-    // Resets the push-failed flag so page.tsx useEffect can retry initPush automatically.
-    // Does NOT call initPush directly - the page-level effects handle re-initialization.
-    set({ pushInitFailed: false, pushInitialized: false })
-  },
-
   refreshChats: async () => {
     const state = get()
-    if (!state.pushUser || !state.pushInitialized) return
+    if (!state.walletAddress) return
+    const me = state.walletAddress.toLowerCase()
     try {
-      const { fetchChats: fetchPushChats, pushFeedToChat } = await import('@/lib/push')
-      const rawChats = await fetchPushChats(state.pushUser)
-      const chats = rawChats.map((feed: any) => pushFeedToChat(feed, state.walletAddress || ''))
-      const unreadChatCount = chats.reduce((acc: number, c: any) => acc + (c.unread || 0), 0)
-      set({ chats, unreadChatCount })
+      const { fetchContacts, fetchGroups, fetchLastMessages } = await import('@/lib/chat')
+      const [contacts, groups] = await Promise.all([
+        fetchContacts(me),
+        fetchGroups(me),
+      ])
+
+      const personalChatIds = contacts.map(c => {
+        const peerAddr = c.wallet_a.toLowerCase() === me ? c.wallet_b : c.wallet_a
+        return getChatId(me, peerAddr)
+      })
+      const groupChatIds = groups.map(g => g.id)
+      const allChatIds = [...personalChatIds, ...groupChatIds]
+      const lastMsgs = allChatIds.length > 0 ? await fetchLastMessages(allChatIds) : {}
+
+      set((s) => {
+        const personalChats = contacts.map(c => {
+          const peerAddr = c.wallet_a.toLowerCase() === me ? c.wallet_b : c.wallet_a
+          const chatId = getChatId(me, peerAddr)
+          const existing = s.chats.find(ch => ch.id === chatId)
+          const lastMsg = lastMsgs[chatId] || null
+          return {
+            id: chatId,
+            name: `${peerAddr.slice(0, 6)}...${peerAddr.slice(-4)}`,
+            avatarColor: addressToColor(peerAddr),
+            lastMessage: lastMsg?.content || existing?.lastMessage || '',
+            timestamp: lastMsg
+              ? new Date(lastMsg.created_at).getTime()
+              : (existing?.timestamp || new Date(c.created_at).getTime()),
+            unread: existing?.unread || 0,
+            online: false,
+            typing: false,
+            type: 'personal' as const,
+            walletAddress: peerAddr,
+            messages: existing?.messages || [],
+            pinned: existing?.pinned,
+          }
+        })
+
+        const groupChats = groups.map(g => {
+          const existing = s.chats.find(ch => ch.id === g.id)
+          const lastMsg = lastMsgs[g.id] || null
+          return {
+            id: g.id,
+            name: g.name,
+            avatarColor: addressToColor(g.id),
+            lastMessage: lastMsg?.content || existing?.lastMessage || '',
+            timestamp: lastMsg
+              ? new Date(lastMsg.created_at).getTime()
+              : (existing?.timestamp || new Date(g.created_at).getTime()),
+            unread: existing?.unread || 0,
+            online: false,
+            typing: false,
+            type: 'group' as const,
+            members: g.members.length,
+            messages: existing?.messages || [],
+            pinned: existing?.pinned,
+          }
+        })
+
+        const chats = [...personalChats, ...groupChats].sort((a, b) => b.timestamp - a.timestamp)
+        return { chats, unreadChatCount: chats.reduce((acc, c) => acc + c.unread, 0) }
+      })
     } catch (error) {
       console.error('refreshChats failed:', error)
     }
@@ -622,31 +667,37 @@ export const useStore = create<AppState>((set, get) => ({
 
   refreshChatRequests: async () => {
     const state = get()
-    if (!state.pushUser || !state.pushInitialized) return
+    if (!state.walletAddress) return
     try {
-      const { fetchChatRequests: fetchPushRequests, pushRequestToChatRequest } = await import('@/lib/push')
-      const rawRequests = await fetchPushRequests(state.pushUser)
-      const chatRequests = rawRequests.map((feed: any) => pushRequestToChatRequest(feed))
+      const { fetchPendingRequests } = await import('@/lib/chat')
+      const pendingRequests = await fetchPendingRequests(state.walletAddress)
+      const chatRequests: ChatRequest[] = pendingRequests.map(c => ({
+        id: c.id,
+        fromAddress: c.wallet_a,
+        message: c.request_msg || '',
+        timestamp: new Date(c.created_at).getTime(),
+      }))
       set({ chatRequests })
     } catch (error) {
       console.error('refreshChatRequests failed:', error)
     }
   },
 
-  acceptRequest: async (address) => {
+  acceptRequest: async (fromAddress) => {
     const state = get()
-    if (!state.pushUser) return
+    if (!state.walletAddress) return
     try {
-      const { acceptChatRequest } = await import('@/lib/push')
-      await acceptChatRequest(state.pushUser, address)
+      const { acceptFriendRequest } = await import('@/lib/chat')
+      await acceptFriendRequest(state.walletAddress, fromAddress)
       set((s) => ({
-        chatRequests: s.chatRequests.filter((r) => r.fromAddress.toLowerCase() !== address.toLowerCase()),
+        chatRequests: s.chatRequests.filter(
+          (r) => r.fromAddress.toLowerCase() !== fromAddress.toLowerCase()
+        ),
       }))
       await get().refreshChats()
       const { default: toast } = await import('react-hot-toast')
       const locale = get().locale
-      const msg = locale === 'zh' ? '已接受好友请求，快去打招呼吧！' : 'Friend request accepted! Say hi!'
-      toast.success(msg)
+      toast.success(locale === 'zh' ? '已接受好友请求，快去打招呼吧！' : 'Friend request accepted! Say hi!')
     } catch (error) {
       console.error('acceptRequest failed:', error)
       const { default: toast } = await import('react-hot-toast')
@@ -654,18 +705,19 @@ export const useStore = create<AppState>((set, get) => ({
     }
   },
 
-  rejectRequest: async (address) => {
+  rejectRequest: async (fromAddress) => {
     const state = get()
-    if (!state.pushUser) return
+    if (!state.walletAddress) return
     try {
-      const { rejectChatRequest } = await import('@/lib/push')
-      await rejectChatRequest(state.pushUser, address)
+      const { rejectFriendRequest } = await import('@/lib/chat')
+      await rejectFriendRequest(state.walletAddress, fromAddress)
       set((s) => ({
-        chatRequests: s.chatRequests.filter((r) => r.fromAddress.toLowerCase() !== address.toLowerCase()),
+        chatRequests: s.chatRequests.filter(
+          (r) => r.fromAddress.toLowerCase() !== fromAddress.toLowerCase()
+        ),
       }))
       const { default: toast } = await import('react-hot-toast')
-      const locale = get().locale
-      toast.success(locale === 'zh' ? '已拒绝请求' : 'Request rejected')
+      toast.success(get().locale === 'zh' ? '已拒绝请求' : 'Request rejected')
     } catch (error) {
       console.error('rejectRequest failed:', error)
     }
@@ -673,10 +725,10 @@ export const useStore = create<AppState>((set, get) => ({
 
   sendFriendRequest: async (address, message) => {
     const state = get()
-    if (!state.pushUser) return
+    if (!state.walletAddress) return
     try {
-      const { sendChatRequest } = await import('@/lib/push')
-      await sendChatRequest(state.pushUser, address, message || '')
+      const { sendFriendRequest: supabaseSend } = await import('@/lib/chat')
+      await supabaseSend(state.walletAddress, address, message)
     } catch (error) {
       console.error('sendFriendRequest failed:', error)
       throw error
@@ -685,58 +737,106 @@ export const useStore = create<AppState>((set, get) => ({
 
   sendPushMessage: async (address, content) => {
     const state = get()
-    if (!state.pushUser) return
+    if (!state.walletAddress) return
+    const me = state.walletAddress.toLowerCase()
+    const chatId = getChatId(me, address.toLowerCase())
+
+    // Optimistic update
+    const optimisticId = `opt-${Date.now()}`
+    const optimisticMsg: Message = {
+      id: optimisticId,
+      sender: 'me',
+      content,
+      timestamp: Date.now(),
+      status: 'sent',
+    }
+    set((s) => ({
+      chats: s.chats.map((c) =>
+        c.id === chatId
+          ? { ...c, lastMessage: content, timestamp: Date.now(), messages: [...c.messages, optimisticMsg] }
+          : c
+      ),
+    }))
+
     try {
-      const { sendMessage: pushSend } = await import('@/lib/push')
-      await pushSend(state.pushUser, address, content)
-      // Optimistically add message to local state
-      const msg = {
-        id: `m${Date.now()}`,
-        sender: 'me' as const,
-        content,
-        timestamp: Date.now(),
-        status: 'sent' as const,
-      }
+      const { sendMessage: supabaseSend } = await import('@/lib/chat')
+      await supabaseSend(chatId, me, content)
+    } catch (error) {
+      console.error('sendPushMessage failed:', error)
+      // Rollback optimistic message
       set((s) => ({
         chats: s.chats.map((c) =>
-          c.walletAddress?.toLowerCase() === address.toLowerCase()
-            ? { ...c, lastMessage: content, timestamp: Date.now(), messages: [...c.messages, msg] }
+          c.id === chatId
+            ? { ...c, messages: c.messages.filter((m) => m.id !== optimisticId) }
             : c
         ),
       }))
+      throw error
+    }
+  },
+
+  sendGroupPushMessage: async (chatId, content) => {
+    const state = get()
+    if (!state.walletAddress) return
+    const me = state.walletAddress.toLowerCase()
+
+    // Optimistic update
+    const optimisticId = `opt-${Date.now()}`
+    const optimisticMsg: Message = {
+      id: optimisticId,
+      sender: 'me',
+      content,
+      timestamp: Date.now(),
+      status: 'sent',
+    }
+    set((s) => ({
+      chats: s.chats.map((c) =>
+        c.id === chatId
+          ? { ...c, lastMessage: content, timestamp: Date.now(), messages: [...c.messages, optimisticMsg] }
+          : c
+      ),
+    }))
+
+    try {
+      const { sendMessage: supabaseSend } = await import('@/lib/chat')
+      await supabaseSend(chatId, me, content)
     } catch (error) {
-      console.error('sendPushMessage failed:', error)
+      console.error('sendGroupPushMessage failed:', error)
+      // Rollback optimistic message
+      set((s) => ({
+        chats: s.chats.map((c) =>
+          c.id === chatId
+            ? { ...c, messages: c.messages.filter((m) => m.id !== optimisticId) }
+            : c
+        ),
+      }))
       throw error
     }
   },
 
   searchUserByAddress: async (address) => {
-    const state = get()
-    if (!state.pushUser) return null
-    try {
-      const { getUserInfo } = await import('@/lib/push')
-      return await getUserInfo(state.pushUser, address)
-    } catch (error) {
-      console.error('searchUserByAddress failed:', error)
-      return null
-    }
+    // With Supabase, any valid EVM address is searchable — no network call needed
+    const ADDRESS_REGEX = /^0x[a-fA-F0-9]{40}$/
+    if (!ADDRESS_REGEX.test(address)) return null
+    return { address: address.toLowerCase() }
   },
 
-  loadChatHistory: async (address) => {
+  loadChatHistory: async (chatId) => {
     const state = get()
-    if (!state.pushUser || !state.walletAddress) return
+    if (!state.walletAddress) return
+    const me = state.walletAddress.toLowerCase()
     try {
-      const { fetchChatHistory, pushMessageToMessage } = await import('@/lib/push')
-      const rawMsgs = await fetchChatHistory(state.pushUser, address, 30)
-      const messages = rawMsgs
-        .map((msg: any) => pushMessageToMessage(msg, state.walletAddress!))
-        .reverse()
+      const { fetchMessages } = await import('@/lib/chat')
+      const rawMsgs = await fetchMessages(chatId, 50)
+      const messages: Message[] = rawMsgs.map(msg => ({
+        id: `db-${msg.id}`,
+        sender: msg.sender.toLowerCase() === me ? 'me' as const : msg.sender,
+        content: msg.content,
+        timestamp: new Date(msg.created_at).getTime(),
+        status: 'read' as const,
+      }))
       set((s) => ({
-        chats: s.chats.map((c) => {
-          const matchByWallet = c.walletAddress?.toLowerCase() === address.toLowerCase()
-          const matchByChatId = c.pushChatId === address
-          return (matchByWallet || matchByChatId) ? { ...c, messages } : c
-        }),
+        chats: s.chats.map((c) => (c.id === chatId ? { ...c, messages } : c)),
       }))
     } catch (error) {
       console.error('loadChatHistory failed:', error)
@@ -745,7 +845,7 @@ export const useStore = create<AppState>((set, get) => ({
 
   createGroup: async (groupName, memberAddresses) => {
     const state = get()
-    if (!state.pushUser || !state.pushInitialized) {
+    if (!state.walletAddress) {
       const { default: toast } = await import('react-hot-toast')
       const { t } = await import('@/lib/i18n')
       toast.error(t('chat.pushNotInitialized', state.locale))
@@ -758,73 +858,37 @@ export const useStore = create<AppState>((set, get) => ({
       return
     }
     try {
-      const { createGroupChat, addressToColor } = await import('@/lib/push')
+      const { createGroup: supabaseCreateGroup } = await import('@/lib/chat')
       const { t } = await import('@/lib/i18n')
       const locale = get().locale
       const finalName = groupName.trim() ||
         (locale === 'zh' ? `群聊（${memberAddresses.length + 1}人）` : `Group (${memberAddresses.length + 1})`)
-      const { chatId, name } = await createGroupChat(state.pushUser, finalName, memberAddresses)
+      const group = await supabaseCreateGroup(state.walletAddress, finalName, memberAddresses)
       const newChat: Chat = {
-        id: chatId,
-        name,
-        avatarColor: addressToColor(chatId),
+        id: group.id,
+        name: group.name,
+        avatarColor: addressToColor(group.id),
         lastMessage: locale === 'zh' ? '群聊已创建' : 'Group created',
         timestamp: Date.now(),
         unread: 0,
         online: false,
         typing: false,
         type: 'group',
-        members: memberAddresses.length + 1,
+        members: group.members.length,
         pinned: false,
         messages: [],
         walletAddress: undefined,
-        pushChatId: chatId,
-        did: undefined,
       }
       set((s) => ({
         chats: [newChat, ...s.chats],
-        unreadChatCount: s.unreadChatCount,
       }))
       const { default: toast } = await import('react-hot-toast')
       toast.success(t('chat.groupCreated', get().locale))
     } catch (error) {
       console.error('[createGroup] failed:', error)
-      if (error instanceof Error) {
-        console.error('[createGroup] message:', error.message)
-        console.error('[createGroup] stack:', error.stack)
-      }
-      if ((error as any)?.response) console.error('[createGroup] response:', (error as any).response)
-      if ((error as any)?.data) console.error('[createGroup] data:', (error as any).data)
       const { default: toast } = await import('react-hot-toast')
       const { t } = await import('@/lib/i18n')
       toast.error(t('chat.groupCreateFailed', get().locale))
-      throw error
-    }
-  },
-
-  sendGroupPushMessage: async (chatId, content) => {
-    const state = get()
-    if (!state.pushUser) return
-    try {
-      const { sendMessage: pushSend } = await import('@/lib/push')
-      await pushSend(state.pushUser, chatId, content)
-      // Optimistically add message to local state
-      const msg = {
-        id: `m${Date.now()}`,
-        sender: 'me' as const,
-        content,
-        timestamp: Date.now(),
-        status: 'sent' as const,
-      }
-      set((s) => ({
-        chats: s.chats.map((c) =>
-          c.pushChatId === chatId
-            ? { ...c, lastMessage: content, timestamp: Date.now(), messages: [...c.messages, msg] }
-            : c
-        ),
-      }))
-    } catch (error) {
-      console.error('sendGroupPushMessage failed:', error)
       throw error
     }
   },
