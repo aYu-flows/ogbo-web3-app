@@ -567,6 +567,24 @@ export const useStore = create<AppState>((set, get) => ({
             }
           }
         )
+        // New group created that includes me as a member
+        // Note: Supabase Realtime doesn't support array-containment server-side filters,
+        // so we subscribe to all groups INSERT and filter client-side.
+        .on(
+          'postgres_changes',
+          { event: 'INSERT', schema: 'public', table: 'groups' },
+          (payload) => {
+            const group = payload.new as GroupRow
+            const myAddr = get().walletAddress?.toLowerCase() || me
+            // Only act if I'm a member but not the creator
+            // (creator already has the group added locally via createGroup action)
+            const isMember = group.members.map((m: string) => m.toLowerCase()).includes(myAddr)
+            const isCreator = group.creator.toLowerCase() === myAddr
+            if (isMember && !isCreator) {
+              get().refreshChats()
+            }
+          }
+        )
         .subscribe()
 
       set({ chatChannel: channel })
