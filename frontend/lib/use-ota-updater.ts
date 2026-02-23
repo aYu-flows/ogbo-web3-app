@@ -3,10 +3,9 @@ import { BUNDLE_VERSION } from "./ota-version";
 import { useStore } from "./store";
 import { supabase } from "./supabaseClient";
 
-// Stable URL — always points to the latest OTA manifest on GitHub Releases.
-// The manifest is overwritten in-place (--clobber) on every OTA release.
-const MANIFEST_URL =
-  "https://github.com/aYu-flows/ogbo-web3-app/releases/download/ota-latest/ota-manifest.json";
+// Served from Vercel (same project) — no redirect, no CORS issues on Android WebView.
+// Bundle zip is still on GitHub Releases (downloaded by native HTTP, handles redirects fine).
+const MANIFEST_URL = "https://ogbox-web3-app.vercel.app/ota-manifest.json";
 
 /** Fire-and-forget diagnostic log → Supabase ota_debug_log table. */
 function otaLog(step: string, data?: Record<string, unknown>): void {
