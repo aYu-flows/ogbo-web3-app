@@ -279,7 +279,35 @@ export const useStore = create<AppState>((set, get) => ({
   switchTab: (tab) => set({ activeTab: tab }),
   toggleBalance: () => set((s) => ({ isBalanceVisible: !s.isBalanceVisible })),
   switchLocale: () => set((s) => ({ locale: s.locale === 'zh' ? 'en' : 'zh' })),
-  switchWallet: (id) => set({ currentWalletId: id }),
+  switchWallet: (id) => {
+    const state = get()
+    const targetWallet = state.wallets.find(w => w.id === id)
+    // If target wallet not found, or it has the same address as current chat wallet → just update UI
+    if (!targetWallet || targetWallet.address.toLowerCase() === (state.walletAddress?.toLowerCase() ?? '')) {
+      set({ currentWalletId: id })
+      return
+    }
+    const newAddress = targetWallet.address
+    // Tear down old chat subscription (sync)
+    if (state.chatChannel) {
+      supabase.removeChannel(state.chatChannel)
+    }
+    // Persist new address to localStorage
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('ogbo_wallet_address', newAddress)
+    }
+    // Atomically update wallet + reset chat state → triggers initChat via app/page.tsx useEffect
+    set({
+      currentWalletId: id,
+      walletAddress: newAddress,
+      chatChannel: null,
+      chatReady: false,
+      isConnectingChat: false,
+      chats: [],
+      chatRequests: [],
+      unreadChatCount: 0,
+    })
+  },
   toggleCoinFavorite: (coinId) =>
     set((s) => ({
       coins: s.coins.map((c) => (c.id === coinId ? { ...c, favorited: !c.favorited } : c)),
@@ -330,6 +358,14 @@ export const useStore = create<AppState>((set, get) => ({
     return s.wallets.find((w) => w.id === s.currentWalletId) || s.wallets[0]
   },
   login: (address?: string) => {
+    const state = get()
+    // Detect if the active chat address is changing (e.g. MetaMask account switch)
+    const addressChanging = !!address &&
+      address.toLowerCase() !== (state.walletAddress?.toLowerCase() ?? '')
+    // If address is changing, tear down old chat subscription first
+    if (addressChanging && state.chatChannel) {
+      supabase.removeChannel(state.chatChannel)
+    }
     let storedWallets = getStoredWallets()
     // 若 address 是外部钱包地址且尚未持久化到 localStorage，则先持久化
     if (address && !storedWallets.some(w => w.address.toLowerCase() === address.toLowerCase())) {
@@ -339,11 +375,21 @@ export const useStore = create<AppState>((set, get) => ({
     const activeWallet = getActiveWallet()
     const wallets = storedWallets.map(storedWalletToWallet)
     const currentWalletId = activeWallet?.id || wallets[0]?.id || ''
+    // If address changed, reset chat state so initChat will re-run for new address
+    const chatReset = addressChanging ? {
+      chatChannel: null,
+      chatReady: false,
+      isConnectingChat: false,
+      chats: [],
+      chatRequests: [],
+      unreadChatCount: 0,
+    } : {}
     set({
       isLoggedIn: true,
       walletAddress: address || null,
       wallets,
       currentWalletId,
+      ...chatReset,
     })
     if (typeof window !== 'undefined') {
       localStorage.setItem('ogbo_logged_in', 'true')
@@ -414,11 +460,15 @@ export const useStore = create<AppState>((set, get) => ({
 
   initChat: async (walletAddress) => {
     const state = get()
-    // Prevent double-init
-    if (state.chatReady || state.isConnectingChat) return
-
     const me = walletAddress.toLowerCase()
-    set({ isConnectingChat: true, chats: [], chatRequests: [], unreadChatCount: 0 })
+    // Prevent double-init only when the same address is already ready or connecting
+    if (state.walletAddress?.toLowerCase() === me && (state.chatReady || state.isConnectingChat)) return
+
+    // Defensively remove any existing channel before re-initializing
+    if (state.chatChannel) {
+      supabase.removeChannel(state.chatChannel)
+    }
+    set({ isConnectingChat: true, chatChannel: null, chats: [], chatRequests: [], unreadChatCount: 0 })
 
     try {
       const {
@@ -462,6 +512,9 @@ export const useStore = create<AppState>((set, get) => ({
         message: c.request_msg || '',
         timestamp: new Date(c.created_at).getTime(),
       }))
+
+      // Stale-check: if walletAddress changed while we were fetching, discard results
+      if (get().walletAddress?.toLowerCase() !== me) return
 
       set({ chats, chatRequests, chatReady: true })
 
@@ -587,11 +640,20 @@ export const useStore = create<AppState>((set, get) => ({
         )
         .subscribe()
 
+      // Second stale-check: if walletAddress changed during subscribe(), discard channel
+      if (get().walletAddress?.toLowerCase() !== me) {
+        supabase.removeChannel(channel)
+        return
+      }
       set({ chatChannel: channel })
     } catch (error) {
       console.error('[Chat] initChat FAILED', error)
     } finally {
-      set({ isConnectingChat: false })
+      // Only reset isConnectingChat if we are still the active wallet
+      // This prevents stale initChat from corrupting a newer initChat's in-progress state
+      if (get().walletAddress?.toLowerCase() === me) {
+        set({ isConnectingChat: false })
+      }
     }
   },
 
@@ -759,6 +821,12 @@ export const useStore = create<AppState>((set, get) => ({
     const me = state.walletAddress.toLowerCase()
     const chatId = getChatId(me, address.toLowerCase())
 
+    // Validate that the chat exists for the current wallet session
+    if (!state.chats.some(c => c.id === chatId)) {
+      console.warn('[sendPushMessage] chatId not found in current chats — wallet may have changed. Aborting.')
+      throw new Error('Chat session mismatch: please refresh and try again')
+    }
+
     // Optimistic update
     const optimisticId = `opt-${Date.now()}`
     const optimisticMsg: Message = {
@@ -797,6 +865,12 @@ export const useStore = create<AppState>((set, get) => ({
     const state = get()
     if (!state.walletAddress) return
     const me = state.walletAddress.toLowerCase()
+
+    // Validate that the group chat exists for the current wallet session
+    if (!state.chats.some(c => c.id === chatId)) {
+      console.warn('[sendGroupPushMessage] chatId not found in current chats — wallet may have changed. Aborting.')
+      throw new Error('Chat session mismatch: please refresh and try again')
+    }
 
     // Optimistic update
     const optimisticId = `opt-${Date.now()}`

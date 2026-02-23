@@ -261,10 +261,21 @@ function ChatDetail({ chat, onBack, locale }: { chat: Chat; onBack: () => void; 
 
 export default function ChatPage({ searchOpen: searchOpenProp, onCloseSearch }: { searchOpen?: boolean; onCloseSearch?: () => void }) {
   const { chats, locale, markChatRead, pinChat, deleteChat, chatRequests } = useStore();
+  const walletAddress = useStore((s) => s.walletAddress);
+  const isConnectingChat = useStore((s) => s.isConnectingChat);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedChat, setSelectedChat] = useState<string | null>(null);
   const [showRequests, setShowRequests] = useState(false);
   const [swipedId, setSwipedId] = useState<string | null>(null);
+
+  // Reset selected chat when wallet switches (walletAddress changes)
+  const prevWalletRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (walletAddress !== prevWalletRef.current) {
+      prevWalletRef.current = walletAddress;
+      setSelectedChat(null);
+    }
+  }, [walletAddress]);
 
   const searchOpen = searchOpenProp ?? false;
 
@@ -348,7 +359,12 @@ export default function ChatPage({ searchOpen: searchOpenProp, onCloseSearch }: 
         {/* Chat list */}
         <div className="flex-1 overflow-y-auto">
           {filteredChats.length === 0 ? (
-            searchQuery ? (
+            isConnectingChat ? (
+              <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
+                <div className="w-8 h-8 border-2 border-[var(--ogbo-blue)] border-t-transparent rounded-full animate-spin mb-3" />
+                <p className="text-xs opacity-60">{locale === "zh" ? "正在加载聊天…" : "Loading chats…"}</p>
+              </div>
+            ) : searchQuery ? (
               <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
                 <Search className="w-12 h-12 mb-3 opacity-30" />
                 <p className="text-sm">{locale === "zh" ? "无匹配结果" : "No matches found"}</p>
