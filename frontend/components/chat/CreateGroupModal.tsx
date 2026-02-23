@@ -2,7 +2,7 @@
 
 import { motion, AnimatePresence } from 'framer-motion'
 import { X, Search, Users, Loader2, Check } from 'lucide-react'
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useRef } from 'react'
 import { useStore } from '@/lib/store'
 import { t } from '@/lib/i18n'
 import type { Chat } from '@/lib/store'
@@ -17,6 +17,7 @@ export default function CreateGroupModal({ isOpen, onClose, friends }: CreateGro
   const { createGroup, locale } = useStore()
   const [selectedAddresses, setSelectedAddresses] = useState<string[]>([])
   const [groupName, setGroupName] = useState('')
+  const nameInputRef = useRef<HTMLInputElement>(null)
   const [searchQuery, setSearchQuery] = useState('')
   const [isCreating, setIsCreating] = useState(false)
 
@@ -46,9 +47,11 @@ export default function CreateGroupModal({ isOpen, onClose, friends }: CreateGro
 
   const handleCreate = async () => {
     if (selectedAddresses.length === 0 || isCreating) return
+    // Read DOM value directly to avoid stale React state on Android/Capacitor WebView
+    const actualGroupName = nameInputRef.current?.value ?? groupName
     setIsCreating(true)
     try {
-      await createGroup(groupName, selectedAddresses)
+      await createGroup(actualGroupName, selectedAddresses)
       setSelectedAddresses([])
       setGroupName('')
       setSearchQuery('')
@@ -101,6 +104,7 @@ export default function CreateGroupModal({ isOpen, onClose, friends }: CreateGro
               {/* Group name input */}
               <div>
                 <input
+                  ref={nameInputRef}
                   type="text"
                   value={groupName}
                   onChange={(e) => setGroupName(e.target.value)}

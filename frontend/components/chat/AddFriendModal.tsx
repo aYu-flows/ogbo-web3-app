@@ -28,6 +28,7 @@ export default function AddFriendModal({ isOpen, onClose, onOpenChat }: AddFrien
   const [requestMsg, setRequestMsg] = useState('')
   const [showMsgInput, setShowMsgInput] = useState(false)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const requestMsgRef = useRef<HTMLTextAreaElement>(null)
 
   // Determine state of this address (use lowercase comparison for case-insensitive matching)
   const isValidAddress = ADDRESS_REGEX.test(searchInput.trim())
@@ -89,9 +90,11 @@ export default function AddFriendModal({ isOpen, onClose, onOpenChat }: AddFrien
   const handleSend = async () => {
     if (!isValidAddress || sending || sent) return
     if (!normalizedAddr) return  // Normalization failed, do not send
+    // Read DOM value directly to avoid stale React state on Android/Capacitor WebView
+    const actualRequestMsg = requestMsgRef.current?.value ?? requestMsg
     setSending(true)
     try {
-      await sendFriendRequest(normalizedAddr, requestMsg)  // Use checksummed address
+      await sendFriendRequest(normalizedAddr, actualRequestMsg)  // Use checksummed address
       setSent(true)
       const { default: toast } = await import('react-hot-toast')
       toast.success(locale === 'zh' ? '好友请求已发送！' : 'Friend request sent!')
@@ -218,6 +221,7 @@ export default function AddFriendModal({ isOpen, onClose, onOpenChat }: AddFrien
                       <AnimatePresence>
                         {showMsgInput && (
                           <motion.textarea
+                            ref={requestMsgRef}
                             initial={{ height: 0, opacity: 0 }}
                             animate={{ height: 'auto', opacity: 1 }}
                             exit={{ height: 0, opacity: 0 }}
