@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { useStore } from "@/lib/store";
 import { t } from "@/lib/i18n";
+import { BUNDLE_VERSION } from "@/lib/ota-version";
 import toast from "react-hot-toast";
 import { LineChart, Line, ResponsiveContainer } from "recharts";
 
@@ -662,7 +663,7 @@ export default function HomePage() {
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ delay: 0.8 }}
-        className="mx-4 lg:mx-6 mt-6 lg:mt-8 rounded-2xl bg-blue-50 dark:bg-blue-950/30 p-4 lg:p-5 border border-blue-100 dark:border-blue-900/50"
+        className="relative mx-4 lg:mx-6 mt-6 lg:mt-8 rounded-2xl bg-blue-50 dark:bg-blue-950/30 p-4 lg:p-5 border border-blue-100 dark:border-blue-900/50"
       >
         <div className="flex items-start gap-3">
           <Shield className="w-5 h-5 text-[var(--ogbo-blue)] mt-0.5 flex-shrink-0" />
@@ -678,6 +679,7 @@ export default function HomePage() {
             </button>
           </div>
         </div>
+        <span className="absolute bottom-2 right-3 text-[10px] text-blue-300 dark:text-blue-700 select-none">{BUNDLE_VERSION}</span>
       </motion.div>
 
       {/* Modals */}
