@@ -6,6 +6,71 @@ import { supabase } from '@/lib/supabaseClient'
 import { getChatId, addressToColor } from '@/lib/chat'
 import type { ContactRow, MessageRow, GroupRow } from '@/lib/chat'
 
+// ======== CoinGecko Market Data ========
+interface CoinGeckoMarketItem {
+  id: string
+  current_price: number
+  market_cap: number
+  total_volume: number
+  high_24h: number
+  low_24h: number
+  price_change_percentage_24h: number | null
+  circulating_supply: number
+  total_supply: number | null
+  max_supply: number | null
+}
+
+const COINGECKO_BASE = 'https://api.coingecko.com/api/v3'
+
+const COIN_STATIC_LIST: Array<{ id: string; symbol: string; name: string; icon: string }> = [
+  { id: 'bitcoin',          symbol: 'BTC',  name: 'Bitcoin',         icon: '₿' },
+  { id: 'ethereum',         symbol: 'ETH',  name: 'Ethereum',        icon: 'Ξ' },
+  { id: 'ripple',           symbol: 'XRP',  name: 'XRP',             icon: '✕' },
+  { id: 'binancecoin',      symbol: 'BNB',  name: 'BNB',             icon: '◆' },
+  { id: 'solana',           symbol: 'SOL',  name: 'Solana',          icon: 'S' },
+  { id: 'tron',             symbol: 'TRX',  name: 'TRON',            icon: 'T' },
+  { id: 'dogecoin',         symbol: 'DOGE', name: 'Dogecoin',        icon: 'D' },
+  { id: 'bitcoin-cash',     symbol: 'BCH',  name: 'Bitcoin Cash',    icon: 'B' },
+  { id: 'cardano',          symbol: 'ADA',  name: 'Cardano',         icon: 'A' },
+  { id: 'hyperliquid',      symbol: 'HYPE', name: 'HyperLiquid',     icon: 'H' },
+  { id: 'wrapped-bitcoin',  symbol: 'WBTC', name: 'Wrapped Bitcoin', icon: '₿' },
+  { id: 'leo-token',        symbol: 'LEO',  name: 'LEO Token',       icon: 'L' },
+  { id: 'monero',           symbol: 'XMR',  name: 'Monero',          icon: 'M' },
+  { id: 'chainlink',        symbol: 'LINK', name: 'Chainlink',       icon: '⬡' },
+  { id: 'stellar',          symbol: 'XLM',  name: 'Stellar',         icon: '✦' },
+  { id: 'hedera-hashgraph', symbol: 'HBAR', name: 'Hedera',          icon: 'Ħ' },
+]
+
+const COINGECKO_IDS = COIN_STATIC_LIST.map(c => c.id).join(',')
+
+export function formatLargeNumber(n: number | null | undefined): string {
+  if (n == null || n === 0) return '--'
+  if (n >= 1e12) return (n / 1e12).toFixed(2) + 'T'
+  if (n >= 1e9)  return (n / 1e9).toFixed(2) + 'B'
+  if (n >= 1e6)  return (n / 1e6).toFixed(2) + 'M'
+  if (n >= 1e3)  return (n / 1e3).toFixed(2) + 'K'
+  return n.toFixed(4)
+}
+
+export function buildInitialCoins(): Coin[] {
+  return COIN_STATIC_LIST.map(c => ({
+    id: c.id,
+    symbol: c.symbol,
+    name: c.name,
+    icon: c.icon,
+    price: 0,
+    change24h: 0,
+    volume: '--',
+    marketCap: '--',
+    high24h: 0,
+    low24h: 0,
+    supply: '--',
+    maxSupply: '--',
+    chartData: [],
+    favorited: false,
+  }))
+}
+
 export type TabType = 'home' | 'chat' | 'market' | 'discover' | 'assets'
 export type Locale = 'zh' | 'en'
 
@@ -170,25 +235,6 @@ function groupToChat(group: GroupRow, lastMsg: MessageRow | null): Chat {
   }
 }
 
-const mockCoins: Coin[] = [
-  { id: 'btc', symbol: 'BTC', name: 'Bitcoin', price: 45234.56, change24h: 2.5, volume: '28.3B', marketCap: '890B', high24h: 46234, low24h: 44123, supply: '19.2M', maxSupply: '21M', icon: '₿', chartData: generateChartData(24, 45000), favorited: false },
-  { id: 'eth', symbol: 'ETH', name: 'Ethereum', price: 2891.23, change24h: -0.8, volume: '11.1B', marketCap: '348B', high24h: 2950, low24h: 2850, supply: '120M', maxSupply: '-', icon: 'Ξ', chartData: generateChartData(24, 2890), favorited: false },
-  { id: 'bnb', symbol: 'BNB', name: 'BNB', price: 312.45, change24h: 1.2, volume: '890M', marketCap: '48B', high24h: 318, low24h: 308, supply: '153M', maxSupply: '200M', icon: '◆', chartData: generateChartData(24, 312), favorited: false },
-  { id: 'sol', symbol: 'SOL', name: 'Solana', price: 98.76, change24h: 5.3, volume: '2.1B', marketCap: '42B', high24h: 102, low24h: 95, supply: '430M', maxSupply: '-', icon: 'S', chartData: generateChartData(24, 98), favorited: false },
-  { id: 'ada', symbol: 'ADA', name: 'Cardano', price: 0.43, change24h: -1.5, volume: '456M', marketCap: '15B', high24h: 0.45, low24h: 0.41, supply: '35B', maxSupply: '45B', icon: 'A', chartData: generateChartData(24, 0.43), favorited: false },
-  { id: 'dot', symbol: 'DOT', name: 'Polkadot', price: 7.23, change24h: 0.9, volume: '234M', marketCap: '9.2B', high24h: 7.45, low24h: 7.01, supply: '1.3B', maxSupply: '-', icon: 'D', chartData: generateChartData(24, 7.2), favorited: false },
-  { id: 'matic', symbol: 'MATIC', name: 'Polygon', price: 0.89, change24h: 3.2, volume: '567M', marketCap: '8.3B', high24h: 0.92, low24h: 0.86, supply: '9.3B', maxSupply: '10B', icon: 'M', chartData: generateChartData(24, 0.89), favorited: false },
-  { id: 'link', symbol: 'LINK', name: 'Chainlink', price: 14.56, change24h: -2.1, volume: '678M', marketCap: '8.1B', high24h: 15.2, low24h: 14.1, supply: '556M', maxSupply: '1B', icon: 'L', chartData: generateChartData(24, 14.5), favorited: false },
-  { id: 'uni', symbol: 'UNI', name: 'Uniswap', price: 6.78, change24h: 1.8, volume: '234M', marketCap: '5.1B', high24h: 7.0, low24h: 6.5, supply: '753M', maxSupply: '1B', icon: 'U', chartData: generateChartData(24, 6.7), favorited: false },
-  { id: 'aave', symbol: 'AAVE', name: 'Aave', price: 92.34, change24h: -0.3, volume: '123M', marketCap: '1.4B', high24h: 94, low24h: 91, supply: '14.8M', maxSupply: '16M', icon: 'A', chartData: generateChartData(24, 92), favorited: false },
-  { id: 'avax', symbol: 'AVAX', name: 'Avalanche', price: 35.67, change24h: 4.1, volume: '456M', marketCap: '13B', high24h: 37, low24h: 34, supply: '365M', maxSupply: '720M', icon: 'V', chartData: generateChartData(24, 35), favorited: false },
-  { id: 'atom', symbol: 'ATOM', name: 'Cosmos', price: 9.12, change24h: -1.8, volume: '189M', marketCap: '3.5B', high24h: 9.5, low24h: 8.9, supply: '386M', maxSupply: '-', icon: 'C', chartData: generateChartData(24, 9.1), favorited: false },
-  { id: 'xlm', symbol: 'XLM', name: 'Stellar', price: 0.12, change24h: 0.5, volume: '78M', marketCap: '3.4B', high24h: 0.125, low24h: 0.118, supply: '28B', maxSupply: '50B', icon: 'X', chartData: generateChartData(24, 0.12), favorited: false },
-  { id: 'algo', symbol: 'ALGO', name: 'Algorand', price: 0.18, change24h: 2.3, volume: '56M', marketCap: '1.4B', high24h: 0.19, low24h: 0.17, supply: '7.8B', maxSupply: '10B', icon: 'G', chartData: generateChartData(24, 0.18), favorited: false },
-  { id: 'near', symbol: 'NEAR', name: 'NEAR Protocol', price: 3.45, change24h: 6.7, volume: '234M', marketCap: '3.7B', high24h: 3.6, low24h: 3.2, supply: '1.08B', maxSupply: '-', icon: 'N', chartData: generateChartData(24, 3.4), favorited: false },
-  { id: 'ftm', symbol: 'FTM', name: 'Fantom', price: 0.42, change24h: -3.2, volume: '134M', marketCap: '1.2B', high24h: 0.45, low24h: 0.4, supply: '2.8B', maxSupply: '3.2B', icon: 'F', chartData: generateChartData(24, 0.42), favorited: false },
-]
-
 const mockDApps: DApp[] = [
   { id: '1', name: 'Uniswap', category: ['DeFi', 'DEX'], rating: 4.8, downloads: '1.2K', favorites: 256, description: '去中心化交易协议，采用自动做市商机制', url: 'https://app.uniswap.org', developer: 'Uniswap Labs', featured: true, iconColor: '#ff007a', favorited: false },
   { id: '2', name: 'OpenSea', category: ['NFT', 'Marketplace'], rating: 4.6, downloads: '980', favorites: 189, description: '全球最大的NFT交易市场', url: 'https://opensea.io', developer: 'OpenSea', featured: true, iconColor: '#2081e2', favorited: false },
@@ -218,6 +264,10 @@ interface AppState {
   isLoggedIn: boolean
   walletAddress: string | null
 
+  // Market data state
+  marketLoading: boolean
+  marketError: string | null
+
   // Supabase Realtime chat state
   chatReady: boolean
   isConnectingChat: boolean
@@ -234,7 +284,8 @@ interface AppState {
   pinChat: (chatId: string) => void
   deleteChat: (chatId: string) => void
   sendMessage: (chatId: string, content: string, sender?: string) => void
-  updatePrices: () => void
+  initMarketData: () => Promise<void>
+  updatePrices: () => Promise<void>
   getCurrentWallet: () => Wallet | undefined
   login: (address?: string) => void
   logout: () => void
@@ -263,12 +314,16 @@ export const useStore = create<AppState>((set, get) => ({
   currentWalletId: '',
   wallets: [],        // 由 checkAuthStatus() 在客户端从 localStorage 加载，SSR 安全
   chats: [],
-  coins: mockCoins,
+  coins: buildInitialCoins(),
   dapps: mockDApps,
   unreadChatCount: 0,
   notifications: 3,
   isLoggedIn: false,
   walletAddress: null,
+
+  // Market data initial state
+  marketLoading: false,
+  marketError: null,
 
   // Supabase chat initial state
   chatReady: false,
@@ -346,14 +401,90 @@ export const useStore = create<AppState>((set, get) => ({
           : c
       ),
     })),
-  updatePrices: () =>
-    set((s) => ({
-      coins: s.coins.map((c) => ({
-        ...c,
-        price: c.price * (1 + (Math.random() - 0.5) * 0.002),
-        chartData: [...c.chartData.slice(1), { time: Date.now(), price: c.price * (1 + (Math.random() - 0.5) * 0.002) }],
-      })),
-    })),
+  updatePrices: async () => {
+    try {
+      const res = await fetch(
+        `${COINGECKO_BASE}/coins/markets?vs_currency=usd&ids=${COINGECKO_IDS}&order=market_cap_desc&per_page=20&price_change_percentage=24h`
+      )
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const data: CoinGeckoMarketItem[] = await res.json()
+      set((s) => ({
+        marketError: null,
+        coins: s.coins.map((c) => {
+          const d = data.find(item => item.id === c.id)
+          if (!d) return c
+          const newPrice = d.current_price ?? c.price
+          const newPoint = { time: Date.now(), price: newPrice }
+          return {
+            ...c,
+            price: newPrice,
+            change24h: d.price_change_percentage_24h ?? c.change24h,
+            volume: formatLargeNumber(d.total_volume),
+            marketCap: formatLargeNumber(d.market_cap),
+            high24h: d.high_24h ?? c.high24h,
+            low24h: d.low_24h ?? c.low24h,
+            supply: formatLargeNumber(d.circulating_supply),
+            maxSupply: d.max_supply != null ? formatLargeNumber(d.max_supply) : '∞',
+            // 追加最新价格点（仅在 chartData 已有数据时才追加）
+            chartData: c.chartData.length > 0
+              ? [...c.chartData.slice(-23), newPoint]
+              : c.chartData,
+          }
+        }),
+      }))
+    } catch {
+      set({ marketError: 'network_error' })
+      // 保留上次已知价格，不重置为 0
+    }
+  },
+  initMarketData: async () => {
+    const state = get()
+    // 若已有真实价格数据，仅刷新价格，不重新拉取走势图
+    const alreadyLoaded = state.coins.some(c => c.price > 0)
+
+    if (!alreadyLoaded) {
+      set({ marketLoading: true, marketError: null })
+    }
+
+    // Step 1: 拉取主行情数据
+    await get().updatePrices()
+
+    // Step 2: 首次加载时并发拉取16个代币走势图
+    if (!alreadyLoaded) {
+      await Promise.allSettled(
+        COIN_STATIC_LIST.map(async (coin) => {
+          try {
+            const res = await fetch(
+              `${COINGECKO_BASE}/coins/${coin.id}/market_chart?vs_currency=usd&days=1&interval=hourly`
+            )
+            // 429 Too Many Requests 与其他错误同等处理，降级生成 mock 走势图
+            if (!res.ok) throw new Error(`HTTP ${res.status}`)
+            const json = await res.json()
+            const chartData = (json.prices as [number, number][]).map(
+              ([time, price]) => ({ time, price })
+            )
+            set((s) => ({
+              coins: s.coins.map(c => c.id === coin.id ? { ...c, chartData } : c),
+            }))
+          } catch {
+            // 降级：用当前价格生成随机走势图，优先于显示空图
+            // 注意：若 prices 为空数组（API 返回空数据），也触发此降级路径
+            set((s) => {
+              const found = s.coins.find(c => c.id === coin.id)
+              if (!found || found.price === 0) return s
+              return {
+                coins: s.coins.map(c =>
+                  c.id === coin.id ? { ...c, chartData: generateChartData(24, found.price) } : c
+                ),
+              }
+            })
+          }
+        })
+      )
+      // 无论 updatePrices 成功与否，首次加载流程结束后必须复位 loading
+      set({ marketLoading: false })
+    }
+  },
   getCurrentWallet: () => {
     const s = get()
     return s.wallets.find((w) => w.id === s.currentWalletId) || s.wallets[0]

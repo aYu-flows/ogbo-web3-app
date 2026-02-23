@@ -129,16 +129,18 @@ function CoinDetailModal({ open, onClose, coin, locale }: { open: boolean; onClo
 }
 
 export default function MarketPage() {
-  const { coins, locale, updatePrices, toggleCoinFavorite } = useStore();
+  const { coins, locale, updatePrices, toggleCoinFavorite, initMarketData, marketLoading, marketError } = useStore();
   const [activeTab, setActiveTab] = useState<MarketTab>("trending");
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCoin, setSelectedCoin] = useState<Coin | null>(null);
 
   useEffect(() => {
-    const interval = setInterval(updatePrices, 3000);
+    initMarketData();
+    // 每60秒刷新一次价格（updatePrices 为 async，setInterval 不 await，符合预期）
+    const interval = setInterval(updatePrices, 60_000);
     return () => clearInterval(interval);
-  }, [updatePrices]);
+  }, [initMarketData, updatePrices]);
 
   const getFilteredCoins = () => {
     let filtered = coins;
@@ -225,8 +227,56 @@ export default function MarketPage() {
         <span className="w-20 lg:w-28 text-right">{t("market.change", locale)}</span>
       </div>
 
+      {/* Network error banner (when data exists) */}
+      {marketError && coins.some(c => c.price > 0) && (
+        <div className="px-4 py-1.5 bg-amber-500/10 text-amber-600 dark:text-amber-400 text-xs text-center">
+          ⚠ {locale === "zh" ? "数据更新失败，显示最近价格" : "Update failed, showing last known prices"}
+        </div>
+      )}
+
       {/* Coin list */}
       <div className="flex-1 overflow-y-auto">
+
+        {/* Skeleton loading (first load) */}
+        {marketLoading && (
+          <div>
+            {Array.from({ length: 16 }).map((_, i) => (
+              <div key={i} className="flex items-center px-4 lg:px-6 py-3 border-b border-border/50 gap-3">
+                <div className="w-9 h-9 rounded-full bg-muted animate-pulse flex-shrink-0" />
+                <div className="flex-1 space-y-1.5">
+                  <div className="h-3.5 w-16 bg-muted animate-pulse rounded" />
+                  <div className="h-2.5 w-24 bg-muted animate-pulse rounded" />
+                </div>
+                <div className="w-24 space-y-1.5 flex flex-col items-end">
+                  <div className="h-3.5 w-20 bg-muted animate-pulse rounded" />
+                  <div className="h-2.5 w-14 bg-muted animate-pulse rounded" />
+                </div>
+                <div className="w-20 flex flex-col items-end gap-1">
+                  <div className="h-5 w-16 bg-muted animate-pulse rounded-md" />
+                  <div className="h-5 w-14 bg-muted animate-pulse rounded" />
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Full error state (no data, load failed) */}
+        {!marketLoading && marketError && coins.every(c => c.price === 0) && (
+          <div className="flex flex-col items-center justify-center py-20 px-4">
+            <div className="w-12 h-12 rounded-full bg-amber-500/10 flex items-center justify-center mb-3 text-2xl">⚠</div>
+            <p className="text-sm font-medium text-muted-foreground">
+              {locale === "zh" ? "网络异常，无法加载行情数据" : "Network error, failed to load market data"}
+            </p>
+            <button
+              onClick={() => initMarketData()}
+              className="mt-4 rounded-xl bg-[var(--ogbo-blue)] px-6 py-2 text-sm text-white font-medium hover:bg-[var(--ogbo-blue-hover)] transition-colors"
+            >
+              {locale === "zh" ? "重试" : "Retry"}
+            </button>
+          </div>
+        )}
+        {/* Coin list (hidden while loading or fatal error) */}
+        {!marketLoading && !(marketError && coins.every(c => c.price === 0)) && (
         <AnimatePresence mode="wait">
           <motion.div
             key={activeTab + searchQuery}
@@ -303,6 +353,7 @@ export default function MarketPage() {
             })}
           </motion.div>
         </AnimatePresence>
+        )}
       </div>
 
       <CoinDetailModal open={!!selectedCoin} onClose={() => setSelectedCoin(null)} coin={selectedCoin} locale={locale} />
