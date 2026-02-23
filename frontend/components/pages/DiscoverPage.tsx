@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Search, Star, Heart, ExternalLink, X, ChevronRight, ChevronLeft, Shield, Sparkles, Zap } from "lucide-react";
+import { Search, Star, Heart, Clock, X, ChevronRight, ChevronLeft, Shield, Sparkles, Zap } from "lucide-react";
 import { useStore, type DApp } from "@/lib/store";
 import { t } from "@/lib/i18n";
 import toast from "react-hot-toast";
@@ -41,7 +41,6 @@ const banners = [
 
 function DAppDetailSheet({ open, onClose, dapp, locale }: { open: boolean; onClose: () => void; dapp: DApp | null; locale: "zh" | "en" }) {
   const { toggleDAppFavorite } = useStore();
-  const [confirmOpen, setConfirmOpen] = useState(false);
   if (!open || !dapp) return null;
 
   return (
@@ -108,47 +107,13 @@ function DAppDetailSheet({ open, onClose, dapp, locale }: { open: boolean; onClo
               </motion.button>
               <motion.button
                 whileTap={{ scale: 0.98 }}
-                onClick={() => setConfirmOpen(true)}
+                onClick={() => toast(t("discover.pendingIntegration", locale))}
                 className="flex-1 rounded-xl bg-[var(--ogbo-blue)] py-3 text-sm font-medium text-white flex items-center justify-center gap-2 hover:bg-[var(--ogbo-blue-hover)] transition-colors"
               >
-                <ExternalLink className="w-4 h-4" />
+                <Clock className="w-4 h-4" />
                 {t("discover.openApp", locale)}
               </motion.button>
             </div>
-
-            {/* Confirm Dialog */}
-            <AnimatePresence>
-              {confirmOpen && (
-                <motion.div className="fixed inset-0 z-50 flex items-center justify-center p-4" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-                  <div className="absolute inset-0 bg-foreground/50 backdrop-blur-sm" onClick={() => setConfirmOpen(false)} />
-                  <motion.div
-                    initial={{ opacity: 0, scale: 0.9 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    exit={{ opacity: 0, scale: 0.9 }}
-                    className="relative w-full max-w-xs rounded-2xl bg-card p-5 text-card-foreground text-center"
-                  >
-                    <h4 className="text-sm font-semibold mb-2">{t("discover.openExternal", locale)}</h4>
-                    <p className="text-xs text-[var(--ogbo-blue)] font-mono mb-2">{dapp.url}</p>
-                    <p className="text-xs text-muted-foreground mb-4">{t("discover.confirmSafe", locale)}</p>
-                    <div className="flex gap-3">
-                      <button onClick={() => setConfirmOpen(false)} className="flex-1 rounded-xl border border-input py-2 text-sm font-medium hover:bg-muted transition-colors">
-                        {t("common.cancel", locale)}
-                      </button>
-                      <button
-                        onClick={() => {
-                          window.open(dapp.url, "_blank", "noopener,noreferrer");
-                          setConfirmOpen(false);
-                          onClose();
-                        }}
-                        className="flex-1 rounded-xl bg-[var(--ogbo-blue)] py-2 text-sm font-medium text-white hover:bg-[var(--ogbo-blue-hover)] transition-colors"
-                      >
-                        {t("discover.confirmOpen", locale)}
-                      </button>
-                    </div>
-                  </motion.div>
-                </motion.div>
-              )}
-            </AnimatePresence>
           </motion.div>
         </motion.div>
       )}

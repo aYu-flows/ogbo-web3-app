@@ -56,7 +56,7 @@ export default function TopBar({
   const isHome = activeTab === "home";
 
   return (
-    <header className="relative bg-card border-b border-border z-30" style={{ paddingTop: 'calc(var(--safe-top, env(safe-area-inset-top, 0px)) + 21px)' }}>
+    <header className="relative bg-card border-b border-border z-30" style={{ paddingTop: 'calc(var(--safe-top, env(safe-area-inset-top, 0px)) + 26px)' }}>
       <div className="relative flex items-end justify-between px-4 lg:px-6 h-14 pb-3">
       {/* Left: Logo or Title */}
       <div className="flex items-center gap-2.5">
@@ -79,7 +79,7 @@ export default function TopBar({
       </div>
 
       {/* Right actions */}
-      <div className="flex items-center gap-1">
+      <div className="flex items-center gap-0.5">
         {/* Search button for chat/market */}
         {(activeTab === "chat" || activeTab === "market") && onSearch && (
           <motion.button
@@ -209,9 +209,6 @@ export default function TopBar({
           aria-label="Notifications"
         >
           <Bell className="w-5 h-5 text-foreground" />
-          {notifications > 0 && (
-            <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-[var(--ogbo-red)]" />
-          )}
         </motion.button>
 
         {/* Logout button */}

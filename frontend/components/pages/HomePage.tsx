@@ -474,9 +474,6 @@ export default function HomePage() {
     { name: "1inch", rating: 4.5, users: "876", color: "#94a6c3" },
   ];
 
-  const todayProfit = 1255.5;
-  const todayProfitPercent = 1.02;
-
   return (
     <div className="pb-4 lg:pb-8 lg:max-w-5xl lg:mx-auto lg:w-full">
       {/* Hero Card */}
@@ -518,20 +515,7 @@ export default function HomePage() {
             </motion.div>
           </AnimatePresence>
 
-          <motion.div
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ delay: 0.2 }}
-            className="mt-2 flex items-center gap-1"
-          >
-            <span className="text-sm text-white/80">{t("home.todayProfit", locale)}:</span>
-            <span className={`text-sm font-medium ${todayProfit >= 0 ? "text-emerald-300" : "text-red-300"}`}>
-              {todayProfit >= 0 ? "+" : ""}¥{isBalanceVisible ? todayProfit.toFixed(2) : "***"} ({todayProfitPercent >= 0 ? "+" : ""}{todayProfitPercent}%)
-            </span>
-            {todayProfit >= 0 ? <TrendingUp className="w-3.5 h-3.5 text-emerald-300" /> : null}
-          </motion.div>
-
-          <div className="flex gap-2 mt-4">
+          <div className="flex gap-2 mt-6">
             {quickActions.map((action, i) => (
               <motion.button
                 key={action.label}
