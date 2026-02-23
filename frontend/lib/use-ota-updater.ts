@@ -95,25 +95,6 @@ export async function runOtaUpdate(): Promise<void> {
 
   otaLog("VERSION_MISMATCH", { current: BUNDLE_VERSION, remote: manifest.version });
 
-  // Check if this version was already downloaded — reuse it instead of downloading again.
-  // This prevents: (a) redundant downloads on every launch before cold-start,
-  // (b) calling next() with a new bundle ID each time (which can cause white screen).
-  try {
-    const list = await CapacitorUpdater.list();
-    const existing = (list.bundles ?? []).find(
-      (b: any) => b.version === manifest!.version && b.status === "success"
-    );
-    if (existing) {
-      otaLog("BUNDLE_ALREADY_DOWNLOADED", { bundleId: existing.id, version: existing.version });
-      await CapacitorUpdater.next({ id: existing.id });
-      otaLog("NEXT_OK_REUSE", { bundleId: existing.id, version: existing.version });
-      return;
-    }
-  } catch (e: any) {
-    otaLog("LIST_CHECK_FAIL", { error: String(e) });
-    // non-critical, proceed to download
-  }
-
   // Set up download progress listener
   const { setOtaProgress, setOtaDone } = useStore.getState();
   setOtaProgress(0);
@@ -162,11 +143,35 @@ export async function runOtaUpdate(): Promise<void> {
   try { listenerHandle?.remove(); } catch (_) {}
   try { failListenerHandle?.remove(); } catch (_) {}
 
+  // Wait briefly for the native plugin to fully persist the bundle to its internal
+  // storage before calling next(). Without this, next() may fail immediately with
+  // "Bundle {id} does not exist" because the write hasn't completed yet.
+  await new Promise(r => setTimeout(r, 500));
+
+  // Verify bundle appears in list() and obtain the stored ID.
+  // The ID returned by download() may differ from what the native storage uses;
+  // calling list() after the delay gives us the canonical stored ID.
+  let bundleIdForNext = bundle.id;
+  try {
+    const listAfter = await CapacitorUpdater.list();
+    const stored = (listAfter.bundles ?? []).find(
+      (b: any) => b.version === manifest!.version
+    );
+    if (stored) {
+      bundleIdForNext = stored.id;
+      otaLog("BUNDLE_VERIFIED_IN_LIST", { bundleId: stored.id, status: stored.status });
+    } else {
+      otaLog("BUNDLE_NOT_IN_LIST", { fallbackId: bundle.id });
+    }
+  } catch (e: any) {
+    otaLog("LIST_VERIFY_FAIL", { error: String(e) });
+  }
+
   // Schedule for next cold start (non-intrusive)
   try {
-    await CapacitorUpdater.next({ id: bundle.id });
+    await CapacitorUpdater.next({ id: bundleIdForNext });
     console.info(`[OTA] Bundle ${manifest.version} scheduled for next restart.`);
-    otaLog("NEXT_OK", { bundleId: bundle.id, version: manifest.version });
+    otaLog("NEXT_OK", { bundleId: bundleIdForNext, version: manifest.version });
     setOtaProgress(100);
     setOtaDone(true);
     setTimeout(() => {
@@ -175,7 +180,7 @@ export async function runOtaUpdate(): Promise<void> {
     }, 2500);
   } catch (e: any) {
     console.warn("[OTA] Failed to schedule bundle:", e);
-    otaLog("NEXT_FAIL", { error: String(e) });
+    otaLog("NEXT_FAIL", { error: String(e), bundleId: bundleIdForNext });
     setOtaProgress(null);
   }
 }
