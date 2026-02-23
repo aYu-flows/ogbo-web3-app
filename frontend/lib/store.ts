@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import type { RealtimeChannel } from '@supabase/supabase-js'
 import type { Signer } from 'ethers'
-import { getStoredWallets, getActiveWallet, saveExternalWallet, removeExternalWallet, type StoredWallet as StoredWalletType } from '@/lib/walletCrypto'
+import { getStoredWallets, getActiveWallet, saveExternalWallet, removeExternalWallet, setActiveWalletId, type StoredWallet as StoredWalletType } from '@/lib/walletCrypto'
 import { supabase } from '@/lib/supabaseClient'
 import { getChatId, addressToColor } from '@/lib/chat'
 import type { ContactRow, MessageRow, GroupRow } from '@/lib/chat'
@@ -292,10 +292,11 @@ export const useStore = create<AppState>((set, get) => ({
     if (state.chatChannel) {
       supabase.removeChannel(state.chatChannel)
     }
-    // Persist new address to localStorage
+    // Persist new address and active wallet to localStorage (both keys must stay in sync)
     if (typeof window !== 'undefined') {
       localStorage.setItem('ogbo_wallet_address', newAddress)
     }
+    setActiveWalletId(id) // keeps ogbo_active_wallet in sync with ogbo_wallet_address
     // Atomically update wallet + reset chat state → triggers initChat via app/page.tsx useEffect
     set({
       currentWalletId: id,
@@ -434,7 +435,13 @@ export const useStore = create<AppState>((set, get) => ({
     }
     const activeWallet = getActiveWallet()
     const wallets = storedWallets.map(storedWalletToWallet)
-    const currentWalletId = activeWallet?.id || wallets[0]?.id || ''
+    // Reconcile currentWalletId: prefer the wallet whose address matches ogbo_wallet_address.
+    // This prevents a stale ogbo_active_wallet (e.g. from an old session before fix1 was deployed)
+    // from causing an AssetsPage ↔ Chat mismatch on page reload.
+    const walletByAddress = savedAddress
+      ? storedWallets.find(w => w.address.toLowerCase() === savedAddress.toLowerCase())
+      : null
+    const currentWalletId = walletByAddress?.id || activeWallet?.id || wallets[0]?.id || ''
     set({ isLoggedIn, walletAddress: savedAddress, wallets, currentWalletId })
   },
 

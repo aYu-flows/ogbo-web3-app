@@ -24,12 +24,14 @@ const mockGetStoredWallets = jest.fn()
 const mockGetActiveWallet = jest.fn()
 const mockSaveExternalWallet = jest.fn()
 const mockRemoveExternalWallet = jest.fn()
+const mockSetActiveWalletId = jest.fn()
 
 jest.mock('@/lib/walletCrypto', () => ({
   getStoredWallets: (...args: any[]) => mockGetStoredWallets(...args),
   getActiveWallet: (...args: any[]) => mockGetActiveWallet(...args),
   saveExternalWallet: (...args: any[]) => mockSaveExternalWallet(...args),
   removeExternalWallet: (...args: any[]) => mockRemoveExternalWallet(...args),
+  setActiveWalletId: (...args: any[]) => mockSetActiveWalletId(...args),
 }))
 
 // Mock dynamic import('@/lib/chat') used by initChat
@@ -116,6 +118,11 @@ describe('T1: switchWallet — different address', () => {
   it('removes the old chat channel', () => {
     getState().switchWallet('wallet-b')
     expect(mockRemoveChannel).toHaveBeenCalledTimes(1)
+  })
+
+  it('calls setActiveWalletId with the new wallet id', () => {
+    getState().switchWallet('wallet-b')
+    expect(mockSetActiveWalletId).toHaveBeenCalledWith('wallet-b')
   })
 
   it('persists new address to localStorage (browser env only)', () => {
