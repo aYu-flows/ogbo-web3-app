@@ -112,11 +112,12 @@ function ChatDetail({ chat, onBack, locale }: { chat: Chat; onBack: () => void; 
   }, [chat.id, chatReady]);
 
   const handleSend = async () => {
-    if (!input.trim()) {
+    const rawValue = inputRef.current?.value ?? input;
+    if (!rawValue.trim()) {
       toast(locale === 'zh' ? '请先输入消息内容' : 'Please enter a message first')
       return
     }
-    const content = input.trim();
+    const content = rawValue.trim();
     setInput("");
     setShowEmoji(false);
 
@@ -202,9 +203,6 @@ function ChatDetail({ chat, onBack, locale }: { chat: Chat; onBack: () => void; 
                   ? "bg-[var(--ogbo-blue)] text-white rounded-br-md"
                   : "bg-card text-card-foreground border border-border rounded-bl-md"
               }`}>
-                {chat.type === "group" && !isMe && (
-                  <p className="text-[10px] font-medium mb-0.5 opacity-70">{msg.sender}</p>
-                )}
                 <p className="text-sm leading-relaxed">{msg.content}</p>
                 <p className={`text-[10px] mt-1 ${isMe ? "text-white/60" : "text-muted-foreground"}`}>
                   {new Date(msg.timestamp).getHours().toString().padStart(2, "0")}:

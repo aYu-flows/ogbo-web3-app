@@ -884,7 +884,7 @@ export const useStore = create<AppState>((set, get) => ({
       const group = await supabaseCreateGroup(state.walletAddress, finalName, memberAddresses)
       const newChat: Chat = {
         id: group.id,
-        name: group.name,
+        name: finalName,
         avatarColor: addressToColor(group.id),
         lastMessage: locale === 'zh' ? '群聊已创建' : 'Group created',
         timestamp: Date.now(),
