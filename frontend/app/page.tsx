@@ -131,7 +131,7 @@ export default function Page() {
       <Toaster
         position="top-center"
         containerStyle={{
-          top: "33vh",
+          top: "20vh",
         }}
         toastOptions={{
           duration: 2000,

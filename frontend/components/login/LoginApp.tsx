@@ -2217,7 +2217,7 @@ export default function LoginApp({
 
       {/* Toaster - only render when standalone (modal mode reuses parent page's Toaster) */}
       {!isModal && (
-        <Toaster position="top-center" containerStyle={{ top: "33vh" }} toastOptions={{
+        <Toaster position="top-center" containerStyle={{ top: "20vh" }} toastOptions={{
           duration: 2500,
           style: { background: "hsl(var(--card))", color: "hsl(var(--card-foreground))", border: "1px solid hsl(var(--border))", borderRadius: "12px", fontSize: "13px", fontWeight: 500, boxShadow: "0 4px 12px rgba(0,0,0,0.1)" },
         }} />
