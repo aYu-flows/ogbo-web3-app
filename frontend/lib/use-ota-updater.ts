@@ -4,7 +4,6 @@ import { useStore } from "./store";
 import { supabase } from "./supabaseClient";
 
 // Served from Vercel (same project) — no redirect, no CORS issues on Android WebView.
-// Bundle zip is still on GitHub Releases (downloaded by native HTTP, handles redirects fine).
 const MANIFEST_URL = "https://ogbox-web3-app.vercel.app/ota-manifest.json";
 
 /** Fire-and-forget diagnostic log → Supabase ota_debug_log table. */
@@ -17,27 +16,40 @@ function otaLog(step: string, data?: Record<string, unknown>): void {
     });
 }
 
+// ─── Module-level notifyAppReady ─────────────────────────────────────────────
+// Called immediately when this module loads (before React mounts).
+// Critical: the OTA plugin's rollback timer starts the moment the new bundle
+// begins loading. If notifyAppReady() is only called inside useEffect (after
+// first paint), the timer may expire first and trigger an unwanted rollback.
+if (typeof window !== "undefined") {
+  const _cap = (window as any).Capacitor;
+  if (_cap?.getPlatform?.() === "android") {
+    import("@capgo/capacitor-updater")
+      .then(({ CapacitorUpdater }) => CapacitorUpdater.notifyAppReady())
+      .catch(() => {});
+  }
+}
+
 /**
  * Core OTA update logic. Exported for unit testing.
- *
- * Execution steps (Android Capacitor only):
- * 1. notifyAppReady() — declare the current bundle is healthy
- * 2. Fetch version manifest from GitHub Releases (ota-latest tag)
- * 3. Compare manifest.version with BUNDLE_VERSION
- * 4. If newer: download bundle, schedule with next()
- *
- * All errors are silently caught and warned.
  */
 export async function runOtaUpdate(): Promise<void> {
   // Guard: only run inside Android Capacitor
   const cap = (typeof window !== "undefined") ? (window as any).Capacitor : undefined;
   if (!cap || cap.getPlatform?.() !== "android") return;
 
-  otaLog("START", { platform: cap.getPlatform?.() });
-
   const { CapacitorUpdater } = await import("@capgo/capacitor-updater");
 
-  // Always notify the plugin that the current bundle loaded successfully.
+  // Log current active bundle info for diagnostics
+  let currentInfo: string | null = null;
+  try {
+    const cur = await (CapacitorUpdater as any).current?.();
+    currentInfo = cur?.bundle?.version ?? null;
+  } catch (_) {}
+
+  otaLog("START", { platform: cap.getPlatform?.(), activeBundleVersion: currentInfo });
+
+  // notifyAppReady already called at module level; call again here as safety net
   try {
     await CapacitorUpdater.notifyAppReady();
     otaLog("NOTIFY_APP_READY_OK");
@@ -81,7 +93,26 @@ export async function runOtaUpdate(): Promise<void> {
     return;
   }
 
-  otaLog("VERSION_MISMATCH", { current: BUNDLE_VERSION, remote: manifest.version, bundleUrl: manifest.url });
+  otaLog("VERSION_MISMATCH", { current: BUNDLE_VERSION, remote: manifest.version });
+
+  // Check if this version was already downloaded — reuse it instead of downloading again.
+  // This prevents: (a) redundant downloads on every launch before cold-start,
+  // (b) calling next() with a new bundle ID each time (which can cause white screen).
+  try {
+    const list = await CapacitorUpdater.list();
+    const existing = (list.bundles ?? []).find(
+      (b: any) => b.version === manifest!.version && b.status === "success"
+    );
+    if (existing) {
+      otaLog("BUNDLE_ALREADY_DOWNLOADED", { bundleId: existing.id, version: existing.version });
+      await CapacitorUpdater.next({ id: existing.id });
+      otaLog("NEXT_OK_REUSE", { bundleId: existing.id, version: existing.version });
+      return;
+    }
+  } catch (e: any) {
+    otaLog("LIST_CHECK_FAIL", { error: String(e) });
+    // non-critical, proceed to download
+  }
 
   // Set up download progress listener
   const { setOtaProgress, setOtaDone } = useStore.getState();
@@ -93,7 +124,6 @@ export async function runOtaUpdate(): Promise<void> {
     listenerHandle = await CapacitorUpdater.addListener("download", (info: any) => {
       const pct = typeof info.percent === "number" ? info.percent : null;
       setOtaProgress(pct);
-      // Log every 25% to avoid flooding
       if (pct !== null && pct - lastLoggedPct >= 25) {
         lastLoggedPct = pct;
         otaLog("DOWNLOAD_PROGRESS", { percent: pct });
@@ -102,10 +132,8 @@ export async function runOtaUpdate(): Promise<void> {
     otaLog("LISTENER_SETUP_OK");
   } catch (e: any) {
     otaLog("LISTENER_SETUP_FAIL", { error: String(e) });
-    // non-critical, continue without progress tracking
   }
 
-  // Also listen for downloadFailed event
   let failListenerHandle: { remove: () => void } | null = null;
   try {
     failListenerHandle = await CapacitorUpdater.addListener("downloadFailed", (info: any) => {
@@ -113,7 +141,7 @@ export async function runOtaUpdate(): Promise<void> {
     });
   } catch (_) {}
 
-  // Download new bundle in background
+  // Download new bundle
   otaLog("DOWNLOAD_START", { url: manifest.url, version: manifest.version });
   let bundle;
   try {
@@ -134,7 +162,7 @@ export async function runOtaUpdate(): Promise<void> {
   try { listenerHandle?.remove(); } catch (_) {}
   try { failListenerHandle?.remove(); } catch (_) {}
 
-  // Schedule for next app background / cold start (non-intrusive)
+  // Schedule for next cold start (non-intrusive)
   try {
     await CapacitorUpdater.next({ id: bundle.id });
     console.info(`[OTA] Bundle ${manifest.version} scheduled for next restart.`);
@@ -153,10 +181,8 @@ export async function runOtaUpdate(): Promise<void> {
 }
 
 /**
- * OTA update hook for Android Capacitor builds.
- *
- * Must be called unconditionally at the top of the root page component,
- * before any early-return branches, so notifyAppReady() is always reached.
+ * OTA update hook — must be the first hook in the root page component,
+ * before any early returns, so the module-level notifyAppReady runs ASAP.
  */
 export function useOtaUpdater(): void {
   useEffect(() => {
