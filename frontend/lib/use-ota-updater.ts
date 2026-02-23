@@ -1,15 +1,17 @@
 import { useEffect } from "react";
 import { BUNDLE_VERSION } from "./ota-version";
 
+// Stable URL — always points to the latest OTA manifest on GitHub Releases.
+// The manifest is overwritten in-place (--clobber) on every OTA release.
 const MANIFEST_URL =
-  `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/ota-updates/ota-manifest.json`;
+  "https://github.com/aYu-flows/ogbo-web3-app/releases/download/ota-latest/ota-manifest.json";
 
 /**
  * Core OTA update logic. Exported for unit testing.
  *
  * Execution steps (Android Capacitor only):
  * 1. notifyAppReady() — declare the current bundle is healthy
- * 2. Fetch version manifest from Supabase Storage
+ * 2. Fetch version manifest from GitHub Releases (ota-latest tag)
  * 3. Compare manifest.version with BUNDLE_VERSION
  * 4. If newer: download bundle, schedule with next()
  *
