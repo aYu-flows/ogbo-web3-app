@@ -227,13 +227,6 @@ export default function MarketPage() {
         <span className="w-20 lg:w-28 text-right">{t("market.change", locale)}</span>
       </div>
 
-      {/* Network error banner (when data exists) */}
-      {marketError && coins.some(c => c.price > 0) && (
-        <div className="px-4 py-1.5 bg-amber-500/10 text-amber-600 dark:text-amber-400 text-xs text-center">
-          ⚠ {locale === "zh" ? "数据更新失败，显示最近价格" : "Update failed, showing last known prices"}
-        </div>
-      )}
-
       {/* Coin list */}
       <div className="flex-1 overflow-y-auto">
 
@@ -277,14 +270,7 @@ export default function MarketPage() {
         )}
         {/* Coin list (hidden while loading or fatal error) */}
         {!marketLoading && !(marketError && coins.every(c => c.price === 0)) && (
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={activeTab + searchQuery}
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.2 }}
-          >
+        <div>
             {/* Favorites empty state */}
             {activeTab === "favorites" && filteredCoins.length === 0 && !searchQuery && (
               <div className="flex flex-col items-center justify-center py-20 px-4">
@@ -306,14 +292,11 @@ export default function MarketPage() {
               </div>
             )}
 
-            {filteredCoins.map((coin, i) => {
+            {filteredCoins.map((coin) => {
               const isUp = coin.change24h >= 0;
               return (
                 <motion.button
                   key={coin.id}
-                  initial={{ opacity: 0, y: 5 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: i * 0.02 }}
                   whileTap={{ scale: 0.99 }}
                   onClick={() => setSelectedCoin(coin)}
                   className="w-full flex items-center px-4 lg:px-6 py-3 lg:py-4 hover:bg-muted/50 transition-colors text-left border-b border-border/50"
@@ -351,8 +334,7 @@ export default function MarketPage() {
                 </motion.button>
               );
             })}
-          </motion.div>
-        </AnimatePresence>
+        </div>
         )}
       </div>
 

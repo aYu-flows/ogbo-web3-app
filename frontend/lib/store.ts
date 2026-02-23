@@ -21,6 +21,41 @@ interface CoinGeckoMarketItem {
 }
 
 const COINGECKO_BASE = 'https://api.coingecko.com/api/v3'
+export const MARKET_CACHE_KEY = 'ogbo_market_data_cache'
+
+export interface MarketCacheEntry {
+  id: string
+  price: number
+  change24h: number
+  volume: string
+  marketCap: string
+  high24h: number
+  low24h: number
+  supply: string
+  maxSupply: string
+  chartData: { time: number; price: number }[]
+}
+
+export function saveMarketCache(coins: Coin[]): void {
+  if (typeof window === 'undefined') return
+  try {
+    const cache: MarketCacheEntry[] = coins
+      .filter(c => c.price > 0)
+      .map(({ id, price, change24h, volume, marketCap, high24h, low24h, supply, maxSupply, chartData }) => ({
+        id, price, change24h, volume, marketCap, high24h, low24h, supply, maxSupply, chartData,
+      }))
+    localStorage.setItem(MARKET_CACHE_KEY, JSON.stringify(cache))
+  } catch { /* ignore quota errors or SSR */ }
+}
+
+export function loadMarketCache(): MarketCacheEntry[] {
+  if (typeof window === 'undefined') return []
+  try {
+    const raw = localStorage.getItem(MARKET_CACHE_KEY)
+    if (!raw) return []
+    return JSON.parse(raw) as MarketCacheEntry[]
+  } catch { return [] }
+}
 
 const COIN_STATIC_LIST: Array<{ id: string; symbol: string; name: string; icon: string }> = [
   { id: 'bitcoin',          symbol: 'BTC',  name: 'Bitcoin',         icon: '₿' },
@@ -444,6 +479,8 @@ export const useStore = create<AppState>((set, get) => ({
           }
         }),
       }))
+      // Zustand set() 是同步的，此处 get().coins 已是更新后的最新数据
+      saveMarketCache(get().coins)
     } catch {
       set({ marketError: 'network_error' })
       // 保留上次已知价格，不重置为 0
@@ -455,6 +492,23 @@ export const useStore = create<AppState>((set, get) => ({
     const alreadyLoaded = state.coins.some(c => c.price > 0)
 
     if (!alreadyLoaded) {
+      // 优先尝试从 localStorage 还原上次缓存数据
+      const cache = loadMarketCache()
+      if (cache.length > 0) {
+        // 将缓存市场数据 merge 进 coins（保留 favorited 与静态字段）
+        set((s) => ({
+          coins: s.coins.map(c => {
+            const cached = cache.find(e => e.id === c.id)
+            if (!cached) return c
+            return { ...c, ...cached }  // cached 覆盖市场数据字段（含 chartData）
+          }),
+          marketLoading: false,  // 有缓存数据，跳过骨架屏直接展示
+        }))
+        // 有缓存数据：后台静默刷新最新价格，成功则覆盖显示，失败则保留缓存数据
+        await get().updatePrices()
+        return
+      }
+      // 无缓存（首次安装）：走原有骨架屏逻辑
       set({ marketLoading: true, marketError: null })
     }
 
@@ -493,6 +547,9 @@ export const useStore = create<AppState>((set, get) => ({
           }
         })
       )
+      // 首次加载走势图完成后，补存完整缓存（含 chartData）
+      // updatePrices 在价格请求成功时已写入缓存，但彼时 chartData 尚为空；此处补存一次完整数据
+      saveMarketCache(get().coins)
       // 无论 updatePrices 成功与否，首次加载流程结束后必须复位 loading
       set({ marketLoading: false })
     }
