@@ -18,6 +18,7 @@ import StatusBarConfig from "@/components/StatusBarConfig";
 import AddFriendModal from "@/components/chat/AddFriendModal";
 import CreateGroupModal from "@/components/chat/CreateGroupModal";
 import { useOtaUpdater } from "@/lib/use-ota-updater";
+import OtaProgressBar from "@/components/OtaProgressBar";
 
 export default function Page() {
   // OTA update check — must be the very first hook call, before any early returns,
@@ -124,6 +125,7 @@ export default function Page() {
   return (
     <div className="flex h-dvh bg-background overflow-hidden">
       <StatusBarConfig />
+      <OtaProgressBar />
       <AppDownloadBanner />
 
       <Toaster

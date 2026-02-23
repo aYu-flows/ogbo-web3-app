@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { BUNDLE_VERSION } from "./ota-version";
+import { useStore } from "./store";
 
 // Stable URL — always points to the latest OTA manifest on GitHub Releases.
 // The manifest is overwritten in-place (--clobber) on every OTA release.
@@ -57,6 +58,18 @@ export async function runOtaUpdate(): Promise<void> {
   // No update needed
   if (manifest.version === BUNDLE_VERSION) return;
 
+  // Set up download progress listener
+  const { setOtaProgress, setOtaDone } = useStore.getState();
+  setOtaProgress(0);
+  let listenerHandle: { remove: () => void } | null = null;
+  try {
+    listenerHandle = await CapacitorUpdater.addListener("download", (info: any) => {
+      setOtaProgress(typeof info.percent === "number" ? info.percent : null);
+    });
+  } catch (e) {
+    // non-critical, continue without progress tracking
+  }
+
   // Download new bundle in background
   let bundle;
   try {
@@ -66,15 +79,26 @@ export async function runOtaUpdate(): Promise<void> {
     });
   } catch (e) {
     console.warn("[OTA] Download failed:", e);
+    setOtaProgress(null);
+    try { listenerHandle?.remove(); } catch (_) {}
     return;
   }
+
+  try { listenerHandle?.remove(); } catch (_) {}
 
   // Schedule for next app background / cold start (non-intrusive)
   try {
     await CapacitorUpdater.next({ id: bundle.id });
     console.info(`[OTA] Bundle ${manifest.version} scheduled for next restart.`);
+    setOtaProgress(100);
+    setOtaDone(true);
+    setTimeout(() => {
+      setOtaProgress(null);
+      setOtaDone(false);
+    }, 2500);
   } catch (e) {
     console.warn("[OTA] Failed to schedule bundle:", e);
+    setOtaProgress(null);
   }
 }
 

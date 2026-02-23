@@ -21,6 +21,7 @@ import {
 import { useStore } from "@/lib/store";
 import { t } from "@/lib/i18n";
 import { BUNDLE_VERSION } from "@/lib/ota-version";
+import { useShallow } from "zustand/react/shallow";
 import toast from "react-hot-toast";
 import { LineChart, Line, ResponsiveContainer } from "recharts";
 
@@ -409,6 +410,7 @@ function CoinDetailModal({
 export default function HomePage() {
   const { locale, isBalanceVisible, toggleBalance, coins, switchTab, updatePrices } = useStore();
   const wallet = useStore((s) => s.getCurrentWallet());
+  const { otaProgress, otaDone } = useStore(useShallow((s) => ({ otaProgress: s.otaProgress, otaDone: s.otaDone })));
   const [sendOpen, setSendOpen] = useState(false);
   const [receiveOpen, setReceiveOpen] = useState(false);
   const [swapOpen, setSwapOpen] = useState(false);
@@ -679,7 +681,13 @@ export default function HomePage() {
             </button>
           </div>
         </div>
-        <span className="absolute bottom-2 right-3 text-[10px] text-blue-300 dark:text-blue-700 select-none">{BUNDLE_VERSION}</span>
+        <span className="absolute bottom-2 right-3 text-[10px] text-blue-300 dark:text-blue-700 select-none">
+          {otaProgress !== null
+            ? `↓ ${Math.round(otaProgress)}%`
+            : otaDone
+            ? "✓"
+            : BUNDLE_VERSION}
+        </span>
       </motion.div>
 
       {/* Modals */}
