@@ -130,6 +130,9 @@ export default function Page() {
 
       <Toaster
         position="top-center"
+        containerStyle={{
+          top: "calc(env(safe-area-inset-top, 0px) + 60px)",
+        }}
         toastOptions={{
           duration: 2000,
           style: {
@@ -154,7 +157,7 @@ export default function Page() {
         />
 
         <main className="flex-1 overflow-hidden relative">
-          <AnimatePresence mode="wait" initial={false}>
+          <AnimatePresence mode="sync" initial={false}>
             <motion.div
               key={activeTab}
               initial={{ opacity: 0, x: 10 }}
