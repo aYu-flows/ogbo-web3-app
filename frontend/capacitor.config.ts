@@ -13,6 +13,11 @@ const config: CapacitorConfig = {
   android: {
     allowMixedContent: true,
     captureInput: true
+  },
+  plugins: {
+    CapacitorUpdater: {
+      autoUpdate: false,  // Manual update mode: all update logic is handled in useOtaUpdater()
+    }
   }
 };
 

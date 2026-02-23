@@ -30,6 +30,9 @@ importers:
       '@capacitor/status-bar':
         specifier: ^8.0.0
         version: 8.0.0(@capacitor/core@7.5.0)
+      '@capgo/capacitor-updater':
+        specifier: ^7.43.3
+        version: 7.43.3(@capacitor/core@7.5.0)
       '@hookform/resolvers':
         specifier: ^3.9.1
         version: 3.10.0(react-hook-form@7.71.1(react@19.2.3))
@@ -450,6 +453,11 @@ packages:
     resolution: {integrity: sha512-aIj3bc7z8lfPgOen8HlrBrkfnxpFnh21OCx6jCUx4Mvv+B6eEkUQ49b32DOddgVfr+igRHLX2SYi7duqIsNDXg==, tarball: https://registry.npmmirror.com/@capacitor/status-bar/-/status-bar-8.0.0.tgz}
     peerDependencies:
       '@capacitor/core': '>=8.0.0'
+
+  '@capgo/capacitor-updater@7.43.3':
+    resolution: {integrity: sha512-vKBDRwqnQv500rlaBPhlVJGDR/J6qiOS/YRQQLJkRNg803ZnSmAw+YHZckNfRkt2Bpplt4SK6Glf860DEgSadg==}
+    peerDependencies:
+      '@capacitor/core': '>=7.0.0'
 
   '@coinbase/cdp-sdk@1.44.1':
     resolution: {integrity: sha512-O7sikX7gTZdF4xy9b0xAMPOKWk8z6E7an4EGVBukPdfChooBL15Zt6B8Wn5th/LC1V1nIf3J/tlTTQCJLkKZ6A==}
@@ -5457,6 +5465,10 @@ snapshots:
       '@capacitor/core': 7.5.0
 
   '@capacitor/status-bar@8.0.0(@capacitor/core@7.5.0)':
+    dependencies:
+      '@capacitor/core': 7.5.0
+
+  '@capgo/capacitor-updater@7.43.3(@capacitor/core@7.5.0)':
     dependencies:
       '@capacitor/core': 7.5.0
 

@@ -17,8 +17,13 @@ import AppDownloadBanner from "@/components/AppDownloadBanner";
 import StatusBarConfig from "@/components/StatusBarConfig";
 import AddFriendModal from "@/components/chat/AddFriendModal";
 import CreateGroupModal from "@/components/chat/CreateGroupModal";
+import { useOtaUpdater } from "@/lib/use-ota-updater";
 
 export default function Page() {
+  // OTA update check — must be the very first hook call, before any early returns,
+  // so notifyAppReady() is always invoked regardless of auth state.
+  useOtaUpdater();
+
   const { activeTab, isLoggedIn, checkAuthStatus, initChat, chatReady, isConnectingChat, destroyChat, walletAddress, login, chats, cleanupExternalWallet } = useStore();
   const [isChecking, setIsChecking] = useState(true);
   const [chatSearchOpen, setChatSearchOpen] = useState(false);
