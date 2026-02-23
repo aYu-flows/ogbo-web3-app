@@ -277,7 +277,7 @@ function ProgressBar({ step, total }: { step: number; total: number }) {
 function BackHeader({ onBack, rightSlot }: { onBack: () => void; rightSlot?: React.ReactNode }) {
   const { locale } = useStore();
   return (
-    <div className="flex items-center justify-between h-14 px-4 lg:px-6" style={{ paddingTop: 'calc(var(--safe-top, env(safe-area-inset-top, 0px)) + 8px)' }}>
+    <div className="flex items-center justify-between h-14 px-4 lg:px-6" style={{ paddingTop: 'calc(var(--safe-top, env(safe-area-inset-top, 0px)) + 14px)' }}>
       <button
         onClick={onBack}
         className="flex items-center gap-1 text-muted-foreground hover:text-foreground transition-colors rounded-full p-1 hover:bg-muted"
@@ -498,7 +498,7 @@ function WelcomeView({ goTo }: { goTo: (v: AuthView) => void }) {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between h-14 px-4 lg:px-6" style={{ paddingTop: 'calc(var(--safe-top, env(safe-area-inset-top, 0px)) + 8px)' }}>
+      <div className="flex items-center justify-between h-14 px-4 lg:px-6" style={{ paddingTop: 'calc(var(--safe-top, env(safe-area-inset-top, 0px)) + 14px)' }}>
         {/* Download button — left side, browser only */}
         {isBrowser ? (
           <motion.button
@@ -1500,7 +1500,7 @@ function CreateCompleteView({
             {locale === "zh" ? "输入钱包密码" : "Enter Wallet Password"}
           </h2>
           <p className="text-sm text-muted-foreground mb-8 text-center">
-            {locale === "zh" ? "用于加密新创建的钱包" : "To encrypt the newly created wallet"}
+            {locale === "zh" ? "请输入您现有的钱包密码，以保持所有钱包密码一致" : "Enter your existing wallet password to keep all wallets in sync"}
           </p>
           <div className="w-full space-y-3">
             <PasswordInput
@@ -1885,8 +1885,16 @@ function ImportPasswordView({
       );
 
       if (duplicate) {
-        // 钱包已存在：更新 active 并直接登录，无需重新加密
-        setActiveWalletId(duplicate.id);
+        // 用新设密码重新加密 duplicate，保证密码链路一致（用户已通过私钥证明所有权）
+        const newKeystore = await encryptWallet(wallet, pw);
+        saveWallet({
+          name: duplicate.name,
+          network: duplicate.network,
+          address: duplicate.address,
+          keystore: newKeystore,
+          type: duplicate.type,
+        });
+        // saveWallet 已调用 setActiveWalletId
         storeSessionKey(wallet.privateKey);
         toast.success(locale === "zh" ? "已有该钱包，已切换到此钱包" : "Wallet already exists, switched to it");
         setTimeout(() => onSuccess(wallet.address), 300);
@@ -2014,7 +2022,30 @@ function ImportConfirmPasswordView({
       );
 
       if (duplicate) {
-        setActiveWalletId(duplicate.id);
+        // 检验 duplicate 的密码是否与当前已验证密码一致
+        let passwordMatches = false;
+        try {
+          await decryptWallet(duplicate.keystore, pw);
+          passwordMatches = true;
+        } catch {
+          // 密码不一致：预期情况，不在 catch 块中执行写操作
+        }
+
+        if (passwordMatches) {
+          // 密码一致：直接切换，不重新加密
+          setActiveWalletId(duplicate.id);
+        } else {
+          // 密码不一致：用户已通过私钥证明对该地址的完整所有权，用当前密码重新加密 duplicate
+          const newKeystore = await encryptWallet(wallet, pw);
+          saveWallet({
+            name: duplicate.name,
+            network: duplicate.network,
+            address: duplicate.address,
+            keystore: newKeystore,
+            type: duplicate.type,
+          });
+          // saveWallet 内部已调用 setActiveWalletId(savedWallet.id)，savedWallet.id === duplicate.id
+        }
         storeSessionKey(wallet.privateKey);
         toast.success(locale === "zh" ? "已有该钱包，已切换到此钱包" : "Wallet already exists, switched to it");
         setTimeout(() => onSuccess(wallet.address), 300);
@@ -2064,7 +2095,7 @@ function ImportConfirmPasswordView({
           {locale === "zh" ? "输入钱包密码" : "Enter Wallet Password"}
         </h2>
         <p className="text-sm text-muted-foreground mt-1 mb-8">
-          {locale === "zh" ? "用于加密导入的新钱包" : "To encrypt the newly imported wallet"}
+          {locale === "zh" ? "请输入您现有的钱包密码，以保持所有钱包密码一致" : "Enter your existing wallet password to keep all wallets in sync"}
         </p>
         <label className="text-sm font-medium mb-2 block">{t("auth.enterPassword", locale)}</label>
         <PasswordInput

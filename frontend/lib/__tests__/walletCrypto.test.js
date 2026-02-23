@@ -101,7 +101,8 @@ function getActiveWallet() {
     const found = wallets.find(w => w.id === activeId);
     if (found) return found;
   }
-  return wallets[wallets.length - 1];
+  // 优先返回第一个有 keystore 的 imported 钱包；若无则回退最后一个
+  return wallets.find(w => w.type !== 'external' && !!w.keystore) ?? wallets[wallets.length - 1];
 }
 
 function setActiveWalletId(id) { _ls().setItem(LS_ACTIVE_KEY, id); }
@@ -348,6 +349,60 @@ async function runTests() {
     clearSessionKey();
     const afterClear = getSessionWallet();
     expect(afterClear).toBeNull();
+  });
+
+  // ---- getActiveWallet 回退逻辑（T1-1 到 T1-4，task43 修复） ----
+
+  await test("T1-1: ogbo_active_wallet 指向有效 ID → 返回对应钱包", () => {
+    _ls().clear();
+    const w1 = saveWallet({ name: "W1", network: "ethereum", address: "0xAAA", keystore: '{"v":1}' });
+    saveWallet({ name: "W2", network: "bsc", address: "0xBBB", keystore: '{"v":2}' });
+    // 手动把 active 设为 W1
+    setActiveWalletId(w1.id);
+    const active = getActiveWallet();
+    expect(active.address).toBe("0xAAA");
+  });
+
+  await test("T1-2: ogbo_active_wallet 指向不存在 ID，列表有 imported 钱包 → 返回第一个 imported 有 keystore 的钱包", () => {
+    _ls().clear();
+    // 直接写入有 type 信息的钱包列表
+    const wallets = [
+      { id: 'imp1', name: 'W1', network: 'ethereum', address: '0xAAA', keystore: '{"v":1}', type: 'imported', createdAt: Date.now() },
+      { id: 'imp2', name: 'W2', network: 'bsc', address: '0xBBB', keystore: '{"v":2}', type: 'imported', createdAt: Date.now() },
+    ];
+    _ls().setItem(LS_WALLETS_KEY, JSON.stringify(wallets));
+    _ls().setItem(LS_ACTIVE_KEY, 'non-existent-id-xyz');
+    const active = getActiveWallet();
+    // 修复后：返回第一个 imported 有 keystore 的钱包（0xAAA）
+    expect(active.address).toBe('0xAAA');
+  });
+
+  await test("T1-3: ogbo_active_wallet 指向不存在 ID，列表全为 external → 回退最后一个钱包", () => {
+    _ls().clear();
+    const wallets = [
+      { id: 'ext1', name: 'E1', network: 'ethereum', address: '0xAAA', keystore: '', type: 'external', createdAt: Date.now() },
+      { id: 'ext2', name: 'E2', network: 'bsc', address: '0xBBB', keystore: '', type: 'external', createdAt: Date.now() },
+    ];
+    _ls().setItem(LS_WALLETS_KEY, JSON.stringify(wallets));
+    _ls().setItem(LS_ACTIVE_KEY, 'non-existent-id-xyz');
+    const active = getActiveWallet();
+    // 无 imported 有 keystore 的钱包 → 回退最后一个（0xBBB）
+    expect(active.address).toBe('0xBBB');
+  });
+
+  await test("T1-4: ogbo_active_wallet 为空，mixed 列表 → 返回第一个 imported 有 keystore 的钱包", () => {
+    _ls().clear();
+    const wallets = [
+      { id: 'ext1', name: 'E1', network: 'ethereum', address: '0x111', keystore: '', type: 'external', createdAt: Date.now() },
+      { id: 'imp1', name: 'I1', network: 'bsc', address: '0x222', keystore: '{"v":1}', type: 'imported', createdAt: Date.now() },
+      { id: 'imp2', name: 'I2', network: 'polygon', address: '0x333', keystore: '{"v":2}', type: 'imported', createdAt: Date.now() },
+    ];
+    _ls().setItem(LS_WALLETS_KEY, JSON.stringify(wallets));
+    // ogbo_active_wallet 不存在（null）
+    _ls().removeItem(LS_ACTIVE_KEY);
+    const active = getActiveWallet();
+    // 返回第一个 imported 有 keystore 的钱包（0x222）
+    expect(active.address).toBe('0x222');
   });
 
   // ======== 结果汇总 ========

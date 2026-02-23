@@ -185,8 +185,8 @@ export function getActiveWallet(): StoredWallet | null {
     const found = wallets.find((w) => w.id === activeId);
     if (found) return found;
   }
-  // 若无 active 或 active 不存在，返回最后一个
-  return wallets[wallets.length - 1];
+  // 若无 active 或 active 不存在，优先返回第一个有 keystore 的 imported 钱包；若无则回退最后一个
+  return wallets.find(w => w.type !== 'external' && !!w.keystore) ?? wallets[wallets.length - 1];
 }
 
 /** 设置 active 钱包 */
