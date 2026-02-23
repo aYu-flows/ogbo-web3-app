@@ -1,7 +1,7 @@
 'use client'
 
 import { motion, AnimatePresence } from 'framer-motion'
-import { X, Search, Send, MessageCircle, Loader2, ChevronDown, ChevronUp } from 'lucide-react'
+import { X, Search, Send, MessageCircle, Loader2, ChevronDown, ChevronUp, ClipboardPaste } from 'lucide-react'
 import { useState, useEffect, useRef } from 'react'
 import { utils as ethersUtils } from 'ethers'
 import { useStore } from '@/lib/store'
@@ -16,6 +16,29 @@ interface AddFriendModalProps {
 
 const ADDRESS_REGEX = /^0x[a-fA-F0-9]{40}$/
 
+// Read clipboard text, preferring Capacitor Clipboard on native platforms.
+// Always resolves to a string; never throws.
+async function readClipboardText(): Promise<string> {
+  try {
+    const { Capacitor } = await import('@capacitor/core')
+    if (Capacitor.isNativePlatform()) {
+      const { Clipboard } = await import('@capacitor/clipboard')
+      const { value } = await Clipboard.read()
+      if (value) return value
+    }
+  } catch {
+    // Capacitor unavailable or version mismatch — fall through
+  }
+  try {
+    if (typeof navigator !== 'undefined' && navigator.clipboard?.readText) {
+      return await navigator.clipboard.readText()
+    }
+  } catch {
+    // Permission denied or unsupported — fall through
+  }
+  return ''
+}
+
 export default function AddFriendModal({ isOpen, onClose, onOpenChat }: AddFriendModalProps) {
   const { searchUserByAddress, sendFriendRequest, chats, chatRequests, walletAddress, locale, switchTab } = useStore()
   const [searchInput, setSearchInput] = useState('')
@@ -28,6 +51,7 @@ export default function AddFriendModal({ isOpen, onClose, onOpenChat }: AddFrien
   const [requestMsg, setRequestMsg] = useState('')
   const [showMsgInput, setShowMsgInput] = useState(false)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const autoFillSessionRef = useRef(0)
   const requestMsgRef = useRef<HTMLTextAreaElement>(null)
 
   // Determine state of this address (use lowercase comparison for case-insensitive matching)
@@ -35,6 +59,24 @@ export default function AddFriendModal({ isOpen, onClose, onOpenChat }: AddFrien
   const isSelf = walletAddress && searchInput.trim().toLowerCase() === walletAddress.toLowerCase()
   const alreadyFriend = chats.some((c) => c.walletAddress?.toLowerCase() === searchInput.trim().toLowerCase())
   const alreadySent = chatRequests.some((r) => r.fromAddress.toLowerCase() === searchInput.trim().toLowerCase())
+
+  // Plan B: auto-fill clipboard content when modal opens
+  useEffect(() => {
+    if (!isOpen) return
+    const session = ++autoFillSessionRef.current
+    readClipboardText()
+      .then((text) => {
+        if (autoFillSessionRef.current !== session) return // stale callback — discard
+        const trimmed = text.trim()
+        if (ADDRESS_REGEX.test(trimmed)) {
+          // Functional update: only fill if user hasn't typed anything yet
+          setSearchInput((prev) => (prev === '' ? trimmed : prev))
+        }
+      })
+      .catch(() => {
+        // Clipboard read failed — silently ignore
+      })
+  }, [isOpen])
 
   // Debounced search with EIP-55 address normalization
   useEffect(() => {
@@ -86,6 +128,16 @@ export default function AddFriendModal({ isOpen, onClose, onOpenChat }: AddFrien
       }
     }, 300)
   }, [searchInput, isOpen])
+
+  // Plan A: paste button handler — reads clipboard directly on user gesture
+  const handlePasteButton = async () => {
+    try {
+      const text = await readClipboardText()
+      if (text.trim()) setSearchInput(text.trim())
+    } catch {
+      // Silently ignore
+    }
+  }
 
   const handleSend = async () => {
     if (!isValidAddress || sending || sent) return
@@ -169,11 +221,23 @@ export default function AddFriendModal({ isOpen, onClose, onOpenChat }: AddFrien
                     if (text.trim()) setTimeout(() => setSearchInput(text.trim()), 0)
                   }}
                   placeholder={t('chat.searchByAddress', locale)}
-                  className="w-full bg-muted rounded-xl pl-9 pr-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--ogbo-blue)]/30"
+                  className="w-full bg-muted rounded-xl pl-9 pr-10 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--ogbo-blue)]/30"
                   autoFocus
                 />
                 {searching && (
                   <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground animate-spin" />
+                )}
+                {!searching && !searchInput && (
+                  <motion.button
+                    whileTap={{ scale: 0.85 }}
+                    onClick={handlePasteButton}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 rounded-lg p-1.5 text-muted-foreground hover:text-foreground hover:bg-background/60 transition-colors"
+                    aria-label={t('chat.pasteAddress', locale)}
+                    title={t('chat.pasteAddress', locale)}
+                    type="button"
+                  >
+                    <ClipboardPaste className="w-4 h-4" />
+                  </motion.button>
                 )}
               </div>
 
