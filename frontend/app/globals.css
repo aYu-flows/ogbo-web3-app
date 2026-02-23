@@ -43,8 +43,8 @@
     --ogbo-market-down: #ef4444;
     --ogbo-market-neutral: #6b7280;
 
-    --safe-top: env(safe-area-inset-top, 0px);
-    --safe-bottom: env(safe-area-inset-bottom, 0px);
+    --safe-top: 0px;
+    --safe-bottom: 0px;
   }
 }
 

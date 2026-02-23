@@ -4,7 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import Image from "next/image";
-import { Globe, Bell, Search, Plus, LogOut, UserPlus, Users } from "lucide-react";
+import { Globe, Search, Plus, LogOut, UserPlus, Users } from "lucide-react";
 import { useStore, type TabType } from "@/lib/store";
 import { t } from "@/lib/i18n";
 import toast from "react-hot-toast";
@@ -29,7 +29,7 @@ export default function TopBar({
   onAddFriend?: () => void;
   onCreateGroup?: () => void;
 }) {
-  const { activeTab, locale, switchLocale, notifications, logout } = useStore();
+  const { activeTab, locale, switchLocale, logout } = useStore();
   const { disconnect } = useDisconnect();
   const [langMenuOpen, setLangMenuOpen] = useState(false);
   const [plusMenuOpen, setPlusMenuOpen] = useState(false);
@@ -56,7 +56,7 @@ export default function TopBar({
   const isHome = activeTab === "home";
 
   return (
-    <header className="relative bg-card border-b border-border z-30" style={{ paddingTop: 'calc(var(--safe-top, env(safe-area-inset-top, 0px)) + 26px)' }}>
+    <header className="relative bg-card border-b border-border z-30" style={{ paddingTop: 'calc(var(--safe-top, env(safe-area-inset-top, 0px)) + 35px)' }}>
       <div className="relative flex items-end justify-between px-4 lg:px-6 h-14 pb-3">
       {/* Left: Logo or Title */}
       <div className="flex items-center gap-2.5">
@@ -200,16 +200,6 @@ export default function TopBar({
             )}
           </AnimatePresence>
         </div>
-
-        {/* Notification bell */}
-        <motion.button
-          whileTap={{ scale: 0.9 }}
-          onClick={() => toast(locale === "zh" ? "暂无新通知" : "No new notifications")}
-          className="relative rounded-full p-2 hover:bg-muted transition-colors"
-          aria-label="Notifications"
-        >
-          <Bell className="w-5 h-5 text-foreground" />
-        </motion.button>
 
         {/* Logout button */}
         <motion.button

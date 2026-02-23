@@ -34,6 +34,14 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="zh-CN">
+      <head>
+        {/* Inline script: runs synchronously before first paint.
+            On iOS (WKWebView), env(safe-area-inset-top) is available immediately,
+            so we set --safe-top here to avoid any flash.
+            On Android, overlay=false means WebView starts below the status bar,
+            so --safe-top stays 0px (the CSS default). */}
+        <script dangerouslySetInnerHTML={{ __html: `(function(){if(/iPhone|iPad|iPod/.test(navigator.userAgent)){document.documentElement.style.setProperty('--safe-top','env(safe-area-inset-top,0px)');document.documentElement.style.setProperty('--safe-bottom','env(safe-area-inset-bottom,0px)')}})();` }} />
+      </head>
       <body className="font-sans antialiased">
         <WalletProvider>
           {children}

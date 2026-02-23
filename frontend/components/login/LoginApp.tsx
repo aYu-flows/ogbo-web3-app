@@ -274,18 +274,21 @@ function ProgressBar({ step, total }: { step: number; total: number }) {
 }
 
 // ======== Back Header ========
-function BackHeader({ onBack, rightSlot }: { onBack: () => void; rightSlot?: React.ReactNode }) {
+function BackHeader({ onBack, rightSlot, extraTopPx = 0 }: { onBack: () => void; rightSlot?: React.ReactNode; extraTopPx?: number }) {
   const { locale } = useStore();
+  const totalPx = 22 + extraTopPx;
   return (
-    <div className="flex items-center justify-between h-14 px-4 lg:px-6" style={{ paddingTop: 'calc(var(--safe-top, env(safe-area-inset-top, 0px)) + 14px)' }}>
-      <button
-        onClick={onBack}
-        className="flex items-center gap-1 text-muted-foreground hover:text-foreground transition-colors rounded-full p-1 hover:bg-muted"
-      >
-        <ArrowLeft className="w-5 h-5" />
-        <span className="text-sm">{t("common.back", locale)}</span>
-      </button>
-      {rightSlot}
+    <div style={{ paddingTop: `calc(var(--safe-top, env(safe-area-inset-top, 0px)) + ${totalPx}px)` }}>
+      <div className="flex items-center justify-between h-14 px-4 lg:px-6">
+        <button
+          onClick={onBack}
+          className="flex items-center gap-1 text-muted-foreground hover:text-foreground transition-colors rounded-full p-1 hover:bg-muted"
+        >
+          <ArrowLeft className="w-5 h-5" />
+          <span className="text-sm">{t("common.back", locale)}</span>
+        </button>
+        {rightSlot}
+      </div>
     </div>
   );
 }
@@ -498,23 +501,25 @@ function WelcomeView({ goTo }: { goTo: (v: AuthView) => void }) {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex items-center justify-between h-14 px-4 lg:px-6" style={{ paddingTop: 'calc(var(--safe-top, env(safe-area-inset-top, 0px)) + 14px)' }}>
-        {/* Download button — left side, browser only */}
-        {isBrowser ? (
-          <motion.button
-            initial={{ opacity: 0, y: -6 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.4, duration: 0.25, ease: "easeOut" }}
-            onClick={handleDownload}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-[var(--ogbo-blue)] hover:bg-[var(--ogbo-blue-hover)] text-white rounded-xl text-xs font-semibold shadow-lg transition-colors"
-            aria-label={locale === "zh" ? "下载 OGBOX App" : "Download OGBOX App"}
-          >
-            <Download className="w-3.5 h-3.5" />
-            {locale === "zh" ? "下载 APP" : "Get App"}
-          </motion.button>
-        ) : <div />}
-        {/* Language switcher — right side */}
-        <LangSwitcher />
+      <div style={{ paddingTop: 'calc(var(--safe-top, env(safe-area-inset-top, 0px)) + 22px)' }}>
+        <div className="flex items-center justify-between h-14 px-4 lg:px-6">
+          {/* Download button — left side, browser only */}
+          {isBrowser ? (
+            <motion.button
+              initial={{ opacity: 0, y: -6 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.4, duration: 0.25, ease: "easeOut" }}
+              onClick={handleDownload}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-[var(--ogbo-blue)] hover:bg-[var(--ogbo-blue-hover)] text-white rounded-xl text-xs font-semibold shadow-lg transition-colors"
+              aria-label={locale === "zh" ? "下载 OGBOX App" : "Download OGBOX App"}
+            >
+              <Download className="w-3.5 h-3.5" />
+              {locale === "zh" ? "下载 APP" : "Get App"}
+            </motion.button>
+          ) : <div />}
+          {/* Language switcher — right side */}
+          <LangSwitcher />
+        </div>
       </div>
       <div className="flex-1 flex flex-col items-center justify-center px-6 lg:px-8">
         <motion.div
@@ -779,7 +784,7 @@ function PasswordLoginView({ goTo, onSuccess }: {
 
   return (
     <div className="flex flex-col h-full">
-      <BackHeader onBack={() => goTo("welcome")} />
+      <BackHeader onBack={() => goTo("welcome")} extraTopPx={15} />
       <div className="flex-1 flex flex-col items-center px-6 lg:px-8 lg:max-w-md lg:mx-auto lg:w-full">
         <div className="mt-8 lg:mt-16 mb-6">
           <motion.div animate={{ rotate: [0, -10, 10, -10, 0] }} transition={{ duration: 0.5 }}>
@@ -2212,7 +2217,7 @@ export default function LoginApp({
 
       {/* Toaster - only render when standalone (modal mode reuses parent page's Toaster) */}
       {!isModal && (
-        <Toaster position="top-center" toastOptions={{
+        <Toaster position="top-center" containerStyle={{ top: "33vh" }} toastOptions={{
           duration: 2500,
           style: { background: "hsl(var(--card))", color: "hsl(var(--card-foreground))", border: "1px solid hsl(var(--border))", borderRadius: "12px", fontSize: "13px", fontWeight: 500, boxShadow: "0 4px 12px rgba(0,0,0,0.1)" },
         }} />
