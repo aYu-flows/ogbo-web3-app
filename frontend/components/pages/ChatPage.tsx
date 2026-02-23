@@ -4,7 +4,7 @@ import React from "react";
 import { MessageCircle } from "lucide-react"; // Import MessageCircle
 
 import { useState, useRef, useEffect, useCallback } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence, useMotionValue, animate } from "framer-motion";
 import {
   Search,
   Plus,
@@ -97,6 +97,13 @@ function ChatDetail({ chat, onBack, locale }: { chat: Chat; onBack: () => void; 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  // Swipe-back gesture state
+  const x = useMotionValue(0);
+  const touchStartX = useRef(0);
+  const touchStartY = useRef(0);
+  const isEdgeSwipe = useRef(false);
+  const isSwiping = useRef(false);
+
   const scrollToBottom = useCallback(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, []);
@@ -110,6 +117,64 @@ function ChatDetail({ chat, onBack, locale }: { chat: Chat; onBack: () => void; 
     if (!chatReady || chat.messages.length > 0) return
     loadChatHistory(chat.id)
   }, [chat.id, chatReady]);
+
+  // Mount: slide in from right (mobile only)
+  useEffect(() => {
+    if (typeof window === "undefined" || window.innerWidth >= 1024) return;
+    const w = window.innerWidth;
+    x.set(w);
+    animate(x, 0, { type: "tween", duration: 0.3, ease: [0.32, 0.72, 0, 1] });
+  }, []);
+
+  // Slide out then call onBack — used by back button and swipe threshold
+  const animateAndBack = useCallback(() => {
+    if (typeof window === "undefined" || window.innerWidth >= 1024) {
+      onBack();
+      return;
+    }
+    const w = window.innerWidth;
+    animate(x, w, { type: "tween", duration: 0.25, ease: [0.32, 0.72, 0, 1] }).then(() => onBack());
+  }, [x, onBack]);
+
+  // Touch: detect left-edge swipe to trigger back
+  const handleTouchStart = useCallback((e: React.TouchEvent) => {
+    if (showEmoji) return;
+    const touch = e.touches[0];
+    touchStartX.current = touch.clientX;
+    touchStartY.current = touch.clientY;
+    isEdgeSwipe.current = touch.clientX <= 30;
+    isSwiping.current = false;
+  }, [showEmoji]);
+
+  const handleTouchMove = useCallback((e: React.TouchEvent) => {
+    if (!isEdgeSwipe.current) return;
+    const touch = e.touches[0];
+    const deltaX = touch.clientX - touchStartX.current;
+    const deltaY = Math.abs(touch.clientY - touchStartY.current);
+    // Cancel if vertical movement dominates early
+    if (!isSwiping.current) {
+      if (deltaY > Math.abs(deltaX)) { isEdgeSwipe.current = false; return; }
+      if (Math.abs(deltaX) > 5) isSwiping.current = true;
+    }
+    if (isSwiping.current && deltaX >= 0) x.set(deltaX);
+  }, [x]);
+
+  const handleTouchEnd = useCallback(() => {
+    if (!isEdgeSwipe.current || !isSwiping.current) {
+      isEdgeSwipe.current = false;
+      isSwiping.current = false;
+      return;
+    }
+    const currentX = x.get();
+    const w = typeof window !== "undefined" ? window.innerWidth : 400;
+    isEdgeSwipe.current = false;
+    isSwiping.current = false;
+    if (currentX > w * 0.35) {
+      animate(x, w, { type: "tween", duration: 0.2, ease: "easeOut" }).then(() => onBack());
+    } else {
+      animate(x, 0, { type: "spring", stiffness: 400, damping: 35 });
+    }
+  }, [x, onBack]);
 
   const handleSend = async () => {
     const rawValue = inputRef.current?.value ?? input;
@@ -150,15 +215,15 @@ function ChatDetail({ chat, onBack, locale }: { chat: Chat; onBack: () => void; 
 
   return (
     <motion.div
-      initial={{ x: "100%" }}
-      animate={{ x: 0 }}
-      exit={{ x: "100%" }}
-      transition={{ type: "tween", duration: 0.3 }}
+      style={{ x }}
       className="absolute inset-0 lg:relative lg:inset-auto bg-background z-20 flex flex-col overflow-x-hidden"
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
     >
       {/* Header */}
       <div className="flex items-center gap-3 px-3 py-3 border-b border-border bg-card">
-        <motion.button whileTap={{ scale: 0.9 }} onClick={onBack} className="rounded-full p-1 hover:bg-muted transition-colors lg:hidden">
+        <motion.button whileTap={{ scale: 0.9 }} onClick={animateAndBack} className="rounded-full p-1 hover:bg-muted transition-colors lg:hidden">
           <ArrowLeft className="w-5 h-5" />
         </motion.button>
         <div className="flex items-center gap-3 flex-1 min-w-0">
@@ -203,6 +268,11 @@ function ChatDetail({ chat, onBack, locale }: { chat: Chat; onBack: () => void; 
                   ? "bg-[var(--ogbo-blue)] text-white rounded-br-md"
                   : "bg-card text-card-foreground border border-border rounded-bl-md"
               }`}>
+                {chat.type === 'group' && !isMe && (
+                  <p className="text-[10px] font-semibold mb-1 text-[var(--ogbo-blue)]/80">
+                    {msg.sender.slice(-4).toLowerCase()}
+                  </p>
+                )}
                 <p className="text-sm leading-relaxed">{msg.content}</p>
                 <p className={`text-[10px] mt-1 ${isMe ? "text-white/60" : "text-muted-foreground"}`}>
                   {new Date(msg.timestamp).getHours().toString().padStart(2, "0")}:
