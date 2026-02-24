@@ -37,14 +37,35 @@ if (typeof window !== "undefined") {
         } catch (e: any) {
           otaLog("MODULE_NOTIFY_READY_FAIL", { ts: Date.now(), error: String(e) });
         }
+        // DIAGNOSTIC: log current bundle state BEFORE reset() to detect if reset()
+        // triggers a WebView reload (if MODULE_RESET_AFTER_LOG never appears in Supabase,
+        // it means reset() caused a reload and the JS execution was interrupted).
+        let currentBundleBeforeReset: string | null = null;
+        try {
+          const cur = await (CapacitorUpdater as any).current?.();
+          currentBundleBeforeReset = cur?.bundle?.version ?? "unknown";
+        } catch (_) {}
+        otaLog("MODULE_RESET_BEFORE", { ts: Date.now(), currentBundle: currentBundleBeforeReset });
+
         // reset() only runs AFTER notifyAppReady() completes, preventing the race
         // condition where reset() rolls back a freshly-activated bundle.
-        try {
-          await (CapacitorUpdater as any).reset?.({ toLastSuccessful: true });
-          otaLog("MODULE_RESET_OK", { ts: Date.now() });
-        } catch (e: any) {
-          otaLog("MODULE_RESET_FAIL", { ts: Date.now(), error: String(e) });
+        const resetExists = typeof (CapacitorUpdater as any).reset === "function";
+        otaLog("MODULE_RESET_EXISTS", { exists: resetExists });
+
+        if (resetExists) {
+          try {
+            await (CapacitorUpdater as any).reset({ toLastSuccessful: true });
+            // If this log appears, reset() completed without triggering a reload.
+            otaLog("MODULE_RESET_OK", { ts: Date.now() });
+          } catch (e: any) {
+            otaLog("MODULE_RESET_FAIL", { ts: Date.now(), error: String(e) });
+          }
+        } else {
+          otaLog("MODULE_RESET_SKIPPED", { reason: "reset() method not found on CapacitorUpdater" });
         }
+
+        // Sentinel: if this log appears, the entire module-level init completed without reload.
+        otaLog("MODULE_INIT_COMPLETE", { ts: Date.now() });
       })
       .catch((e: any) => {
         otaLog("MODULE_INIT_IMPORT_FAIL", { error: String(e) });
