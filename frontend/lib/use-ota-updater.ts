@@ -122,26 +122,38 @@ export async function runOtaUpdate(): Promise<void> {
     });
   } catch (_) {}
 
-  // Download new bundle
-  otaLog("DOWNLOAD_START", { url: manifest.url, version: manifest.version });
+  // Download new bundle — retry up to 3 attempts on failure (handles CDN stalls).
+  const MAX_ATTEMPTS = 3;
   let bundle;
-  try {
-    bundle = await CapacitorUpdater.download({
-      url: manifest.url,
-      version: manifest.version,
-    });
-    otaLog("DOWNLOAD_OK", { bundleId: bundle.id, version: bundle.version });
-  } catch (e: any) {
-    console.warn("[OTA] Download failed:", e);
-    otaLog("DOWNLOAD_CATCH", { error: String(e) });
-    setOtaProgress(null);
-    try { listenerHandle?.remove(); } catch (_) {}
-    try { failListenerHandle?.remove(); } catch (_) {}
-    return;
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    otaLog("DOWNLOAD_START", { url: manifest.url, version: manifest.version, attempt });
+    setOtaProgress(0);
+    lastLoggedPct = -1;
+    try {
+      bundle = await CapacitorUpdater.download({
+        url: manifest.url,
+        version: manifest.version,
+      });
+      otaLog("DOWNLOAD_OK", { bundleId: bundle.id, version: bundle.version, attempt });
+      break; // success — exit retry loop
+    } catch (e: any) {
+      console.warn(`[OTA] Download attempt ${attempt} failed:`, e);
+      otaLog("DOWNLOAD_CATCH", { error: String(e), attempt });
+      if (attempt >= MAX_ATTEMPTS) {
+        setOtaProgress(null);
+        try { listenerHandle?.remove(); } catch (_) {}
+        try { failListenerHandle?.remove(); } catch (_) {}
+        return;
+      }
+      // Brief pause before retry so the UI shows 0% reset
+      await new Promise(r => setTimeout(r, 5000));
+    }
   }
 
   try { listenerHandle?.remove(); } catch (_) {}
   try { failListenerHandle?.remove(); } catch (_) {}
+
+  if (!bundle) return; // all attempts failed (already handled above)
 
   // Wait briefly for the native plugin to fully persist the bundle to its internal
   // storage before calling next(). Without this, next() may fail immediately with
