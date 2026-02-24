@@ -167,21 +167,26 @@ export async function runOtaUpdate(): Promise<void> {
     otaLog("LIST_VERIFY_FAIL", { error: String(e) });
   }
 
-  // Schedule for next cold start (non-intrusive)
+  // Apply immediately via set() — reloads the WebView with the new bundle.
+  // next() requires a true process cold-start (OS killing the process) which
+  // most Android users never trigger; set() works regardless of how the app
+  // was launched and is the only reliable activation path.
+  setOtaProgress(100);
+  setOtaDone(true);
+  otaLog("SET_PENDING", { bundleId: bundleIdForNext, version: manifest.version });
+
+  // Brief pause so the 100% progress bar is visible before the reload.
+  await new Promise(r => setTimeout(r, 1500));
+
   try {
-    await CapacitorUpdater.next({ id: bundleIdForNext });
-    console.info(`[OTA] Bundle ${manifest.version} scheduled for next restart.`);
-    otaLog("NEXT_OK", { bundleId: bundleIdForNext, version: manifest.version });
-    setOtaProgress(100);
-    setOtaDone(true);
-    setTimeout(() => {
-      setOtaProgress(null);
-      setOtaDone(false);
-    }, 2500);
+    await CapacitorUpdater.set({ id: bundleIdForNext });
+    // If set() succeeds the WebView reloads immediately — code below never runs.
+    otaLog("SET_OK", { bundleId: bundleIdForNext, version: manifest.version });
   } catch (e: any) {
-    console.warn("[OTA] Failed to schedule bundle:", e);
-    otaLog("NEXT_FAIL", { error: String(e), bundleId: bundleIdForNext });
+    console.warn("[OTA] set() failed:", e);
+    otaLog("SET_FAIL", { error: String(e), bundleId: bundleIdForNext });
     setOtaProgress(null);
+    setOtaDone(false);
   }
 }
 
