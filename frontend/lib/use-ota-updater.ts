@@ -20,17 +20,45 @@ function otaLog(step: string, data?: Record<string, unknown>): void {
 // notifyAppReady: prevents the rollback timer from firing before first paint.
 // reset: cancels any stale next()-scheduled bundle left over from old code
 //        versions; without this, stale bundles cause a white screen on cold start.
+//
+// DIAGNOSTIC: notifyAppReady() MUST complete before reset() to avoid rolling back
+// a freshly-set bundle. We now await notifyAppReady() before calling reset().
 if (typeof window !== "undefined") {
   const _cap = (window as any).Capacitor;
   if (_cap?.getPlatform?.() === "android") {
     import("@capgo/capacitor-updater")
-      .then(({ CapacitorUpdater }) => {
-        CapacitorUpdater.notifyAppReady().catch(() => {});
-        (CapacitorUpdater as any).reset?.({ toLastSuccessful: true }).catch?.(() => {});
+      .then(async ({ CapacitorUpdater }) => {
+        const t0 = Date.now();
+        otaLog("MODULE_INIT_START", { ts: t0 });
+        try {
+          await CapacitorUpdater.notifyAppReady();
+          const t1 = Date.now();
+          otaLog("MODULE_NOTIFY_READY_OK", { ts: t1, durationMs: t1 - t0 });
+        } catch (e: any) {
+          otaLog("MODULE_NOTIFY_READY_FAIL", { ts: Date.now(), error: String(e) });
+        }
+        // reset() only runs AFTER notifyAppReady() completes, preventing the race
+        // condition where reset() rolls back a freshly-activated bundle.
+        try {
+          await (CapacitorUpdater as any).reset?.({ toLastSuccessful: true });
+          otaLog("MODULE_RESET_OK", { ts: Date.now() });
+        } catch (e: any) {
+          otaLog("MODULE_RESET_FAIL", { ts: Date.now(), error: String(e) });
+        }
       })
-      .catch(() => {});
+      .catch((e: any) => {
+        otaLog("MODULE_INIT_IMPORT_FAIL", { error: String(e) });
+      });
   }
 }
+
+// ─── Concurrency guard ────────────────────────────────────────────────────────
+// Prevents multiple simultaneous runOtaUpdate() calls (e.g. React StrictMode
+// double-mount or page navigation remount).
+let _otaRunning = false;
+
+/** Reset concurrency guard — only for unit tests. */
+export function _resetOtaRunningForTest(): void { _otaRunning = false; }
 
 /**
  * Core OTA update logic. Exported for unit testing.
@@ -40,6 +68,21 @@ export async function runOtaUpdate(): Promise<void> {
   const cap = (typeof window !== "undefined") ? (window as any).Capacitor : undefined;
   if (!cap || cap.getPlatform?.() !== "android") return;
 
+  // Concurrency guard: prevent double-invocation from React StrictMode / remount
+  if (_otaRunning) {
+    otaLog("SKIPPED_CONCURRENT", { reason: "runOtaUpdate already in progress" });
+    return;
+  }
+  _otaRunning = true;
+
+  try {
+    await _runOtaUpdateInner(cap);
+  } finally {
+    _otaRunning = false;
+  }
+}
+
+async function _runOtaUpdateInner(cap: any): Promise<void> {
   const { CapacitorUpdater } = await import("@capgo/capacitor-updater");
 
   // Log current active bundle info for diagnostics
