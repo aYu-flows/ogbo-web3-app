@@ -16,16 +16,18 @@ function otaLog(step: string, data?: Record<string, unknown>): void {
     });
 }
 
-// ─── Module-level notifyAppReady ─────────────────────────────────────────────
-// Called immediately when this module loads (before React mounts).
-// Critical: the OTA plugin's rollback timer starts the moment the new bundle
-// begins loading. If notifyAppReady() is only called inside useEffect (after
-// first paint), the timer may expire first and trigger an unwanted rollback.
+// ─── Module-level init (before React mounts) ─────────────────────────────────
+// notifyAppReady: prevents the rollback timer from firing before first paint.
+// reset: cancels any stale next()-scheduled bundle left over from old code
+//        versions; without this, stale bundles cause a white screen on cold start.
 if (typeof window !== "undefined") {
   const _cap = (window as any).Capacitor;
   if (_cap?.getPlatform?.() === "android") {
     import("@capgo/capacitor-updater")
-      .then(({ CapacitorUpdater }) => CapacitorUpdater.notifyAppReady())
+      .then(({ CapacitorUpdater }) => {
+        CapacitorUpdater.notifyAppReady().catch(() => {});
+        (CapacitorUpdater as any).reset?.({ toLastSuccessful: true }).catch?.(() => {});
+      })
       .catch(() => {});
   }
 }
@@ -156,7 +158,7 @@ export async function runOtaUpdate(): Promise<void> {
   if (!bundle) return; // all attempts failed (already handled above)
 
   // Wait briefly for the native plugin to fully persist the bundle to its internal
-  // storage before calling next(). Without this, next() may fail immediately with
+  // storage before calling set(). Without this, set() may fail immediately with
   // "Bundle {id} does not exist" because the write hasn't completed yet.
   await new Promise(r => setTimeout(r, 500));
 
