@@ -17,45 +17,25 @@ function otaLog(step: string, data?: Record<string, unknown>): void {
 }
 
 // ─── Module-level init (before React mounts) ─────────────────────────────────
-// ORDER IS CRITICAL:
-//   1. reset() FIRST — clears any stale next()-scheduled bundle from old code.
-//      Without this, native applies the stale bundle on WebView load (~700ms),
-//      it fails, native rolls back, causing an infinite reload loop.
-//   2. notifyAppReady() AFTER — marks current bundle as ready, stops rollback timer.
+// notifyAppReady() marks the current bundle as stable, stopping the native
+// rollback timer. Must run as early as possible (module-level, before React).
 //
-// Logs: MODULE_INIT_START → MODULE_RESET_OK → MODULE_NOTIFY_READY_OK → MODULE_INIT_COMPLETE
-// If MODULE_INIT_COMPLETE is missing, reset() itself triggered a reload (stale bundle existed).
-// On the next load after that reset, the loop will stop (no more pending bundle).
+// NOTE: reset() was removed — in @capgo/capacitor-updater v7.43.3, reset()
+// always triggers a WebView reload even when currentBundle is already "builtin",
+// causing an infinite reload loop. The stale next()-bundle problem it was meant
+// to solve no longer applies since we switched to set() for OTA activation.
 if (typeof window !== "undefined") {
   const _cap = (window as any).Capacitor;
   if (_cap?.getPlatform?.() === "android") {
     import("@capgo/capacitor-updater")
       .then(async ({ CapacitorUpdater }) => {
         otaLog("MODULE_INIT_START", { ts: Date.now() });
-
-        // Step 1: reset() — must run BEFORE notifyAppReady() to clear stale bundles.
-        // If a stale next()-bundle exists, reset() triggers one reload to builtin.
-        // On the subsequent load there is no pending bundle, so reset() is a no-op.
-        if (typeof (CapacitorUpdater as any).reset === "function") {
-          try {
-            await (CapacitorUpdater as any).reset({ toLastSuccessful: true });
-            otaLog("MODULE_RESET_OK", { ts: Date.now() });
-          } catch (e: any) {
-            otaLog("MODULE_RESET_FAIL", { ts: Date.now(), error: String(e) });
-          }
-        } else {
-          otaLog("MODULE_RESET_SKIPPED", { reason: "reset() not found" });
-        }
-
-        // Step 2: notifyAppReady() — now safe to call; no pending bundle to apply.
         try {
           await CapacitorUpdater.notifyAppReady();
           otaLog("MODULE_NOTIFY_READY_OK", { ts: Date.now() });
         } catch (e: any) {
           otaLog("MODULE_NOTIFY_READY_FAIL", { ts: Date.now(), error: String(e) });
         }
-
-        // Sentinel: if this appears, the entire init completed without reload.
         otaLog("MODULE_INIT_COMPLETE", { ts: Date.now() });
       })
       .catch((e: any) => {
