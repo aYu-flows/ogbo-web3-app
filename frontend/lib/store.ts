@@ -360,12 +360,6 @@ interface AppState {
   checkAuthStatus: () => void
   cleanupExternalWallet: (address: string) => void
 
-  // OTA progress
-  otaProgress: number | null   // null = inactive, 0-100 = downloading
-  otaDone: boolean             // true briefly after bundle is scheduled
-  setOtaProgress: (p: number | null) => void
-  setOtaDone: (v: boolean) => void
-
   // Supabase chat actions
   initChat: (walletAddress: string) => Promise<void>
   destroyChat: () => void
@@ -398,12 +392,6 @@ export const useStore = create<AppState>((set, get) => ({
   // Market data initial state
   marketLoading: false,
   marketError: null,
-
-  // OTA progress initial state
-  otaProgress: null,
-  otaDone: false,
-  setOtaProgress: (p) => set({ otaProgress: p }),
-  setOtaDone: (v) => set({ otaDone: v }),
 
   // Supabase chat initial state
   chatReady: false,
