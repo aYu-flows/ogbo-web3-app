@@ -4,6 +4,8 @@ import React from "react";
 import { MessageCircle } from "lucide-react"; // Import MessageCircle
 
 import { useState, useRef, useEffect, useCallback } from "react";
+import { Capacitor } from "@capacitor/core";
+import { Keyboard } from "@capacitor/keyboard";
 import { motion, AnimatePresence, useMotionValue, animate } from "framer-motion";
 import {
   Search,
@@ -97,28 +99,34 @@ function ChatDetail({ chat, onBack, locale }: { chat: Chat; onBack: () => void; 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  // Keyboard overlap state: visual viewport resize fallback for when adjustResize doesn't fully work
+  // Keyboard overlap state: driven by @capacitor/keyboard native events
+  // Reliably detects keyboard height even with Capacitor 7 Edge-to-Edge mode
+  // (Visual Viewport API does NOT work in Capacitor Edge-to-Edge WebView)
   const [keyboardOverlap, setKeyboardOverlap] = useState(0);
 
   useEffect(() => {
-    const vv = window.visualViewport;
-    if (!vv) return;
+    if (!Capacitor.isNativePlatform()) return;
 
-    const handleViewportChange = () => {
-      // visualViewport.height = actual visible area (excluding keyboard)
-      // window.innerHeight = full viewport (decreases if adjustResize works; stays same if not)
-      // overlap = the keyboard height not already handled by adjustResize
-      const overlap = Math.max(0, window.innerHeight - vv.height);
-      setKeyboardOverlap(overlap);
-      if (overlap > 0) {
-        setTimeout(() => {
-          messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-        }, 50);
-      }
+    const handles: { remove: () => Promise<void> }[] = [];
+    let mounted = true;
+
+    Keyboard.addListener("keyboardWillShow", (info) => {
+      if (!mounted) return;
+      setKeyboardOverlap(info.keyboardHeight);
+      setTimeout(() => {
+        messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+      }, 50);
+    }).then((h) => { if (mounted) handles.push(h); else h.remove(); });
+
+    Keyboard.addListener("keyboardDidHide", () => {
+      if (!mounted) return;
+      setKeyboardOverlap(0);
+    }).then((h) => { if (mounted) handles.push(h); else h.remove(); });
+
+    return () => {
+      mounted = false;
+      handles.forEach((h) => h.remove());
     };
-
-    vv.addEventListener("resize", handleViewportChange);
-    return () => vv.removeEventListener("resize", handleViewportChange);
   }, []);
 
   // Swipe-back gesture state
