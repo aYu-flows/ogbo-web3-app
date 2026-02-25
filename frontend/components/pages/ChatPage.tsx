@@ -97,6 +97,30 @@ function ChatDetail({ chat, onBack, locale }: { chat: Chat; onBack: () => void; 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  // Keyboard overlap state: visual viewport resize fallback for when adjustResize doesn't fully work
+  const [keyboardOverlap, setKeyboardOverlap] = useState(0);
+
+  useEffect(() => {
+    const vv = window.visualViewport;
+    if (!vv) return;
+
+    const handleViewportChange = () => {
+      // visualViewport.height = actual visible area (excluding keyboard)
+      // window.innerHeight = full viewport (decreases if adjustResize works; stays same if not)
+      // overlap = the keyboard height not already handled by adjustResize
+      const overlap = Math.max(0, window.innerHeight - vv.height);
+      setKeyboardOverlap(overlap);
+      if (overlap > 0) {
+        setTimeout(() => {
+          messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+        }, 50);
+      }
+    };
+
+    vv.addEventListener("resize", handleViewportChange);
+    return () => vv.removeEventListener("resize", handleViewportChange);
+  }, []);
+
   // Swipe-back gesture state
   const x = useMotionValue(0);
   const touchStartX = useRef(0);
@@ -215,7 +239,7 @@ function ChatDetail({ chat, onBack, locale }: { chat: Chat; onBack: () => void; 
 
   return (
     <motion.div
-      style={{ x }}
+      style={{ x, paddingBottom: keyboardOverlap > 0 ? keyboardOverlap : undefined }}
       className="absolute inset-0 lg:relative lg:inset-auto bg-background z-20 flex flex-col overflow-x-hidden"
       onTouchStart={handleTouchStart}
       onTouchMove={handleTouchMove}
@@ -312,6 +336,13 @@ function ChatDetail({ chat, onBack, locale }: { chat: Chat; onBack: () => void; 
               setTimeout(() => setIsComposing(false), 0);
             }}
             onKeyDown={handleKeyDown}
+            onFocus={() => {
+              // Wait for keyboard animation (~300ms) then ensure input and message end are visible
+              setTimeout(() => {
+                inputRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+                messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+              }, 300);
+            }}
             placeholder={t("chat.inputPlaceholder", locale)}
             className="flex-1 min-w-0 bg-muted rounded-full px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[var(--ogbo-blue)]/20 transition-all"
           />
