@@ -17,6 +17,7 @@ import AppDownloadBanner from "@/components/AppDownloadBanner";
 import StatusBarConfig from "@/components/StatusBarConfig";
 import AddFriendModal from "@/components/chat/AddFriendModal";
 import CreateGroupModal from "@/components/chat/CreateGroupModal";
+import { unlockAudio } from "@/lib/soundPlayer";
 export default function Page() {
   const { activeTab, isLoggedIn, checkAuthStatus, initChat, chatReady, isConnectingChat, destroyChat, walletAddress, login, chats, cleanupExternalWallet } = useStore();
   const [isChecking, setIsChecking] = useState(true);
@@ -79,6 +80,16 @@ export default function Page() {
       destroyChat();
     }
   }, [isConnected, isLoggedIn, chatReady]);
+
+  // 解锁浏览器 Audio Autoplay 限制（每次用户交互时尝试，unlockAudio 内部已做幂等保护）
+  useEffect(() => {
+    window.addEventListener('click', unlockAudio);
+    window.addEventListener('touchstart', unlockAudio);
+    return () => {
+      window.removeEventListener('click', unlockAudio);
+      window.removeEventListener('touchstart', unlockAudio);
+    };
+  }, []);
 
   const handleSearch = useCallback(() => {
     if (activeTab === "chat") setChatSearchOpen((p) => !p);

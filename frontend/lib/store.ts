@@ -5,6 +5,7 @@ import { getStoredWallets, getActiveWallet, saveExternalWallet, removeExternalWa
 import { supabase } from '@/lib/supabaseClient'
 import { getChatId, addressToColor } from '@/lib/chat'
 import type { ContactRow, MessageRow, GroupRow } from '@/lib/chat'
+import { playMessageSound } from '@/lib/soundPlayer'
 
 // ======== CoinGecko Market Data ========
 interface CoinGeckoMarketItem {
@@ -766,6 +767,11 @@ export const useStore = create<AppState>((set, get) => ({
 
             const myAddr = currentState.walletAddress?.toLowerCase() || ''
             const isMe = msg.sender.toLowerCase() === myAddr
+
+            // 收到他人消息时播放提示音
+            if (!isMe) {
+              playMessageSound()
+            }
 
             const newMsg: Message = {
               id: `db-${msg.id}`,
