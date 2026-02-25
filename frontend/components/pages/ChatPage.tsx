@@ -98,6 +98,9 @@ function ChatDetail({ chat, onBack, locale }: { chat: Chat; onBack: () => void; 
   const [isComposing, setIsComposing] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  // Ref to the ChatDetail container — used to compute how much of keyboardHeight
+  // actually overlaps this container (excluding BottomNav + system nav bar below it)
+  const containerRef = useRef<HTMLDivElement>(null);
 
   // Keyboard overlap state: driven by @capacitor/keyboard native events
   // Reliably detects keyboard height even with Capacitor 7 Edge-to-Edge mode
@@ -112,7 +115,13 @@ function ChatDetail({ chat, onBack, locale }: { chat: Chat; onBack: () => void; 
 
     Keyboard.addListener("keyboardWillShow", (info) => {
       if (!mounted) return;
-      setKeyboardOverlap(info.keyboardHeight);
+      // keyboardHeight from Capacitor = distance from screen bottom to keyboard top,
+      // which INCLUDES BottomNav + system nav bar below the ChatDetail container.
+      // We subtract that space so paddingBottom = only the portion overlapping this container.
+      const containerBottom = containerRef.current?.getBoundingClientRect().bottom ?? window.innerHeight;
+      const spaceBelow = Math.max(0, window.innerHeight - containerBottom);
+      const effectivePadding = Math.max(0, info.keyboardHeight - spaceBelow);
+      setKeyboardOverlap(effectivePadding);
       setTimeout(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
       }, 50);
@@ -247,6 +256,7 @@ function ChatDetail({ chat, onBack, locale }: { chat: Chat; onBack: () => void; 
 
   return (
     <motion.div
+      ref={containerRef}
       style={{ x, paddingBottom: keyboardOverlap > 0 ? keyboardOverlap : undefined }}
       className="absolute inset-0 lg:relative lg:inset-auto bg-background z-20 flex flex-col overflow-x-hidden"
       onTouchStart={handleTouchStart}
