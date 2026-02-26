@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import { useStore, type Transaction, type NFT } from "@/lib/store";
 import { t } from "@/lib/i18n";
+import { copyToClipboard } from "@/lib/utils";
 import toast from "react-hot-toast";
 
 // Dynamic import to avoid pulling LoginApp into the initial bundle
@@ -196,11 +197,15 @@ export default function AssetsPage() {
 
   const shortAddr = wallet.address.slice(0, 6) + "..." + wallet.address.slice(-4);
 
-  const handleCopy = () => {
-    navigator.clipboard?.writeText(wallet.address);
-    setCopied(true);
-    toast.success(t("assets.addressCopied", locale));
-    setTimeout(() => setCopied(false), 2000);
+  const handleCopy = async () => {
+    try {
+      await copyToClipboard(wallet.address);
+      setCopied(true);
+      toast.success(t("assets.addressCopied", locale));
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      toast.error(locale === "zh" ? "复制失败，请手动复制" : "Copy failed, please copy manually");
+    }
   };
 
   return (

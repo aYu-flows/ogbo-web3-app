@@ -7,6 +7,7 @@ import Image from "next/image";
 import toast, { Toaster } from "react-hot-toast";
 import { useStore, type Locale } from "@/lib/store";
 import { t } from "@/lib/i18n";
+import { copyToClipboard } from "@/lib/utils";
 import AppDownloadBanner from "@/components/AppDownloadBanner";
 import { useConnect, useAccount } from "wagmi";
 import { useAppKit } from "@reown/appkit/react";
@@ -274,11 +275,10 @@ function ProgressBar({ step, total }: { step: number; total: number }) {
 }
 
 // ======== Back Header ========
-function BackHeader({ onBack, rightSlot, extraTopPx = 0 }: { onBack: () => void; rightSlot?: React.ReactNode; extraTopPx?: number }) {
+function BackHeader({ onBack, rightSlot, topVar = '--page-top-login' }: { onBack: () => void; rightSlot?: React.ReactNode; topVar?: string }) {
   const { locale } = useStore();
-  const totalPx = 22 + extraTopPx;
   return (
-    <div style={{ paddingTop: `calc(var(--safe-top, env(safe-area-inset-top, 0px)) + ${totalPx}px)` }}>
+    <div style={{ paddingTop: `calc(var(--safe-top, env(safe-area-inset-top, 0px)) + var(${topVar}, 32px))` }}>
       <div className="flex items-center justify-between h-14 px-4 lg:px-6">
         <button
           onClick={onBack}
@@ -501,7 +501,7 @@ function WelcomeView({ goTo }: { goTo: (v: AuthView) => void }) {
 
   return (
     <div className="flex flex-col h-full">
-      <div style={{ paddingTop: 'calc(var(--safe-top, env(safe-area-inset-top, 0px)) + 22px)' }}>
+      <div style={{ paddingTop: 'calc(var(--safe-top, env(safe-area-inset-top, 0px)) + var(--page-top-login, 32px))' }}>
         <div className="flex items-center justify-between h-14 px-4 lg:px-6">
           {/* Download button — left side, browser only */}
           {isBrowser ? (
@@ -784,7 +784,7 @@ function PasswordLoginView({ goTo, onSuccess }: {
 
   return (
     <div className="flex flex-col h-full">
-      <BackHeader onBack={() => goTo("welcome")} extraTopPx={15} />
+      <BackHeader onBack={() => goTo("welcome")} topVar="--page-top-password" />
       <div className="flex-1 flex flex-col items-center px-6 lg:px-8 lg:max-w-md lg:mx-auto lg:w-full">
         <div className="mt-8 lg:mt-16 mb-6">
           <motion.div animate={{ rotate: [0, -10, 10, -10, 0] }} transition={{ duration: 0.5 }}>
@@ -1125,23 +1125,7 @@ function CreateGenerateView({ goTo, network, onMnemonicGenerated, backView }: {
     // 带序号格式：便于用户抄写辨认
     const copyText = mnemonic.map((w, i) => `${i + 1}. ${w}`).join("\n");
     try {
-      const isCapacitor = !!(window as any).Capacitor;
-      if (isCapacitor) {
-        const { Clipboard: CapClipboard } = await import('@capacitor/clipboard');
-        await CapClipboard.write({ string: copyText });
-      } else if (navigator.clipboard && window.isSecureContext) {
-        await navigator.clipboard.writeText(copyText);
-      } else {
-        const ta = document.createElement("textarea");
-        ta.value = copyText;
-        ta.style.cssText = "position:fixed;opacity:0;top:-9999px;left:-9999px";
-        document.body.appendChild(ta);
-        ta.focus();
-        ta.select();
-        const ok = document.execCommand("copy");
-        document.body.removeChild(ta);
-        if (!ok) throw new Error("execCommand failed");
-      }
+      await copyToClipboard(copyText);
       setCopied(true);
       toast.success(t("create.phraseCopied", locale));
       setTimeout(() => setCopied(false), 3000);
@@ -1484,10 +1468,14 @@ function CreateCompleteView({
 
   const handleCopyAddress = async () => {
     if (!walletAddress) return;
-    await navigator.clipboard.writeText(walletAddress);
-    setAddressCopied(true);
-    toast.success(t("create.addressCopied", locale));
-    setTimeout(() => setAddressCopied(false), 2000);
+    try {
+      await copyToClipboard(walletAddress);
+      setAddressCopied(true);
+      toast.success(t("create.addressCopied", locale));
+      setTimeout(() => setAddressCopied(false), 2000);
+    } catch {
+      toast.error(locale === "zh" ? "复制失败，请手动复制" : "Copy failed, please copy manually");
+    }
   };
 
   // 密码确认阶段 UI（有已存钱包时先确认密码）

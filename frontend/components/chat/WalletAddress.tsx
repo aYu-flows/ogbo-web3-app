@@ -7,6 +7,7 @@ import { addressToColor } from '@/lib/chat'
 import toast from 'react-hot-toast'
 import { useStore } from '@/lib/store'
 import { t } from '@/lib/i18n'
+import { copyToClipboard } from '@/lib/utils'
 
 interface WalletAddressProps {
   address: string
@@ -25,12 +26,12 @@ export default function WalletAddress({ address, showCopyIcon = true, className 
 
   const handleCopy = async () => {
     try {
-      await navigator.clipboard.writeText(address)
+      await copyToClipboard(address)
       setCopied(true)
       toast.success(t('chat.addressCopied', locale))
       setTimeout(() => setCopied(false), 2000)
     } catch {
-      toast.error(t('chat.invalidAddress', locale))
+      toast.error(locale === 'zh' ? '复制失败，请手动复制' : 'Copy failed, please copy manually')
     }
   }
 

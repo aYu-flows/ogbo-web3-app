@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { useStore } from "@/lib/store";
 import { t } from "@/lib/i18n";
+import { copyToClipboard } from "@/lib/utils";
 import toast from "react-hot-toast";
 import { LineChart, Line, ResponsiveContainer } from "recharts";
 
@@ -169,9 +170,13 @@ function ReceiveModal({ open, onClose, locale, address }: { open: boolean; onClo
             </div>
             <p className="text-sm text-muted-foreground mb-3 font-mono">{shortAddr}</p>
             <button
-              onClick={() => {
-                navigator.clipboard?.writeText(address);
-                toast.success(t("assets.addressCopied", locale));
+              onClick={async () => {
+                try {
+                  await copyToClipboard(address);
+                  toast.success(t("assets.addressCopied", locale));
+                } catch {
+                  toast.error(locale === "zh" ? "复制失败，请手动复制" : "Copy failed, please copy manually");
+                }
               }}
               className="rounded-xl bg-[var(--ogbo-blue)] px-6 py-2.5 text-sm font-medium text-white hover:bg-[var(--ogbo-blue-hover)] transition-colors"
             >
