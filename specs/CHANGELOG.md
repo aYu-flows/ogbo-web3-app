@@ -6,6 +6,24 @@
 
 ## 2026-03-08
 
+### 好友搜索支持昵称搜索（Task73）
+
+- **新增** `lib/profile.ts` — `searchByNickname()` 函数，Supabase ilike 模糊匹配 profiles.nickname
+- **修改** `lib/store.ts` — 新增 `searchUserByNickname` action
+- **修改** `components/chat/AddFriendModal.tsx` — 搜索逻辑支持地址/昵称双模式自动判断，多结果列表显示
+- **修改** `lib/i18n.ts` — 更新搜索 placeholder 文案，新增 nicknameSearchNoResult key
+- **更新** `specs/product.md` §2.1 — 添加昵称搜索说明
+
+### Task71 审计问题修复
+
+- **修改** `lib/store.ts` — `updateNickname`/`updateAvatar` 增加乐观更新+失败回滚机制
+- **修改** `lib/chat.ts` — `sendFriendRequest` 增加重复好友请求检测（ALREADY_FRIENDS/ALREADY_PENDING）
+- **修改** `lib/profile.ts` — `upsertProfile` 空字符串 nickname 转 null；`uploadAvatar` 旧文件删除加 try-catch 容错
+- **修改** `lib/i18n.ts` — 新增 6 个 i18n keys（friend.alreadyFriends/alreadyPending/sendFailed/requestSent, profile.saveFailed/uploadFailed）
+- **修改** `components/ProfileEditModal.tsx` — 硬编码错误 toast 替换为 i18n `t()` 调用
+- **修改** `components/chat/AddFriendModal.tsx` — 重复请求错误处理 + 硬编码 toast 替换为 i18n
+- **修改** `components/pages/ChatPage.tsx` — 群聊非己方消息前增加 24px 发送者头像
+
 ### 头像点击预览放大功能（Task72）
 
 - **新建** `components/AvatarPreviewModal.tsx` — 全屏头像预览弹窗（遮罩+大图+fade/scale 动画+ESC/点击关闭）

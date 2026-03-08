@@ -75,13 +75,29 @@ export async function sendFriendRequest(
     throw new FriendPermissionError('REJECTED')
   }
 
+  // Check for existing contact (either direction)
+  const fromLower = from.toLowerCase()
+  const toLower = to.toLowerCase()
+  const { data: existing } = await supabase
+    .from('contacts')
+    .select('status')
+    .or(
+      `and(wallet_a.eq.${fromLower},wallet_b.eq.${toLower}),and(wallet_a.eq.${toLower},wallet_b.eq.${fromLower})`
+    )
+    .in('status', ['pending', 'accepted'])
+    .limit(1)
+  if (existing && existing.length > 0) {
+    if (existing[0].status === 'accepted') throw new Error('ALREADY_FRIENDS')
+    throw new Error('ALREADY_PENDING')
+  }
+
   const status = permission === 'anyone' ? 'accepted' : 'pending'
   const { error } = await supabase
     .from('contacts')
     .upsert(
       {
-        wallet_a: from.toLowerCase(),
-        wallet_b: to.toLowerCase(),
+        wallet_a: fromLower,
+        wallet_b: toLower,
         status,
         request_msg: message || null,
       },

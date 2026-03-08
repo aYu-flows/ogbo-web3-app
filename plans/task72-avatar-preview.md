@@ -6,26 +6,12 @@
 
 ## 二、实现 Checklist
 
-- [ ] **1. 创建 `AvatarPreviewModal.tsx` 组件**（AI）
-  - 新建 `frontend/components/AvatarPreviewModal.tsx`
-  - 实现全屏遮罩 + 居中大图 + fade/scale 动画 + ESC/点击关闭 + 图片加载失败处理
-  - [ ] 1.1 单元测试：open/close 渲染、遮罩点击关闭、ESC 关闭、avatarUrl 为 null 不渲染图片
-- [ ] **2. 修改 `UserAvatar.tsx` 增加 `onPreview` prop**（AI）
-  - 新增可选 `onPreview` prop，仅在 showImage 为 true 时响应点击
-  - [ ] 2.1 单元测试：有头像时 onPreview 触发、fallback 时不触发
-- [ ] **3. 聊天列表集成头像预览**（AI）
-  - 修改 `ChatPage.tsx` chat list 中 UserAvatar，传入 onPreview + stopPropagation
-  - 在 ChatPage 中引入 AvatarPreviewModal，管理 previewAddress 状态
-- [ ] **4. 聊天详情顶栏集成头像预览**（AI）
-  - 修改 `ChatPage.tsx` ChatDetail header 中 UserAvatar，传入 onPreview
-  - 在 ChatDetail 中引入 AvatarPreviewModal，管理 previewAddress 状态
-- [ ] **5. 好友请求卡片集成头像预览**（AI）
-  - 修改 `ChatRequestCard.tsx` 中 UserAvatar，传入 onPreview
-  - 引入 AvatarPreviewModal，管理 previewAddress 状态
-- [ ] **6. 更新 Steering 文档**（AI）
-  - 更新 `specs/structure.md` 新增 AvatarPreviewModal.tsx 文件条目
-  - 更新 `frontend/CLAUDE.md` 映射表新增 AvatarPreviewModal
-  - 更新 `specs/CHANGELOG.md` 记录本次变更
+- [x] **1. 创建 `AvatarPreviewModal.tsx` 组件**（AI）
+- [x] **2. 修改 `UserAvatar.tsx` 增加 `onPreview` prop**（AI）
+- [x] **3. 聊天列表集成头像预览**（AI）
+- [x] **4. 聊天详情顶栏集成头像预览**（AI）
+- [x] **5. 好友请求卡片集成头像预览**（AI）
+- [x] **6. 更新 Steering 文档**（AI）
 
 ## 三、技术方案
 

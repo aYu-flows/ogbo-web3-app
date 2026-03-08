@@ -19,50 +19,50 @@
 
 ### 阶段一：新增核心文件
 
-- [ ] **[AI]** 创建 `frontend/lib/ota-version.ts`
+- [x] **[AI]** 创建 `frontend/lib/ota-version.ts`
   - 导出 `export const BUNDLE_VERSION = "1.0.0"`
   - 自检：TS 语法正确，导出与测试 mock `{ BUNDLE_VERSION: '1.0.0' }` 一致
 
-- [ ] **[AI]** 创建 `frontend/lib/use-ota-updater.ts`
+- [x] **[AI]** 创建 `frontend/lib/use-ota-updater.ts`
   - 实现模块级 `_otaRunning` 防重入标志
   - 实现 `_resetOtaRunningForTest()` 导出（重置 `_otaRunning = false`）
   - 实现 `runOtaUpdate()` 异步函数，完整逻辑见§四 4.1.2（步骤1-11）
   - 实现 `useOtaUpdater()` React hook（`useEffect(() => { runOtaUpdate() }, [])`）
   - 自检：TS 类型检查通过；导出与测试 `import { runOtaUpdate, _resetOtaRunningForTest }` 一致
   - **单元测试**：执行 `pnpm jest use-ota-updater`，11/11 全部通过
-    - [ ] **[AI]** 测试1：非 Android 环境跳过
-    - [ ] **[AI]** 测试1b：iOS 平台跳过
-    - [ ] **[AI]** 测试2：版本相同不下载
-    - [ ] **[AI]** 测试3：版本不同 → download + set
-    - [ ] **[AI]** 测试4：fetch 网络错误静默
-    - [ ] **[AI]** 测试5：manifest JSON 非法静默
-    - [ ] **[AI]** 测试6：manifest.version 缺失不下载
-    - [ ] **[AI]** 测试7：notifyAppReady 失败后继续
-    - [ ] **[AI]** 测试8：download 3次失败不调 set
-    - [ ] **[AI]** 测试9：http URL 被拒绝
-    - [ ] **[AI]** 测试10：set 失败重置状态
-    - [ ] **[AI]** 测试11：list 未找到 fallback
+    - [x] **[AI]** 测试1：非 Android 环境跳过
+    - [x] **[AI]** 测试1b：iOS 平台跳过
+    - [x] **[AI]** 测试2：版本相同不下载
+    - [x] **[AI]** 测试3：版本不同 → download + set
+    - [x] **[AI]** 测试4：fetch 网络错误静默
+    - [x] **[AI]** 测试5：manifest JSON 非法静默
+    - [x] **[AI]** 测试6：manifest.version 缺失不下载
+    - [x] **[AI]** 测试7：notifyAppReady 失败后继续
+    - [x] **[AI]** 测试8：download 3次失败不调 set
+    - [x] **[AI]** 测试9：http URL 被拒绝
+    - [x] **[AI]** 测试10：set 失败重置状态
+    - [x] **[AI]** 测试11：list 未找到 fallback
 
 ### 阶段二：修改现有文件
 
-- [ ] **[AI]** 修改 `frontend/lib/store.ts`
+- [x] **[AI]** 修改 `frontend/lib/store.ts`
   - 在 AppState 接口中新增 `otaProgress: number | null` 和 `otaDone: boolean`
   - 在 AppState 接口中新增 `setOtaProgress: (progress: number | null) => void` 和 `setOtaDone: (done: boolean) => void`
   - 在 store 初始值中新增 `otaProgress: null, otaDone: false`
   - 在 store actions 中新增 setter 实现
   - 自检：TS 类型检查通过；现有测试不受影响
 
-- [ ] **[AI]** 修改 `frontend/app/page.tsx`
+- [x] **[AI]** 修改 `frontend/app/page.tsx`
   - 顶部添加 `import { useOtaUpdater } from "@/lib/use-ota-updater"`
   - 在 `Page` 函数体第一行（所有 `useStore`/`useState` 之前）添加 `useOtaUpdater()`
   - 自检：hook 位于所有条件 return 之前；无 React Hook 规则违规
 
 ### 阶段三：文档驱动闭环更新
 
-- [ ] **[AI]** 更新 `specs/structure.md`：新增 `lib/ota-version.ts` 和 `lib/use-ota-updater.ts` 文件说明
-- [ ] **[AI]** 更新 `frontend/CLAUDE.md`：代码-规范映射表新增 OTA 相关文件条目
-- [ ] **[AI]** 更新 `specs/tech.md` §6：新增 OTA 热更新简要说明
-- [ ] **[AI]** 更新 `specs/CHANGELOG.md`：记录本次变更
+- [x] **[AI]** 更新 `specs/structure.md`：新增 `lib/ota-version.ts` 和 `lib/use-ota-updater.ts` 文件说明
+- [x] **[AI]** 更新 `frontend/CLAUDE.md`：代码-规范映射表新增 OTA 相关文件条目
+- [x] **[AI]** 更新 `specs/tech.md` §6：新增 OTA 热更新简要说明
+- [x] **[AI]** 更新 `specs/CHANGELOG.md`：记录本次变更
 
 ### 阶段四：用户手动操作（非 AI 任务）
 

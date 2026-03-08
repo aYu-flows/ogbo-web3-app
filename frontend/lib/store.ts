@@ -382,6 +382,7 @@ interface AppState {
   sendGroupPushMessage: (chatId: string, content: string) => Promise<void>
   loadChatHistory: (chatId: string) => Promise<void>
   searchUserByAddress: (address: string) => Promise<any>
+  searchUserByNickname: (keyword: string) => Promise<Array<{ address: string; nickname: string; avatarUrl: string | null }>>
   createGroup: (groupName: string, memberAddresses: string[]) => Promise<void>
 
   // OTA actions
@@ -1250,6 +1251,13 @@ export const useStore = create<AppState>((set, get) => ({
     const ADDRESS_REGEX = /^0x[a-fA-F0-9]{40}$/
     if (!ADDRESS_REGEX.test(address)) return null
     return { address: address.toLowerCase() }
+  },
+
+  searchUserByNickname: async (keyword) => {
+    const state = get()
+    if (!state.walletAddress) return []
+    const { searchByNickname } = await import('@/lib/profile')
+    return searchByNickname(keyword, state.walletAddress)
   },
 
   loadChatHistory: async (chatId) => {

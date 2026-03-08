@@ -44,18 +44,21 @@ export default function ProfileEditModal({ isOpen, onClose }: ProfileEditModalPr
   if (!walletAddress) return null
 
   const handleSaveNickname = async () => {
-    if (nickname.length > 20) {
+    const trimmed = nickname.trim()
+    // No change — skip silently
+    if (trimmed === (myProfile?.nickname || '')) return
+    if (trimmed.length > 20) {
       toast.error(t('profile.nicknameTooLong', locale))
       return
     }
     setSaving(true)
     try {
-      await updateNickname(nickname.trim())
+      await updateNickname(trimmed)
       setSaved(true)
       toast.success(t('profile.saved', locale))
       setTimeout(() => setSaved(false), 2000)
     } catch {
-      toast.error(locale === 'zh' ? '保存失败' : 'Save failed')
+      toast.error(t('profile.saveFailed', locale))
     } finally {
       setSaving(false)
     }
@@ -82,7 +85,7 @@ export default function ProfileEditModal({ isOpen, onClose }: ProfileEditModalPr
       await updateAvatar(file)
       toast.success(t('profile.saved', locale))
     } catch {
-      toast.error(locale === 'zh' ? '上传失败' : 'Upload failed')
+      toast.error(t('profile.uploadFailed', locale))
     } finally {
       setUploadingAvatar(false)
       if (fileInputRef.current) fileInputRef.current.value = ''
@@ -96,13 +99,12 @@ export default function ProfileEditModal({ isOpen, onClose }: ProfileEditModalPr
       await updateFriendPermission(permission)
       toast.success(t('profile.permissionSaved', locale))
     } catch {
-      toast.error(locale === 'zh' ? '保存失败' : 'Save failed')
+      toast.error(t('profile.saveFailed', locale))
     } finally {
       setSavingPermission(null)
     }
   }
 
-  const nicknameChanged = nickname.trim() !== (myProfile?.nickname || '')
   const currentPermission = myProfile?.friendPermission ?? 'confirm'
 
   return (
@@ -184,7 +186,7 @@ export default function ProfileEditModal({ isOpen, onClose }: ProfileEditModalPr
               </div>
               <button
                 onClick={handleSaveNickname}
-                disabled={saving || !nicknameChanged}
+                disabled={saving}
                 className="mt-3 w-full rounded-xl bg-[var(--ogbo-blue)] py-2.5 text-sm font-medium text-white hover:bg-[var(--ogbo-blue-hover)] transition-colors disabled:opacity-50 flex items-center justify-center gap-1.5"
               >
                 {saving ? (

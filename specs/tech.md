@@ -179,7 +179,7 @@ chat_id 生成规则（`lib/chat.ts` 中 `getChatId` 函数）：
 | wallet_address | text | 主键，钱包地址（小写） |
 | nickname | text | 用户昵称（最长 20 字符） |
 | avatar_url | text | 头像 URL（Supabase Storage） |
-| friend_permission | text | 好友添加权限：`'allow_all'` / `'approve_required'`（默认） / `'reject_all'` |
+| friend_permission | text | 好友添加权限：`'anyone'` / `'confirm'`（默认） / `'reject'`。有 CHECK 约束 `profiles_friend_permission_check` |
 | updated_at | timestamptz | 最后更新时间 |
 
 #### push_debug_logs 表 — 远程调试日志

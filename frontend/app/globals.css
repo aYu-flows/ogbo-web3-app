@@ -45,6 +45,14 @@
 
     --safe-top: 0px;
     --safe-bottom: 0px;
+
+    /* ── Page top safe-area offsets ──────────────────────────────────
+       Adjust any of the three base values; --page-top-floor updates
+       automatically via CSS min(). Future pages use --page-top-floor. */
+    --page-top-login:    32px;   /* Login general pages (WelcomeView / BackHeader) */
+    --page-top-topbar:   35px;   /* Main app TopBar                                */
+    --page-top-password: 45px;   /* PasswordLoginView                              */
+    --page-top-floor: min(var(--page-top-login), var(--page-top-topbar), var(--page-top-password));
   }
 }
 

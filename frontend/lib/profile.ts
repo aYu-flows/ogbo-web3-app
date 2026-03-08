@@ -81,7 +81,7 @@ export async function upsertProfile(params: {
     updated_at: new Date().toISOString(),
   }
   if (params.nickname !== undefined) {
-    const nick = params.nickname
+    const nick = params.nickname === '' ? null : params.nickname
     if (nick && nick.length > NICKNAME_MAX_LENGTH) {
       throw new Error(`Nickname exceeds max length of ${NICKNAME_MAX_LENGTH}`)
     }
@@ -111,6 +111,49 @@ export async function fetchFriendPermission(walletAddress: string): Promise<Frie
   return parseFriendPermission(data?.friend_permission)
 }
 
+// ======== Search ========
+
+export interface NicknameSearchResult {
+  address: string
+  nickname: string
+  avatarUrl: string | null
+}
+
+/** Escape special characters for Supabase ilike pattern */
+function escapeIlike(input: string): string {
+  return input.replace(/[%_\\]/g, '\\$&')
+}
+
+/**
+ * Search profiles by nickname (case-insensitive fuzzy match).
+ * Returns up to 10 results, excluding the specified address.
+ */
+export async function searchByNickname(
+  keyword: string,
+  excludeAddress: string
+): Promise<NicknameSearchResult[]> {
+  const trimmed = keyword.trim()
+  if (!trimmed) return []
+
+  const pattern = `%${escapeIlike(trimmed)}%`
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('wallet_address, nickname, avatar_url')
+    .neq('wallet_address', excludeAddress.toLowerCase())
+    .not('nickname', 'is', null)
+    .ilike('nickname', pattern)
+    .limit(10)
+
+  if (error) throw error
+  if (!data) return []
+
+  return data.map((row: { wallet_address: string; nickname: string; avatar_url: string | null }) => ({
+    address: row.wallet_address,
+    nickname: row.nickname,
+    avatarUrl: row.avatar_url,
+  }))
+}
+
 // ======== Avatar Storage ========
 
 export function validateAvatarFile(file: File): string | null {
@@ -130,13 +173,17 @@ export async function uploadAvatar(
   const ext = file.name.split('.').pop() || 'jpg'
   const filePath = `${addr}/${Date.now()}.${ext}`
 
-  // Delete old avatars for this user
-  const { data: existingFiles } = await supabase.storage
-    .from('avatars')
-    .list(addr)
-  if (existingFiles && existingFiles.length > 0) {
-    const pathsToDelete = existingFiles.map(f => `${addr}/${f.name}`)
-    await supabase.storage.from('avatars').remove(pathsToDelete)
+  // Delete old avatars for this user (non-blocking)
+  try {
+    const { data: existingFiles } = await supabase.storage
+      .from('avatars')
+      .list(addr)
+    if (existingFiles && existingFiles.length > 0) {
+      const pathsToDelete = existingFiles.map(f => `${addr}/${f.name}`)
+      await supabase.storage.from('avatars').remove(pathsToDelete)
+    }
+  } catch (cleanupErr) {
+    console.warn('[Avatar] Failed to delete old avatars:', cleanupErr)
   }
 
   // Upload new avatar
