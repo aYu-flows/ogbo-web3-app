@@ -348,6 +348,10 @@ interface AppState {
   myProfile: ProfileData | null
   profileCache: Record<string, ProfileData>
 
+  // OTA state
+  otaProgress: number | null
+  otaDone: boolean
+
   switchTab: (tab: TabType) => void
   toggleBalance: () => void
   switchLocale: () => void
@@ -379,6 +383,10 @@ interface AppState {
   loadChatHistory: (chatId: string) => Promise<void>
   searchUserByAddress: (address: string) => Promise<any>
   createGroup: (groupName: string, memberAddresses: string[]) => Promise<void>
+
+  // OTA actions
+  setOtaProgress: (progress: number | null) => void
+  setOtaDone: (done: boolean) => void
 
   // Profile actions
   loadMyProfile: (walletAddress: string) => Promise<void>
@@ -418,8 +426,14 @@ export const useStore = create<AppState>((set, get) => ({
   myProfile: null,
   profileCache: {},
 
+  // OTA initial state
+  otaProgress: null,
+  otaDone: false,
+
   switchTab: (tab) => set({ activeTab: tab }),
   toggleBalance: () => set((s) => ({ isBalanceVisible: !s.isBalanceVisible })),
+  setOtaProgress: (progress) => set({ otaProgress: progress }),
+  setOtaDone: (done) => set({ otaDone: done }),
   switchLocale: () => set((s) => ({ locale: s.locale === 'zh' ? 'en' : 'zh' })),
   switchWallet: (id) => {
     const state = get()
@@ -780,7 +794,8 @@ export const useStore = create<AppState>((set, get) => ({
         c.wallet_a.toLowerCase() === me ? c.wallet_b : c.wallet_a
       )
       const groupMemberAddresses = groups.flatMap(g => g.members)
-      const allAddresses = [...new Set([...peerAddresses, ...groupMemberAddresses])]
+      const pendingRequestAddresses = pendingRequests.map(c => c.wallet_a)
+      const allAddresses = [...new Set([...peerAddresses, ...groupMemberAddresses, ...pendingRequestAddresses])]
       get().loadProfiles(allAddresses)
 
       // Subscribe to Realtime events
