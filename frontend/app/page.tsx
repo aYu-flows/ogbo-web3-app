@@ -18,9 +18,10 @@ import StatusBarConfig from "@/components/StatusBarConfig";
 import AddFriendModal from "@/components/chat/AddFriendModal";
 import CreateGroupModal from "@/components/chat/CreateGroupModal";
 import { unlockAudio } from "@/lib/soundPlayer";
-import { useOtaUpdater } from "@/lib/use-ota-updater";
+// OTA 热更新暂时禁用（白屏循环问题待修复）
+// import { useOtaUpdater } from "@/lib/use-ota-updater";
 export default function Page() {
-  useOtaUpdater();
+  // useOtaUpdater();
   const { activeTab, isLoggedIn, checkAuthStatus, initChat, chatReady, isConnectingChat, destroyChat, walletAddress, login, chats, cleanupExternalWallet } = useStore();
   const [isChecking, setIsChecking] = useState(true);
   const [chatSearchOpen, setChatSearchOpen] = useState(false);
