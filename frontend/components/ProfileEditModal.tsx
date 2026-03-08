@@ -12,9 +12,9 @@ import WalletAddress from '@/components/chat/WalletAddress'
 import toast from 'react-hot-toast'
 
 const PERMISSION_OPTIONS: { value: FriendPermission; labelKey: string }[] = [
-  { value: 'allow_all', labelKey: 'profile.allowAll' },
-  { value: 'approve_required', labelKey: 'profile.approveRequired' },
-  { value: 'reject_all', labelKey: 'profile.rejectAll' },
+  { value: 'anyone', labelKey: 'profile.allowAll' },
+  { value: 'confirm', labelKey: 'profile.approveRequired' },
+  { value: 'reject', labelKey: 'profile.rejectAll' },
 ]
 
 interface ProfileEditModalProps {
@@ -103,7 +103,7 @@ export default function ProfileEditModal({ isOpen, onClose }: ProfileEditModalPr
   }
 
   const nicknameChanged = nickname.trim() !== (myProfile?.nickname || '')
-  const currentPermission = myProfile?.friendPermission ?? 'approve_required'
+  const currentPermission = myProfile?.friendPermission ?? 'confirm'
 
   return (
     <AnimatePresence>

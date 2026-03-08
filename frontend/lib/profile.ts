@@ -10,12 +10,12 @@ export interface ProfileRow {
   updated_at: string
 }
 
-export type FriendPermission = 'allow_all' | 'approve_required' | 'reject_all'
-export const FRIEND_PERMISSION_DEFAULT: FriendPermission = 'approve_required'
+export type FriendPermission = 'anyone' | 'confirm' | 'reject'
+export const FRIEND_PERMISSION_DEFAULT: FriendPermission = 'confirm'
 
 /** Parse raw DB value to type-safe FriendPermission, fallback to default for null/invalid */
 export function parseFriendPermission(raw: string | null | undefined): FriendPermission {
-  if (raw === 'allow_all' || raw === 'approve_required' || raw === 'reject_all') return raw
+  if (raw === 'anyone' || raw === 'confirm' || raw === 'reject') return raw
   return FRIEND_PERMISSION_DEFAULT
 }
 

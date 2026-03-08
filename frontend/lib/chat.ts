@@ -71,11 +71,11 @@ export async function sendFriendRequest(
   const { fetchFriendPermission } = await import('@/lib/profile')
   const permission = await fetchFriendPermission(to)
 
-  if (permission === 'reject_all') {
+  if (permission === 'reject') {
     throw new FriendPermissionError('REJECTED')
   }
 
-  const status = permission === 'allow_all' ? 'accepted' : 'pending'
+  const status = permission === 'anyone' ? 'accepted' : 'pending'
   const { error } = await supabase
     .from('contacts')
     .upsert(
