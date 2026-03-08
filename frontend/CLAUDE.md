@@ -41,6 +41,7 @@
 | components/AppDownloadBanner.tsx | structure.md §4 布局组件 |
 | components/SidebarNav.tsx | structure.md §4 布局组件 |
 | components/UserAvatar.tsx | product.md §2 个人资料; structure.md §4 |
+| components/AvatarPreviewModal.tsx | product.md §2 个人资料; structure.md §4 |
 | components/ProfileEditModal.tsx | product.md §2 个人资料; structure.md §4 |
 | components/theme-provider.tsx | structure.md §4 主题系统 |
 | hooks/use-mobile.tsx | tech.md §6 跨平台适配 |

@@ -29,6 +29,7 @@ import toast from "react-hot-toast";
 import ChatRequestList from "@/components/chat/ChatRequestList";
 import WalletAddress from "@/components/chat/WalletAddress";
 import UserAvatar from "@/components/UserAvatar";
+import AvatarPreviewModal from "@/components/AvatarPreviewModal";
 
 function formatTime(ts: number, locale: "zh" | "en") {
   const now = Date.now();
@@ -93,11 +94,12 @@ function EmojiPicker({ onSelect, onClose }: { onSelect: (emoji: string) => void;
 
 // Chat Detail View
 function ChatDetail({ chat, onBack, locale }: { chat: Chat; onBack: () => void; locale: "zh" | "en" }) {
-  const { sendMessage, sendPushMessage, sendGroupPushMessage, loadChatHistory, chatReady, walletAddress, getDisplayName } = useStore();
+  const { sendMessage, sendPushMessage, sendGroupPushMessage, loadChatHistory, chatReady, walletAddress, getDisplayName, getAvatarUrl } = useStore();
   const [input, setInput] = useState("");
   const [showEmoji, setShowEmoji] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
   const [isComposing, setIsComposing] = useState(false);
+  const [previewAddress, setPreviewAddress] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   // Ref to the ChatDetail container — used to compute how much of keyboardHeight
@@ -277,7 +279,7 @@ function ChatDetail({ chat, onBack, locale }: { chat: Chat; onBack: () => void; 
                 <Users className="w-4 h-4" />
               </div>
             ) : chat.walletAddress ? (
-              <UserAvatar address={chat.walletAddress} size="sm" className="!w-9 !h-9" />
+              <UserAvatar address={chat.walletAddress} size="sm" className="!w-9 !h-9" onPreview={() => setPreviewAddress(chat.walletAddress!)} />
             ) : (
               <div className="w-9 h-9 rounded-full flex items-center justify-center text-white text-sm font-semibold" style={{ backgroundColor: chat.avatarColor }}>
                 {chat.name[0]}
@@ -315,23 +317,34 @@ function ChatDetail({ chat, onBack, locale }: { chat: Chat; onBack: () => void; 
               animate={{ opacity: 1, y: 0 }}
               className={`flex ${isMe ? "justify-end" : "justify-start"}`}
             >
-              <div className={`max-w-[75%] rounded-2xl px-3.5 py-2.5 ${
-                isMe
-                  ? "bg-[var(--ogbo-blue)] text-white rounded-br-md"
-                  : "bg-card text-card-foreground border border-border rounded-bl-md"
-              }`}>
-                {chat.type === 'group' && !isMe && (
-                  <p className="text-[10px] font-semibold mb-1 text-[var(--ogbo-blue)]/80">
-                    {getDisplayName(msg.sender)}
+              {chat.type === 'group' && !isMe ? (
+                <div className="flex items-end gap-1.5">
+                  <UserAvatar address={msg.sender} size="sm" className="!w-6 !h-6 flex-shrink-0" />
+                  <div className={`max-w-[75%] rounded-2xl px-3.5 py-2.5 bg-card text-card-foreground border border-border rounded-bl-md`}>
+                    <p className="text-[10px] font-semibold mb-1 text-[var(--ogbo-blue)]/80">
+                      {getDisplayName(msg.sender)}
+                    </p>
+                    <p className="text-sm leading-relaxed">{msg.content}</p>
+                    <p className="text-[10px] mt-1 text-muted-foreground">
+                      {new Date(msg.timestamp).getHours().toString().padStart(2, "0")}:
+                      {new Date(msg.timestamp).getMinutes().toString().padStart(2, "0")}
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <div className={`max-w-[75%] rounded-2xl px-3.5 py-2.5 ${
+                  isMe
+                    ? "bg-[var(--ogbo-blue)] text-white rounded-br-md"
+                    : "bg-card text-card-foreground border border-border rounded-bl-md"
+                }`}>
+                  <p className="text-sm leading-relaxed">{msg.content}</p>
+                  <p className={`text-[10px] mt-1 ${isMe ? "text-white/60" : "text-muted-foreground"}`}>
+                    {new Date(msg.timestamp).getHours().toString().padStart(2, "0")}:
+                    {new Date(msg.timestamp).getMinutes().toString().padStart(2, "0")}
+                    {isMe && msg.status === "read" && " ✓✓"}
                   </p>
-                )}
-                <p className="text-sm leading-relaxed">{msg.content}</p>
-                <p className={`text-[10px] mt-1 ${isMe ? "text-white/60" : "text-muted-foreground"}`}>
-                  {new Date(msg.timestamp).getHours().toString().padStart(2, "0")}:
-                  {new Date(msg.timestamp).getMinutes().toString().padStart(2, "0")}
-                  {isMe && msg.status === "read" && " ✓✓"}
-                </p>
-              </div>
+                </div>
+              )}
             </motion.div>
           );
         })}
@@ -384,18 +397,27 @@ function ChatDetail({ chat, onBack, locale }: { chat: Chat; onBack: () => void; 
           </motion.button>
         </div>
       </div>
+
+      {/* Avatar Preview Modal */}
+      <AvatarPreviewModal
+        avatarUrl={previewAddress ? getAvatarUrl(previewAddress) : null}
+        displayName={previewAddress ? getDisplayName(previewAddress) : ''}
+        open={!!previewAddress}
+        onClose={() => setPreviewAddress(null)}
+      />
     </motion.div>
   );
 }
 
 export default function ChatPage({ searchOpen: searchOpenProp, onCloseSearch }: { searchOpen?: boolean; onCloseSearch?: () => void }) {
-  const { chats, locale, markChatRead, pinChat, deleteChat, chatRequests, getDisplayName } = useStore();
+  const { chats, locale, markChatRead, pinChat, deleteChat, chatRequests, getDisplayName, getAvatarUrl } = useStore();
   const walletAddress = useStore((s) => s.walletAddress);
   const isConnectingChat = useStore((s) => s.isConnectingChat);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedChat, setSelectedChat] = useState<string | null>(null);
   const [showRequests, setShowRequests] = useState(false);
   const [swipedId, setSwipedId] = useState<string | null>(null);
+  const [previewAddress, setPreviewAddress] = useState<string | null>(null);
 
   // Reset selected chat when wallet switches (walletAddress changes)
   const prevWalletRef = useRef<string | null>(null);
@@ -579,7 +601,7 @@ export default function ChatPage({ searchOpen: searchOpenProp, onCloseSearch }: 
                         <Users className="w-5 h-5" />
                       </div>
                     ) : chat.walletAddress ? (
-                      <UserAvatar address={chat.walletAddress} size="lg" />
+                      <UserAvatar address={chat.walletAddress} size="lg" onPreview={() => setPreviewAddress(chat.walletAddress!)} />
                     ) : (
                       <div
                         className="w-12 h-12 rounded-full flex items-center justify-center text-white font-semibold"
@@ -657,6 +679,14 @@ export default function ChatPage({ searchOpen: searchOpenProp, onCloseSearch }: 
           <ChatRequestList onBack={() => setShowRequests(false)} />
         )}
       </AnimatePresence>
+
+      {/* Avatar Preview Modal (chat list) */}
+      <AvatarPreviewModal
+        avatarUrl={previewAddress ? getAvatarUrl(previewAddress) : null}
+        displayName={previewAddress ? getDisplayName(previewAddress) : ''}
+        open={!!previewAddress}
+        onClose={() => setPreviewAddress(null)}
+      />
     </div>
   );
 }

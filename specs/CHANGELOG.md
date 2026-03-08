@@ -6,6 +6,15 @@
 
 ## 2026-03-08
 
+### 头像点击预览放大功能（Task72）
+
+- **新建** `components/AvatarPreviewModal.tsx` — 全屏头像预览弹窗（遮罩+大图+fade/scale 动画+ESC/点击关闭）
+- **修改** `components/UserAvatar.tsx` — 新增可选 `onPreview` prop，仅真实头像时可点击（stopPropagation）
+- **修改** `components/pages/ChatPage.tsx` — 聊天列表和聊天详情顶栏头像支持点击预览
+- **修改** `components/chat/ChatRequestCard.tsx` — 好友请求卡片头像支持点击预览
+- **更新** `specs/structure.md` — 新增 AvatarPreviewModal.tsx 文件条目
+- **更新** `frontend/CLAUDE.md` — 映射表新增 AvatarPreviewModal
+
 ### OTA 热更新实现（Task70）
 
 - **新建** `lib/ota-version.ts` — 导出 `BUNDLE_VERSION` 常量，OTA 版本比对用

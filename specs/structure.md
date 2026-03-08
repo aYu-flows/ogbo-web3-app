@@ -120,6 +120,7 @@ $(printf '```')
 | $(printf '`')components/chat/CreateGroupModal.tsx$(printf '`') | §3, §4 | 创建群聊弹窗 |
 | $(printf '`')components/chat/WalletAddress.tsx$(printf '`') | §3, §4 | 钱包地址组件 |
 | $(printf '`')components/UserAvatar.tsx$(printf '`') | §3, §4 | 通用头像组件 |
+| $(printf '`')components/AvatarPreviewModal.tsx$(printf '`') | §3, §4 | 头像点击预览放大弹窗 |
 | $(printf '`')components/ProfileEditModal.tsx$(printf '`') | §3, §4 | 个人资料编辑弹窗 |
 | $(printf '`')components/login/LoginApp.tsx$(printf '`') | §3 | 完整登录认证流程 |
 | $(printf '`')components/ui/*$(printf '`') | §4 UI 原子组件体系 | shadcn/ui 原子组件 |

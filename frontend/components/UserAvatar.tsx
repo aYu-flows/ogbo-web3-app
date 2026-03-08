@@ -7,6 +7,7 @@ interface UserAvatarProps {
   address: string
   size?: 'sm' | 'md' | 'lg'
   className?: string
+  onPreview?: () => void
 }
 
 const sizeMap = {
@@ -15,7 +16,7 @@ const sizeMap = {
   lg: 'w-12 h-12 text-base',
 }
 
-export default function UserAvatar({ address, size = 'md', className = '' }: UserAvatarProps) {
+export default function UserAvatar({ address, size = 'md', className = '', onPreview }: UserAvatarProps) {
   const getAvatarUrl = useStore((s) => s.getAvatarUrl)
   const getDisplayName = useStore((s) => s.getDisplayName)
   const [imgError, setImgError] = useState(false)
@@ -25,8 +26,13 @@ export default function UserAvatar({ address, size = 'md', className = '' }: Use
 
   const showImage = avatarUrl && !imgError
 
+  const clickable = showImage && !!onPreview
+
   return (
-    <div className={`${sizeMap[size]} rounded-full flex-shrink-0 overflow-hidden ${className}`}>
+    <div
+      className={`${sizeMap[size]} rounded-full flex-shrink-0 overflow-hidden ${clickable ? 'cursor-pointer' : ''} ${className}`}
+      onClick={clickable ? (e) => { e.stopPropagation(); onPreview!() } : undefined}
+    >
       {showImage ? (
         <img
           src={avatarUrl}
