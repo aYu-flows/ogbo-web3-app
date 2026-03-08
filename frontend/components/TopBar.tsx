@@ -9,6 +9,8 @@ import { useStore, type TabType } from "@/lib/store";
 import { t } from "@/lib/i18n";
 import toast from "react-hot-toast";
 import { useDisconnect } from "wagmi";
+import UserAvatar from "@/components/UserAvatar";
+import ProfileEditModal from "@/components/ProfileEditModal";
 
 const pageTitles: Record<TabType, { zh: string; en: string }> = {
   home: { zh: "OGBOX", en: "OGBOX" },
@@ -29,12 +31,13 @@ export default function TopBar({
   onAddFriend?: () => void;
   onCreateGroup?: () => void;
 }) {
-  const { activeTab, locale, switchLocale, logout } = useStore();
+  const { activeTab, locale, switchLocale, logout, walletAddress } = useStore();
   const { disconnect } = useDisconnect();
   const [langMenuOpen, setLangMenuOpen] = useState(false);
   const [plusMenuOpen, setPlusMenuOpen] = useState(false);
   const [logoutDialogOpen, setLogoutDialogOpen] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
   const router = useRouter();
 
   const handleLogout = () => {
@@ -56,10 +59,15 @@ export default function TopBar({
   const isHome = activeTab === "home";
 
   return (
-    <header className="relative bg-card border-b border-border z-30" style={{ paddingTop: 'calc(var(--safe-top, env(safe-area-inset-top, 0px)) + 35px)' }}>
+    <header className="relative bg-card border-b border-border z-30" style={{ paddingTop: 'calc(var(--safe-top, env(safe-area-inset-top, 0px)) + var(--page-top-topbar, 35px))' }}>
       <div className="relative flex items-end justify-between px-4 lg:px-6 h-14 pb-3">
-      {/* Left: Logo or Title */}
+      {/* Left: Avatar + Logo or Title */}
       <div className="flex items-center gap-2.5">
+        {walletAddress && (
+          <button onClick={() => setProfileOpen(true)} className="lg:hidden">
+            <UserAvatar address={walletAddress} size="sm" />
+          </button>
+        )}
         {isHome ? (
           <div className="flex items-center gap-2">
             <div className="w-8 h-8 relative flex-shrink-0 lg:hidden">
@@ -268,6 +276,8 @@ export default function TopBar({
         )}
       </AnimatePresence>
       </div>
+
+      <ProfileEditModal isOpen={profileOpen} onClose={() => setProfileOpen(false)} />
     </header>
   );
 }

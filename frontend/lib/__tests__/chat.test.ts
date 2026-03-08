@@ -32,6 +32,7 @@ function makeChain(resolveValue: any) {
   c.or = (...args: any[]) => c
   c.contains = (...args: any[]) => c
   c.single = () => Promise.resolve(resolveValue)
+  c.maybeSingle = () => Promise.resolve(resolveValue)
   // Make the chain itself awaitable (for `await supabase.from(...).upsert(...)`)
   c.then = (resolve: any, reject: any) => Promise.resolve(resolveValue).then(resolve, reject)
 

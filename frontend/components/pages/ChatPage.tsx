@@ -23,10 +23,12 @@ import {
   Mail,
 } from "lucide-react";
 import { useStore, type Chat } from "@/lib/store";
+import { setActiveChatId } from "@/lib/soundPlayer";
 import { t } from "@/lib/i18n";
 import toast from "react-hot-toast";
 import ChatRequestList from "@/components/chat/ChatRequestList";
 import WalletAddress from "@/components/chat/WalletAddress";
+import UserAvatar from "@/components/UserAvatar";
 
 function formatTime(ts: number, locale: "zh" | "en") {
   const now = Date.now();
@@ -91,7 +93,7 @@ function EmojiPicker({ onSelect, onClose }: { onSelect: (emoji: string) => void;
 
 // Chat Detail View
 function ChatDetail({ chat, onBack, locale }: { chat: Chat; onBack: () => void; locale: "zh" | "en" }) {
-  const { sendMessage, sendPushMessage, sendGroupPushMessage, loadChatHistory, chatReady, walletAddress } = useStore();
+  const { sendMessage, sendPushMessage, sendGroupPushMessage, loadChatHistory, chatReady, walletAddress, getDisplayName } = useStore();
   const [input, setInput] = useState("");
   const [showEmoji, setShowEmoji] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
@@ -270,13 +272,21 @@ function ChatDetail({ chat, onBack, locale }: { chat: Chat; onBack: () => void; 
         </motion.button>
         <div className="flex items-center gap-3 flex-1 min-w-0">
           <div className="relative">
-            <div className="w-9 h-9 rounded-full flex items-center justify-center text-white text-sm font-semibold" style={{ backgroundColor: chat.avatarColor }}>
-              {chat.type === 'group' ? <Users className="w-4 h-4" /> : chat.name[0]}
-            </div>
+            {chat.type === 'group' ? (
+              <div className="w-9 h-9 rounded-full flex items-center justify-center text-white text-sm font-semibold" style={{ backgroundColor: chat.avatarColor }}>
+                <Users className="w-4 h-4" />
+              </div>
+            ) : chat.walletAddress ? (
+              <UserAvatar address={chat.walletAddress} size="sm" className="!w-9 !h-9" />
+            ) : (
+              <div className="w-9 h-9 rounded-full flex items-center justify-center text-white text-sm font-semibold" style={{ backgroundColor: chat.avatarColor }}>
+                {chat.name[0]}
+              </div>
+            )}
             {chat.online && <div className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-[var(--ogbo-green)] ring-2 ring-card" />}
           </div>
           <div className="min-w-0">
-            <p className="text-sm font-semibold truncate">{chat.name}</p>
+            <p className="text-sm font-semibold truncate">{chat.walletAddress ? getDisplayName(chat.walletAddress) : chat.name}</p>
             {chat.walletAddress ? (
               <WalletAddress address={chat.walletAddress} showCopyIcon={false} className="mt-0.5" />
             ) : (
@@ -312,7 +322,7 @@ function ChatDetail({ chat, onBack, locale }: { chat: Chat; onBack: () => void; 
               }`}>
                 {chat.type === 'group' && !isMe && (
                   <p className="text-[10px] font-semibold mb-1 text-[var(--ogbo-blue)]/80">
-                    {msg.sender.slice(-4).toLowerCase()}
+                    {getDisplayName(msg.sender)}
                   </p>
                 )}
                 <p className="text-sm leading-relaxed">{msg.content}</p>
@@ -379,7 +389,7 @@ function ChatDetail({ chat, onBack, locale }: { chat: Chat; onBack: () => void; 
 }
 
 export default function ChatPage({ searchOpen: searchOpenProp, onCloseSearch }: { searchOpen?: boolean; onCloseSearch?: () => void }) {
-  const { chats, locale, markChatRead, pinChat, deleteChat, chatRequests } = useStore();
+  const { chats, locale, markChatRead, pinChat, deleteChat, chatRequests, getDisplayName } = useStore();
   const walletAddress = useStore((s) => s.walletAddress);
   const isConnectingChat = useStore((s) => s.isConnectingChat);
   const [searchQuery, setSearchQuery] = useState("");
@@ -393,6 +403,7 @@ export default function ChatPage({ searchOpen: searchOpenProp, onCloseSearch }: 
     if (walletAddress !== prevWalletRef.current) {
       prevWalletRef.current = walletAddress;
       setSelectedChat(null);
+      setActiveChatId(null);
     }
   }, [walletAddress]);
 
@@ -416,6 +427,7 @@ export default function ChatPage({ searchOpen: searchOpenProp, onCloseSearch }: 
 
   const handleOpenChat = (chatId: string) => {
     setSelectedChat(chatId);
+    setActiveChatId(chatId);
     markChatRead(chatId);
   };
 
@@ -469,7 +481,7 @@ export default function ChatPage({ searchOpen: searchOpenProp, onCloseSearch }: 
                 </span>
               </div>
               <p className="text-xs text-muted-foreground truncate">
-                {chatRequests[0]?.fromAddress ? `${chatRequests[0].fromAddress.slice(0, 6)}...` : ''}{chatRequests.length > 1 ? ` 等${chatRequests.length}人` : ''}
+                {chatRequests[0]?.fromAddress ? getDisplayName(chatRequests[0].fromAddress) : ''}{chatRequests.length > 1 ? (locale === 'zh' ? ` 等${chatRequests.length}人` : ` +${chatRequests.length - 1} more`) : ''}
               </p>
             </div>
           </motion.button>
@@ -559,17 +571,28 @@ export default function ChatPage({ searchOpen: searchOpenProp, onCloseSearch }: 
                   }`}
                 >
                   <div className="relative flex-shrink-0">
-                    <div
-                      className="w-12 h-12 rounded-full flex items-center justify-center text-white font-semibold"
-                      style={{ backgroundColor: chat.avatarColor }}
-                    >
-                      {chat.type === "group" ? <Users className="w-5 h-5" /> : chat.name[0]}
-                    </div>
+                    {chat.type === "group" ? (
+                      <div
+                        className="w-12 h-12 rounded-full flex items-center justify-center text-white font-semibold"
+                        style={{ backgroundColor: chat.avatarColor }}
+                      >
+                        <Users className="w-5 h-5" />
+                      </div>
+                    ) : chat.walletAddress ? (
+                      <UserAvatar address={chat.walletAddress} size="lg" />
+                    ) : (
+                      <div
+                        className="w-12 h-12 rounded-full flex items-center justify-center text-white font-semibold"
+                        style={{ backgroundColor: chat.avatarColor }}
+                      >
+                        {chat.name[0]}
+                      </div>
+                    )}
                     {chat.online && <div className="absolute bottom-0 right-0 w-3 h-3 rounded-full bg-[var(--ogbo-green)] ring-2 ring-background" />}
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between">
-                      <span className="text-sm font-semibold truncate">{chat.name}</span>
+                      <span className="text-sm font-semibold truncate">{chat.walletAddress ? getDisplayName(chat.walletAddress) : chat.name}</span>
                       <span className="text-[10px] text-muted-foreground flex-shrink-0 ml-2">{formatTime(chat.timestamp, locale)}</span>
                     </div>
                     <div className="flex items-center justify-between mt-0.5">
@@ -601,7 +624,7 @@ export default function ChatPage({ searchOpen: searchOpenProp, onCloseSearch }: 
           <div className="flex-1 relative">
             <ChatDetail
               chat={activeChat}
-              onBack={() => setSelectedChat(null)}
+              onBack={() => { setSelectedChat(null); setActiveChatId(null); }}
               locale={locale}
             />
           </div>
@@ -621,7 +644,7 @@ export default function ChatPage({ searchOpen: searchOpenProp, onCloseSearch }: 
           {activeChat && (
             <ChatDetail
               chat={activeChat}
-              onBack={() => setSelectedChat(null)}
+              onBack={() => { setSelectedChat(null); setActiveChatId(null); }}
               locale={locale}
             />
           )}

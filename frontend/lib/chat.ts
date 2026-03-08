@@ -49,27 +49,46 @@ export interface GroupRow {
 
 // ======== Friend Requests ========
 
+export class FriendPermissionError extends Error {
+  constructor(public readonly code: 'REJECTED') {
+    super('Friend request rejected by user permission')
+    this.name = 'FriendPermissionError'
+  }
+}
+
 /**
  * Send a friend request from → to.
- * Uses upsert with onConflict do nothing to handle duplicate gracefully.
+ * Checks target user's friend_permission before writing to contacts table.
+ * - reject_all → throws FriendPermissionError
+ * - allow_all → inserts with status='accepted' (skip approval)
+ * - approve_required → inserts with status='pending' (default behavior)
  */
 export async function sendFriendRequest(
   from: string,
   to: string,
   message?: string
-): Promise<void> {
+): Promise<{ mode: 'pending' | 'accepted' }> {
+  const { fetchFriendPermission } = await import('@/lib/profile')
+  const permission = await fetchFriendPermission(to)
+
+  if (permission === 'reject_all') {
+    throw new FriendPermissionError('REJECTED')
+  }
+
+  const status = permission === 'allow_all' ? 'accepted' : 'pending'
   const { error } = await supabase
     .from('contacts')
     .upsert(
       {
         wallet_a: from.toLowerCase(),
         wallet_b: to.toLowerCase(),
-        status: 'pending',
+        status,
         request_msg: message || null,
       },
       { onConflict: 'wallet_a,wallet_b', ignoreDuplicates: true }
     )
   if (error) throw error
+  return { mode: status }
 }
 
 /**

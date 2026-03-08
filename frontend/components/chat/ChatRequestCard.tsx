@@ -4,6 +4,7 @@ import { motion } from 'framer-motion'
 import { Check, X } from 'lucide-react'
 import { useState } from 'react'
 import WalletAddress from '@/components/chat/WalletAddress'
+import UserAvatar from '@/components/UserAvatar'
 import { useStore } from '@/lib/store'
 import { t } from '@/lib/i18n'
 import type { ChatRequest } from '@/lib/store'
@@ -13,7 +14,7 @@ interface ChatRequestCardProps {
 }
 
 export default function ChatRequestCard({ request }: ChatRequestCardProps) {
-  const { acceptRequest, rejectRequest, locale } = useStore()
+  const { acceptRequest, rejectRequest, locale, getDisplayName } = useStore()
   const [loadingAccept, setLoadingAccept] = useState(false)
   const [loadingReject, setLoadingReject] = useState(false)
 
@@ -43,7 +44,11 @@ export default function ChatRequestCard({ request }: ChatRequestCardProps) {
       className="bg-card rounded-2xl p-4 border border-border mb-3"
     >
       <div className="flex items-start gap-3 mb-3">
-        <WalletAddress address={request.fromAddress} />
+        <UserAvatar address={request.fromAddress} size="md" />
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-semibold">{getDisplayName(request.fromAddress)}</p>
+          <WalletAddress address={request.fromAddress} showCopyIcon={false} className="mt-0.5" />
+        </div>
       </div>
       {request.message && (
         <p className="text-sm text-muted-foreground bg-muted/50 rounded-xl px-3 py-2 mb-3 italic">

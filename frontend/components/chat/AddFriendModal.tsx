@@ -146,13 +146,22 @@ export default function AddFriendModal({ isOpen, onClose, onOpenChat }: AddFrien
     const actualRequestMsg = requestMsgRef.current?.value ?? requestMsg
     setSending(true)
     try {
-      await sendFriendRequest(normalizedAddr, actualRequestMsg)  // Use checksummed address
+      const result = await sendFriendRequest(normalizedAddr, actualRequestMsg)  // Use checksummed address
       setSent(true)
       const { default: toast } = await import('react-hot-toast')
-      toast.success(locale === 'zh' ? '好友请求已发送！' : 'Friend request sent!')
-    } catch {
+      if (result.mode === 'accepted') {
+        toast.success(t('friend.addedDirectly', locale))
+      } else {
+        toast.success(locale === 'zh' ? '好友请求已发送！' : 'Friend request sent!')
+      }
+    } catch (err) {
       const { default: toast } = await import('react-hot-toast')
-      toast.error(locale === 'zh' ? '发送失败，请重试' : 'Failed, please retry')
+      const { FriendPermissionError } = await import('@/lib/chat')
+      if (err instanceof FriendPermissionError) {
+        toast.error(t('friend.rejected', locale))
+      } else {
+        toast.error(locale === 'zh' ? '发送失败，请重试' : 'Failed, please retry')
+      }
     } finally {
       setSending(false)
     }

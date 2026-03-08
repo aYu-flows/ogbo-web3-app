@@ -5,7 +5,8 @@ import { getStoredWallets, getActiveWallet, saveExternalWallet, removeExternalWa
 import { supabase } from '@/lib/supabaseClient'
 import { getChatId, addressToColor } from '@/lib/chat'
 import type { ContactRow, MessageRow, GroupRow } from '@/lib/chat'
-import { playMessageSound } from '@/lib/soundPlayer'
+import { playMessageSound, getActiveChatId } from '@/lib/soundPlayer'
+import type { ProfileData } from '@/lib/profile'
 
 // ======== CoinGecko Market Data ========
 interface CoinGeckoMarketItem {
@@ -343,6 +344,10 @@ interface AppState {
   chatChannel: RealtimeChannel | null
   chatRequests: ChatRequest[]
 
+  // Profile state
+  myProfile: ProfileData | null
+  profileCache: Record<string, ProfileData>
+
   switchTab: (tab: TabType) => void
   toggleBalance: () => void
   switchLocale: () => void
@@ -368,12 +373,21 @@ interface AppState {
   refreshChatRequests: () => Promise<void>
   acceptRequest: (fromAddress: string) => Promise<void>
   rejectRequest: (fromAddress: string) => Promise<void>
-  sendFriendRequest: (address: string, message?: string) => Promise<void>
+  sendFriendRequest: (address: string, message?: string) => Promise<{ mode: 'pending' | 'accepted' }>
   sendPushMessage: (address: string, content: string) => Promise<void>
   sendGroupPushMessage: (chatId: string, content: string) => Promise<void>
   loadChatHistory: (chatId: string) => Promise<void>
   searchUserByAddress: (address: string) => Promise<any>
   createGroup: (groupName: string, memberAddresses: string[]) => Promise<void>
+
+  // Profile actions
+  loadMyProfile: (walletAddress: string) => Promise<void>
+  updateNickname: (nickname: string) => Promise<void>
+  updateAvatar: (file: File) => Promise<void>
+  updateFriendPermission: (permission: import('@/lib/profile').FriendPermission) => Promise<void>
+  loadProfiles: (walletAddresses: string[]) => Promise<void>
+  getDisplayName: (walletAddress: string) => string
+  getAvatarUrl: (walletAddress: string) => string | null
 }
 
 export const useStore = create<AppState>((set, get) => ({
@@ -399,6 +413,10 @@ export const useStore = create<AppState>((set, get) => ({
   isConnectingChat: false,
   chatChannel: null,
   chatRequests: [],
+
+  // Profile initial state
+  myProfile: null,
+  profileCache: {},
 
   switchTab: (tab) => set({ activeTab: tab }),
   toggleBalance: () => set((s) => ({ isBalanceVisible: !s.isBalanceVisible })),
@@ -431,6 +449,8 @@ export const useStore = create<AppState>((set, get) => ({
       chats: [],
       chatRequests: [],
       unreadChatCount: 0,
+      myProfile: null,
+      profileCache: {},
     })
   },
   toggleCoinFavorite: (coinId) =>
@@ -643,6 +663,8 @@ export const useStore = create<AppState>((set, get) => ({
       chats: [],
       chatRequests: [],
       unreadChatCount: 0,
+      myProfile: null,
+      profileCache: {},
     })
     if (typeof window !== 'undefined') {
       localStorage.removeItem('ogbo_logged_in')
@@ -752,6 +774,15 @@ export const useStore = create<AppState>((set, get) => ({
 
       set({ chats, chatRequests, chatReady: true })
 
+      // Load profiles for current user and all contacts
+      get().loadMyProfile(me)
+      const peerAddresses = contacts.map(c =>
+        c.wallet_a.toLowerCase() === me ? c.wallet_b : c.wallet_a
+      )
+      const groupMemberAddresses = groups.flatMap(g => g.members)
+      const allAddresses = [...new Set([...peerAddresses, ...groupMemberAddresses])]
+      get().loadProfiles(allAddresses)
+
       // Subscribe to Realtime events
       const channel = supabase
         .channel(`chat-${me}-${Date.now()}`)
@@ -768,8 +799,8 @@ export const useStore = create<AppState>((set, get) => ({
             const myAddr = currentState.walletAddress?.toLowerCase() || ''
             const isMe = msg.sender.toLowerCase() === myAddr
 
-            // 收到他人消息时播放提示音
-            if (!isMe) {
+            // 收到他人消息时播放提示音（用户正在查看该聊天时抑制）
+            if (!isMe && !(currentState.activeTab === 'chat' && getActiveChatId() === msg.chat_id)) {
               playMessageSound()
             }
 
@@ -822,24 +853,31 @@ export const useStore = create<AppState>((set, get) => ({
           },
           (payload) => {
             const contact = payload.new as ContactRow
-            if (contact.status !== 'pending') return
-            set((s) => {
-              const exists = s.chatRequests.some(
-                r => r.fromAddress.toLowerCase() === contact.wallet_a.toLowerCase()
-              )
-              if (exists) return {}
-              return {
-                chatRequests: [
-                  ...s.chatRequests,
-                  {
-                    id: contact.id,
-                    fromAddress: contact.wallet_a,
-                    message: contact.request_msg || '',
-                    timestamp: new Date(contact.created_at).getTime(),
-                  },
-                ],
-              }
-            })
+            if (contact.status === 'pending') {
+              // Load requester's profile for display
+              get().loadProfiles([contact.wallet_a])
+              // Standard friend request: add to pending requests list
+              set((s) => {
+                const exists = s.chatRequests.some(
+                  r => r.fromAddress.toLowerCase() === contact.wallet_a.toLowerCase()
+                )
+                if (exists) return {}
+                return {
+                  chatRequests: [
+                    ...s.chatRequests,
+                    {
+                      id: contact.id,
+                      fromAddress: contact.wallet_a,
+                      message: contact.request_msg || '',
+                      timestamp: new Date(contact.created_at).getTime(),
+                    },
+                  ],
+                }
+              })
+            } else if (contact.status === 'accepted') {
+              // allow_all mode: friend added directly, refresh chat list
+              get().refreshChats()
+            }
           }
         )
         // Our sent request was accepted (wallet_a = me, status → accepted)
@@ -877,6 +915,29 @@ export const useStore = create<AppState>((set, get) => ({
             }
           }
         )
+        // Profile updates — refresh cache when any user updates their profile
+        .on(
+          'postgres_changes',
+          { event: 'UPDATE', schema: 'public', table: 'profiles' },
+          async (payload) => {
+            const { parseFriendPermission } = await import('@/lib/profile')
+            const row = payload.new as { wallet_address: string; nickname: string | null; avatar_url: string | null; friend_permission?: string | null }
+            const addr = row.wallet_address.toLowerCase()
+            const profileData = {
+              nickname: row.nickname,
+              avatarUrl: row.avatar_url,
+              friendPermission: parseFriendPermission(row.friend_permission),
+            }
+            // Update own profile if it's ours
+            if (get().walletAddress?.toLowerCase() === addr) {
+              set({ myProfile: profileData })
+            }
+            // Update cache
+            set((s) => ({
+              profileCache: { ...s.profileCache, [addr]: profileData },
+            }))
+          }
+        )
         .subscribe()
 
       // Second stale-check: if walletAddress changed during subscribe(), discard channel
@@ -909,6 +970,8 @@ export const useStore = create<AppState>((set, get) => ({
       walletAddress: null,
       chats: [],
       unreadChatCount: 0,
+      myProfile: null,
+      profileCache: {},
     })
   },
 
@@ -930,6 +993,15 @@ export const useStore = create<AppState>((set, get) => ({
       const groupChatIds = groups.map(g => g.id)
       const allChatIds = [...personalChatIds, ...groupChatIds]
       const lastMsgs = allChatIds.length > 0 ? await fetchLastMessages(allChatIds) : {}
+
+      // Load profiles for any new contacts not yet cached
+      const peerAddresses = contacts.map(c =>
+        c.wallet_a.toLowerCase() === me ? c.wallet_b : c.wallet_a
+      )
+      const uncachedAddresses = peerAddresses.filter(a => !get().profileCache[a.toLowerCase()])
+      if (uncachedAddresses.length > 0) {
+        get().loadProfiles(uncachedAddresses)
+      }
 
       set((s) => {
         const personalChats = contacts.map(c => {
@@ -1044,10 +1116,15 @@ export const useStore = create<AppState>((set, get) => ({
 
   sendFriendRequest: async (address, message) => {
     const state = get()
-    if (!state.walletAddress) return
+    if (!state.walletAddress) throw new Error('No wallet connected')
     try {
       const { sendFriendRequest: supabaseSend } = await import('@/lib/chat')
-      await supabaseSend(state.walletAddress, address, message)
+      const result = await supabaseSend(state.walletAddress, address, message)
+      if (result.mode === 'accepted') {
+        // allow_all: friend added directly, refresh chat list
+        await get().refreshChats()
+      }
+      return result
     } catch (error) {
       console.error('sendFriendRequest failed:', error)
       throw error
@@ -1222,5 +1299,136 @@ export const useStore = create<AppState>((set, get) => ({
       toast.error(t('chat.groupCreateFailed', get().locale))
       throw error
     }
+  },
+
+  // ======== Profile Actions ========
+
+  loadMyProfile: async (walletAddress) => {
+    try {
+      const { fetchProfile } = await import('@/lib/profile')
+      const profile = await fetchProfile(walletAddress)
+      const { FRIEND_PERMISSION_DEFAULT } = await import('@/lib/profile')
+      set({ myProfile: profile || { nickname: null, avatarUrl: null, friendPermission: FRIEND_PERMISSION_DEFAULT } })
+    } catch (error) {
+      console.error('[Profile] loadMyProfile failed:', error)
+      const { FRIEND_PERMISSION_DEFAULT } = await import('@/lib/profile')
+      set({ myProfile: { nickname: null, avatarUrl: null, friendPermission: FRIEND_PERMISSION_DEFAULT } })
+    }
+  },
+
+  updateNickname: async (nickname) => {
+    const state = get()
+    if (!state.walletAddress) return
+    try {
+      const { upsertProfile } = await import('@/lib/profile')
+      await upsertProfile({
+        wallet_address: state.walletAddress,
+        nickname: nickname || null,
+      })
+      const { FRIEND_PERMISSION_DEFAULT } = await import('@/lib/profile')
+      set({
+        myProfile: {
+          nickname: nickname || null,
+          avatarUrl: state.myProfile?.avatarUrl ?? null,
+          friendPermission: state.myProfile?.friendPermission ?? FRIEND_PERMISSION_DEFAULT,
+        },
+      })
+    } catch (error) {
+      console.error('[Profile] updateNickname failed:', error)
+      throw error
+    }
+  },
+
+  updateAvatar: async (file) => {
+    const state = get()
+    if (!state.walletAddress) return
+    try {
+      const { uploadAvatar, upsertProfile } = await import('@/lib/profile')
+      const avatarUrl = await uploadAvatar(state.walletAddress, file)
+      await upsertProfile({
+        wallet_address: state.walletAddress,
+        avatar_url: avatarUrl,
+      })
+      const { FRIEND_PERMISSION_DEFAULT } = await import('@/lib/profile')
+      set({
+        myProfile: {
+          nickname: state.myProfile?.nickname ?? null,
+          avatarUrl,
+          friendPermission: state.myProfile?.friendPermission ?? FRIEND_PERMISSION_DEFAULT,
+        },
+      })
+    } catch (error) {
+      console.error('[Profile] updateAvatar failed:', error)
+      throw error
+    }
+  },
+
+  updateFriendPermission: async (permission) => {
+    const state = get()
+    if (!state.walletAddress) return
+    const oldPermission = state.myProfile?.friendPermission
+    // Optimistic update
+    const { FRIEND_PERMISSION_DEFAULT } = await import('@/lib/profile')
+    set({
+      myProfile: {
+        nickname: state.myProfile?.nickname ?? null,
+        avatarUrl: state.myProfile?.avatarUrl ?? null,
+        friendPermission: permission,
+      },
+    })
+    try {
+      const { upsertProfile } = await import('@/lib/profile')
+      await upsertProfile({
+        wallet_address: state.walletAddress,
+        friend_permission: permission,
+      })
+    } catch (error) {
+      // Rollback on failure
+      set({
+        myProfile: {
+          nickname: state.myProfile?.nickname ?? null,
+          avatarUrl: state.myProfile?.avatarUrl ?? null,
+          friendPermission: oldPermission ?? FRIEND_PERMISSION_DEFAULT,
+        },
+      })
+      console.error('[Profile] updateFriendPermission failed:', error)
+      throw error
+    }
+  },
+
+  loadProfiles: async (walletAddresses) => {
+    if (walletAddresses.length === 0) return
+    try {
+      const { fetchProfiles } = await import('@/lib/profile')
+      const profiles = await fetchProfiles(walletAddresses)
+      set((s) => ({
+        profileCache: { ...s.profileCache, ...profiles },
+      }))
+    } catch (error) {
+      console.error('[Profile] loadProfiles failed:', error)
+    }
+  },
+
+  getDisplayName: (walletAddress) => {
+    const state = get()
+    const addr = walletAddress.toLowerCase()
+    // Check if it's the current user
+    if (state.walletAddress?.toLowerCase() === addr && state.myProfile?.nickname) {
+      return state.myProfile.nickname
+    }
+    // Check cache
+    const cached = state.profileCache[addr]
+    if (cached?.nickname) return cached.nickname
+    // Fallback to truncated address
+    return `${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)}`
+  },
+
+  getAvatarUrl: (walletAddress) => {
+    const state = get()
+    const addr = walletAddress.toLowerCase()
+    if (state.walletAddress?.toLowerCase() === addr) {
+      return state.myProfile?.avatarUrl ?? null
+    }
+    return state.profileCache[addr]?.avatarUrl ?? null
   },
 }))

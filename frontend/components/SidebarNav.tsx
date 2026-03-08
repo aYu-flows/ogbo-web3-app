@@ -9,6 +9,8 @@ import { useStore, type TabType } from "@/lib/store";
 import { t } from "@/lib/i18n";
 import toast from "react-hot-toast";
 import { useDisconnect } from "wagmi";
+import UserAvatar from "@/components/UserAvatar";
+import ProfileEditModal from "@/components/ProfileEditModal";
 
 const tabs: { key: TabType; icon: typeof Home; labelKey: string }[] = [
   { key: "home", icon: Home, labelKey: "nav.home" },
@@ -19,10 +21,11 @@ const tabs: { key: TabType; icon: typeof Home; labelKey: string }[] = [
 ];
 
 export default function SidebarNav() {
-  const { activeTab, switchTab, locale, unreadChatCount, logout, walletAddress } = useStore();
+  const { activeTab, switchTab, locale, unreadChatCount, logout, walletAddress, getDisplayName } = useStore();
   const { disconnect } = useDisconnect();
   const [logoutDialogOpen, setLogoutDialogOpen] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
   const router = useRouter();
 
   const handleLogout = () => {
@@ -98,17 +101,21 @@ export default function SidebarNav() {
       {/* Footer */}
       <div className="px-4 py-3 border-t border-border">
         <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-full gradient-primary flex items-center justify-center">
-            <span className="text-white text-xs font-bold">U</span>
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-xs font-medium truncate">
-              {walletAddress
-                ? `${walletAddress.slice(0, 6)}...${walletAddress.slice(-4)}`
-                : "---"}
-            </p>
-            <p className="text-[10px] text-muted-foreground">Ethereum</p>
-          </div>
+          <button onClick={() => setProfileOpen(true)} className="flex items-center gap-2.5 flex-1 min-w-0 hover:opacity-80 transition-opacity">
+            {walletAddress ? (
+              <UserAvatar address={walletAddress} size="sm" />
+            ) : (
+              <div className="w-8 h-8 rounded-full gradient-primary flex items-center justify-center">
+                <span className="text-white text-xs font-bold">U</span>
+              </div>
+            )}
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-medium truncate">
+                {walletAddress ? getDisplayName(walletAddress) : "---"}
+              </p>
+              <p className="text-[10px] text-muted-foreground">Ethereum</p>
+            </div>
+          </button>
           <button
             onClick={() => setLogoutDialogOpen(true)}
             className="rounded-lg p-1.5 hover:bg-destructive/10 transition-colors group"
@@ -171,6 +178,8 @@ export default function SidebarNav() {
           </motion.div>
         )}
       </AnimatePresence>
+
+      <ProfileEditModal isOpen={profileOpen} onClose={() => setProfileOpen(false)} />
     </aside>
   );
 }
