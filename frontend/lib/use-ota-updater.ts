@@ -8,7 +8,6 @@
  * - _resetOtaRunningForTest 仅测试用，重置防重入标志
  */
 
-/* eslint-disable @typescript-eslint/no-explicit-any */
 declare global {
   interface Window {
     Capacitor?: {
