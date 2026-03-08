@@ -29,6 +29,7 @@
 
 - 项目根目录 `.env` 文件中需包含 `SUPABASE_SERVICE_ROLE_KEY` 和 `SUPABASE_URL`
 - Supabase Storage 已创建 public bucket `ota-updates`（一次性，已完成）
+- Node.js 依赖 `adm-zip` 已安装（`devDependencies`，已完成）
 
 ### 发布流程
 
@@ -37,17 +38,21 @@
 ```bash
 # 1. 更新版本号（递增 patch）
 #    修改 frontend/lib/ota-version.ts 中的 BUNDLE_VERSION
-#    例如 "1.0.2" → "1.0.3"
+#    例如 "1.0.5" → "1.0.6"
 
-# 2. 一键发布（构建 + 打包 + 上传 + 更新 manifest，全自动）
+# 2. 同步更新版本标志
+#    修改 frontend/components/pages/HomePage.tsx 安全提示卡片中的标志
+#    搜索 select-none">X.XX</span>，将数字改为新版本（如 "1.06"）
+
+# 3. 一键发布（构建 + 打包 + 上传 + 更新 manifest，全自动）
 cd frontend
-ota-deploy.bat 1.0.3
+ota-deploy.bat 1.0.6
 ```
 
 **脚本自动执行的步骤：**
 1. 校验 `ota-version.ts` 中的版本号是否与参数一致
-2. `pnpm build` 构建 Next.js 静态导出
-3. 打包 `out/` 为 `ota-bundle-{version}.zip`
+2. `BUILD_TARGET=capacitor pnpm build` 构建 Next.js 静态导出（**必须**带 `BUILD_TARGET=capacitor`，生成相对路径 `./_next/...`）
+3. 用 `adm-zip`（Node.js）打包 `out/` 为 `ota-bundle-{version}.zip`（**必须**使用正斜杠路径，不能用 PowerShell `Compress-Archive`）
 4. 上传 zip 到 Supabase Storage `ota-updates/bundles/`
 5. 更新 `ota-manifest.json` 版本号和下载 URL
 6. 验证 manifest 内容
@@ -59,41 +64,51 @@ ota-deploy.bat 1.0.3
 当 AI 需要执行 OTA 发布时，按以下步骤操作：
 
 ```bash
-# Step 1: 更新 ota-version.ts（将版本号改为目标版本）
+# Step 1: 更新 frontend/lib/ota-version.ts 中 BUNDLE_VERSION 为目标版本
+# Step 2: 更新 frontend/components/pages/HomePage.tsx 中安全提示卡片版本标志
 
-# Step 2: 读取 .env 获取 Supabase 凭据
+# Step 3: 读取 .env 获取 Supabase 凭据
 #   SUPABASE_SERVICE_ROLE_KEY=<from .env>
 #   SUPABASE_URL=<from .env>
 
-# Step 3: 构建
+# Step 4: 构建（⚠️ 必须带 BUILD_TARGET=capacitor！否则生成绝对路径导致白屏）
 cd frontend
-pnpm build
+BUILD_TARGET=capacitor pnpm build
 
-# Step 4: 打包
-powershell -Command "Compress-Archive -Path 'out/*' -DestinationPath 'ota-bundle-VERSION.zip' -Force"
+# Step 5: 打包（⚠️ 必须用 adm-zip！PowerShell Compress-Archive 产生反斜杠路径导致 Android 白屏）
+node -e "const z=require('adm-zip');const a=new z();a.addLocalFolder('./out','');a.writeZip('./ota-bundle-VERSION.zip');"
 
-# Step 5: 上传 bundle（POST 新建，若已存在则 PUT 覆盖）
+# Step 6: 上传 bundle（POST 新建，若 409 冲突则改 PUT 覆盖）
 curl -s -X POST "$SUPABASE_URL/storage/v1/object/ota-updates/bundles/bundle-VERSION.zip" \
   -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" \
   -H "Content-Type: application/zip" \
   --data-binary @ota-bundle-VERSION.zip
 
-# Step 6: 更新 manifest
+# Step 7: 更新 manifest
 curl -s -X PUT "$SUPABASE_URL/storage/v1/object/ota-updates/ota-manifest.json" \
   -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY" \
   -H "Content-Type: application/json" \
   -d '{"version":"VERSION","url":"SUPABASE_URL/storage/v1/object/public/ota-updates/bundles/bundle-VERSION.zip"}'
 
-# Step 7: 验证
+# Step 8: 验证
 curl -s "$SUPABASE_URL/storage/v1/object/public/ota-updates/ota-manifest.json?t=$(date +%s)"
 ```
 
+### ⚠️ 致命陷阱（曾导致反复白屏）
+
+| 陷阱 | 后果 | 正确做法 |
+|------|------|----------|
+| 构建时缺少 `BUILD_TARGET=capacitor` | HTML 中 JS/CSS 引用为绝对路径 `/_next/...`，OTA bundle 加载时 404 → 白屏 | 始终 `BUILD_TARGET=capacitor pnpm build` |
+| 用 PowerShell `Compress-Archive` 打包 | zip 内路径为 `_next\static\...`（反斜杠），Android 解压后目录结构错误 → 白屏 | 用 `adm-zip`（Node.js）或任何生成正斜杠的工具 |
+| 只改 `ota-version.ts` 忘改 HomePage 标志 | 用户无法通过视觉确认 OTA 是否生效 | 两处同步修改 |
+
 ### 版本号规则
 
-- 格式：`major.minor.patch`（如 `1.0.3`）
+- 格式：`major.minor.patch`（如 `1.0.6`）
 - OTA 发布时递增 `patch`
-- 版本号维护在 `frontend/lib/ota-version.ts` 的 `BUNDLE_VERSION` 常量中
-- 每次 OTA 发布前必须更新此文件
+- 版本号需同步维护两处：
+  - `frontend/lib/ota-version.ts` → `BUNDLE_VERSION` 常量（OTA 比对用）
+  - `frontend/components/pages/HomePage.tsx` → 安全提示卡片右下角标志（肉眼验证用，格式 `X.0Y`）
 
 ---
 
@@ -105,7 +120,7 @@ curl -s "$SUPABASE_URL/storage/v1/object/public/ota-updates/ota-manifest.json?t=
 > **编译即发布**：编译完成后必须自动上传到 GitHub Releases，无需额外确认。
 
 ```bash
-# 1. 构建 web bundle
+# 1. 构建 web bundle（APK 内置用，不需要 BUILD_TARGET=capacitor）
 cd frontend
 pnpm build
 # 输出：frontend/out/
