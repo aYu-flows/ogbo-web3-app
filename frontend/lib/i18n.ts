@@ -338,6 +338,13 @@ const translations: Record<Locale, Record<string, string>> = {
     'profile.permissionSaved': '权限设置已保存',
     'friend.rejected': '对方不接受好友请求',
     'friend.addedDirectly': '已添加为好友',
+    'friend.addedYou': '有人添加你为好友',
+    'friend.alreadyFriends': '你们已经是好友了',
+    'friend.alreadyPending': '好友请求已发送，请等待对方确认',
+    'friend.sendFailed': '发送失败，请重试',
+    'friend.requestSent': '好友请求已发送',
+    'profile.saveFailed': '保存失败',
+    'profile.uploadFailed': '上传失败',
   },
   en: {
     'nav.home': 'Home',
@@ -669,6 +676,13 @@ const translations: Record<Locale, Record<string, string>> = {
     'profile.permissionSaved': 'Permission saved',
     'friend.rejected': 'This user does not accept friend requests',
     'friend.addedDirectly': 'Friend added',
+    'friend.addedYou': 'Someone added you as a friend',
+    'friend.alreadyFriends': 'You are already friends',
+    'friend.alreadyPending': 'Friend request already sent, please wait',
+    'friend.sendFailed': 'Failed, please retry',
+    'friend.requestSent': 'Friend request sent',
+    'profile.saveFailed': 'Save failed',
+    'profile.uploadFailed': 'Upload failed',
   },
 }
 

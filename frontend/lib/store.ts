@@ -890,8 +890,16 @@ export const useStore = create<AppState>((set, get) => ({
                 }
               })
             } else if (contact.status === 'accepted') {
-              // allow_all mode: friend added directly, refresh chat list
+              // allow_all mode: friend added directly, refresh chat list + notify
+              get().loadProfiles([contact.wallet_a])
               get().refreshChats()
+              playMessageSound()
+              Promise.all([
+                import('react-hot-toast'),
+                import('@/lib/i18n'),
+              ]).then(([{ default: toast }, { t }]) => {
+                toast.success(t('friend.addedYou', get().locale))
+              })
             }
           }
         )
@@ -1334,21 +1342,31 @@ export const useStore = create<AppState>((set, get) => ({
   updateNickname: async (nickname) => {
     const state = get()
     if (!state.walletAddress) return
+    const { upsertProfile, FRIEND_PERMISSION_DEFAULT } = await import('@/lib/profile')
+    const oldNickname = state.myProfile?.nickname ?? null
+    const newNickname = nickname || null
+    // Optimistic update
+    set({
+      myProfile: {
+        nickname: newNickname,
+        avatarUrl: state.myProfile?.avatarUrl ?? null,
+        friendPermission: state.myProfile?.friendPermission ?? FRIEND_PERMISSION_DEFAULT,
+      },
+    })
     try {
-      const { upsertProfile } = await import('@/lib/profile')
       await upsertProfile({
         wallet_address: state.walletAddress,
-        nickname: nickname || null,
+        nickname: newNickname,
       })
-      const { FRIEND_PERMISSION_DEFAULT } = await import('@/lib/profile')
+    } catch (error) {
+      // Rollback
       set({
         myProfile: {
-          nickname: nickname || null,
+          nickname: oldNickname,
           avatarUrl: state.myProfile?.avatarUrl ?? null,
           friendPermission: state.myProfile?.friendPermission ?? FRIEND_PERMISSION_DEFAULT,
         },
       })
-    } catch (error) {
       console.error('[Profile] updateNickname failed:', error)
       throw error
     }
@@ -1357,14 +1375,11 @@ export const useStore = create<AppState>((set, get) => ({
   updateAvatar: async (file) => {
     const state = get()
     if (!state.walletAddress) return
+    const { uploadAvatar, upsertProfile, FRIEND_PERMISSION_DEFAULT } = await import('@/lib/profile')
+    const oldAvatarUrl = state.myProfile?.avatarUrl ?? null
     try {
-      const { uploadAvatar, upsertProfile } = await import('@/lib/profile')
       const avatarUrl = await uploadAvatar(state.walletAddress, file)
-      await upsertProfile({
-        wallet_address: state.walletAddress,
-        avatar_url: avatarUrl,
-      })
-      const { FRIEND_PERMISSION_DEFAULT } = await import('@/lib/profile')
+      // Optimistic update after upload succeeds
       set({
         myProfile: {
           nickname: state.myProfile?.nickname ?? null,
@@ -1372,6 +1387,22 @@ export const useStore = create<AppState>((set, get) => ({
           friendPermission: state.myProfile?.friendPermission ?? FRIEND_PERMISSION_DEFAULT,
         },
       })
+      try {
+        await upsertProfile({
+          wallet_address: state.walletAddress,
+          avatar_url: avatarUrl,
+        })
+      } catch (upsertError) {
+        // Rollback avatar URL on upsert failure
+        set({
+          myProfile: {
+            nickname: state.myProfile?.nickname ?? null,
+            avatarUrl: oldAvatarUrl,
+            friendPermission: state.myProfile?.friendPermission ?? FRIEND_PERMISSION_DEFAULT,
+          },
+        })
+        throw upsertError
+      }
     } catch (error) {
       console.error('[Profile] updateAvatar failed:', error)
       throw error
