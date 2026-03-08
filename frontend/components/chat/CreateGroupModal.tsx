@@ -5,6 +5,7 @@ import { X, Search, Users, Loader2, Check } from 'lucide-react'
 import { useState, useMemo, useRef } from 'react'
 import { useStore } from '@/lib/store'
 import { t } from '@/lib/i18n'
+import UserAvatar from '@/components/UserAvatar'
 import type { Chat } from '@/lib/store'
 
 interface CreateGroupModalProps {
@@ -14,7 +15,7 @@ interface CreateGroupModalProps {
 }
 
 export default function CreateGroupModal({ isOpen, onClose, friends }: CreateGroupModalProps) {
-  const { createGroup, locale } = useStore()
+  const { createGroup, locale, getDisplayName } = useStore()
   const [selectedAddresses, setSelectedAddresses] = useState<string[]>([])
   const [groupName, setGroupName] = useState('')
   const nameInputRef = useRef<HTMLInputElement>(null)
@@ -183,16 +184,13 @@ export default function CreateGroupModal({ isOpen, onClose, friends }: CreateGro
                         </div>
 
                         {/* Avatar */}
-                        <div
-                          className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-semibold flex-shrink-0"
-                          style={{ backgroundColor: friend.avatarColor }}
-                        >
-                          {friend.name[0]?.toUpperCase()}
-                        </div>
+                        {friend.walletAddress && (
+                          <UserAvatar address={friend.walletAddress} size="sm" />
+                        )}
 
                         {/* Info */}
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium truncate">{friend.name}</p>
+                          <p className="text-sm font-medium truncate">{friend.walletAddress ? getDisplayName(friend.walletAddress) : friend.name}</p>
                           {friend.walletAddress && (
                             <p className="text-xs text-muted-foreground truncate font-mono">
                               {friend.walletAddress.slice(0, 6)}...{friend.walletAddress.slice(-4)}

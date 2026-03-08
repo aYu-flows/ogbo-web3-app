@@ -14,6 +14,24 @@ const SOUND_URL = '/sounds/msg.wav';
 
 let _audioUnlocked = false;
 let _unlocking = false;
+let _activeChatId: string | null = null;
+
+/**
+ * 设置当前正在查看的聊天 ID。
+ * 由 ChatPage.tsx 在打开/关闭聊天详情时调用。
+ * 打开时传入 chatId，关闭时传入 null。
+ */
+export function setActiveChatId(id: string | null): void {
+  _activeChatId = id;
+}
+
+/**
+ * 获取当前正在查看的聊天 ID。
+ * 供 store.ts 的 INSERT handler 判断是否需要抑制提示音。
+ */
+export function getActiveChatId(): string | null {
+  return _activeChatId;
+}
 
 /**
  * 尝试预热 Audio 以解锁浏览器 Autoplay 限制。
@@ -71,4 +89,5 @@ export function playMessageSound(): void {
 export function _resetForTest(): void {
   _audioUnlocked = false;
   _unlocking = false;
+  _activeChatId = null;
 }

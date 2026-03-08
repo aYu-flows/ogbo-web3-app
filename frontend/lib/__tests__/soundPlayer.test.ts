@@ -58,7 +58,7 @@ describe('playMessageSound', () => {
   test('用例1：正常调用 new Audio 并 play()', () => {
     playMessageSound();
     expect(AudioConstructor).toHaveBeenCalledTimes(1);
-    expect(AudioConstructor).toHaveBeenCalledWith('/sounds/msg.mp3');
+    expect(AudioConstructor).toHaveBeenCalledWith('/sounds/msg.wav');
     expect(createdInstances[0].play).toHaveBeenCalledTimes(1);
   });
 
