@@ -2,7 +2,6 @@
 
 import { useState } from 'react'
 import { useStore } from '@/lib/store'
-import { addressToColor } from '@/lib/chat'
 
 interface UserAvatarProps {
   address: string
@@ -23,8 +22,6 @@ export default function UserAvatar({ address, size = 'md', className = '' }: Use
 
   const avatarUrl = getAvatarUrl(address)
   const displayName = getDisplayName(address)
-  const fallbackColor = addressToColor(address)
-  const initial = displayName[0]?.toUpperCase() || address.slice(2, 3).toUpperCase()
 
   const showImage = avatarUrl && !imgError
 
@@ -38,12 +35,11 @@ export default function UserAvatar({ address, size = 'md', className = '' }: Use
           onError={() => setImgError(true)}
         />
       ) : (
-        <div
-          className="w-full h-full flex items-center justify-center"
-          style={{ backgroundColor: fallbackColor }}
-        >
-          <span className="text-white font-semibold">{initial}</span>
-        </div>
+        <img
+          src="/default-avatar.svg"
+          alt={displayName}
+          className="w-full h-full object-cover"
+        />
       )}
     </div>
   )
