@@ -17,6 +17,8 @@ const config: CapacitorConfig = {
   plugins: {
     CapacitorUpdater: {
       autoUpdate: false,  // Manual update mode: all update logic is handled in useOtaUpdater()
+      appReadyTimeout: 30000,  // 30s timeout before plugin auto-rollback (default 10s too short for React hydration)
+      resetWhenUpdate: false,  // Don't auto-reset on native app update
     }
   }
 };

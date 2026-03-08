@@ -82,16 +82,15 @@ if %errorlevel% neq 0 (
 echo [OK] Build complete.
 echo.
 
-REM ── Step 3: Create zip ──
+REM ── Step 3: Create zip (must use forward slashes for Android) ──
 echo [3/4] Creating OTA bundle zip...
 if exist "ota-bundle-%VERSION%.zip" del "ota-bundle-%VERSION%.zip"
-powershell -Command "Compress-Archive -Path 'out\*' -DestinationPath 'ota-bundle-%VERSION%.zip' -Force"
+node -e "const z=require('adm-zip');const a=new z();a.addLocalFolder('./out','');a.writeZip('./ota-bundle-%VERSION%.zip');console.log('[OK] Bundle created: ota-bundle-%VERSION%.zip');"
 if %errorlevel% neq 0 (
     echo [ERROR] Failed to create zip bundle.
     pause
     exit /b 1
 )
-echo [OK] Bundle created: ota-bundle-%VERSION%.zip
 echo.
 
 REM ── Step 4: Upload to Supabase Storage ──
