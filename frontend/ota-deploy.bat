@@ -70,8 +70,9 @@ if %errorlevel% neq 0 (
 echo [OK] ota-version.ts matches version %VERSION%
 echo.
 
-REM ── Step 2: Build Next.js ──
-echo [2/4] Building Next.js...
+REM ── Step 2: Build Next.js (with capacitor asset prefix) ──
+echo [2/4] Building Next.js (BUILD_TARGET=capacitor)...
+set BUILD_TARGET=capacitor
 call pnpm build
 if %errorlevel% neq 0 (
     echo [ERROR] Next.js build failed.

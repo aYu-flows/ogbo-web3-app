@@ -54,8 +54,8 @@ describe('profile module', () => {
       expect(validateAvatarFile(file)).toBeNull()
     })
 
-    it('returns avatarTooLarge for file > 2MB', () => {
-      const bigContent = new ArrayBuffer(2 * 1024 * 1024 + 1)
+    it('returns avatarTooLarge for file > 5MB', () => {
+      const bigContent = new ArrayBuffer(5 * 1024 * 1024 + 1)
       const file = new File([bigContent], 'big.jpg', { type: 'image/jpeg' })
       expect(validateAvatarFile(file)).toBe('avatarTooLarge')
     })

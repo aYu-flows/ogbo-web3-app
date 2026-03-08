@@ -27,7 +27,7 @@ export interface ProfileData {
 
 // ======== Constants ========
 
-const AVATAR_MAX_SIZE = 2 * 1024 * 1024 // 2MB
+const AVATAR_MAX_SIZE = 5 * 1024 * 1024 // 5MB
 const AVATAR_ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp']
 const NICKNAME_MAX_LENGTH = 20
 
