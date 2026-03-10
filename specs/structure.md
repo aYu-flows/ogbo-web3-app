@@ -26,11 +26,17 @@ OGBO-Project-quick-test/
 │   │   │   ├── DiscoverPage.tsx       # 发现页
 │   │   │   └── AssetsPage.tsx         # 资产页
 │   │   │
-│   │   ├── chat/                      # 聊天功能组件（5 个）
+│   │   ├── chat/                      # 聊天功能组件（13 个）
 │   │   │   ├── AddFriendModal.tsx     # 添加好友弹窗
+│   │   │   ├── ChatMediaPicker.tsx    # 媒体选择器（图片/文件/语音入口）
 │   │   │   ├── ChatRequestCard.tsx    # 聊天请求卡片
 │   │   │   ├── ChatRequestList.tsx    # 聊天请求列表
 │   │   │   ├── CreateGroupModal.tsx   # 创建群聊弹窗
+│   │   │   ├── FileMessageBubble.tsx  # 文件消息气泡
+│   │   │   ├── ImageMessageBubble.tsx # 图片消息气泡
+│   │   │   ├── ImagePreviewModal.tsx  # 图片全屏预览弹窗
+│   │   │   ├── VoiceMessagePlayer.tsx # 语音消息播放器
+│   │   │   ├── VoiceRecordButton.tsx  # 语音录制按钮
 │   │   │   └── WalletAddress.tsx      # 钱包地址展示
 │   │   │
 │   │   ├── login/
@@ -52,6 +58,8 @@ OGBO-Project-quick-test/
 │   ├── lib/                           # 核心逻辑库
 │   │   ├── store.ts                   # Zustand 全局状态管理
 │   │   ├── chat.ts                    # 聊天核心逻辑
+│   │   ├── chat-media.ts              # 多媒体消息上传/发送
+│   │   ├── voice-recorder.ts          # 语音录制工具
 │   │   ├── profile.ts                 # 个人资料 CRUD + 头像上传
 │   │   ├── walletCrypto.ts            # 钱包加密工具
 │   │   ├── wagmi.ts                   # Web3 钱包连接配置
@@ -119,6 +127,12 @@ $(printf '```')
 | $(printf '`')components/chat/ChatRequestList.tsx$(printf '`') | §3, §4 | 聊天请求列表 |
 | $(printf '`')components/chat/CreateGroupModal.tsx$(printf '`') | §3, §4 | 创建群聊弹窗 |
 | $(printf '`')components/chat/WalletAddress.tsx$(printf '`') | §3, §4 | 钱包地址组件 |
+| $(printf '`')components/chat/ImageMessageBubble.tsx$(printf '`') | §1.2, §4 | 图片消息气泡 |
+| $(printf '`')components/chat/FileMessageBubble.tsx$(printf '`') | §1.2, §4 | 文件消息气泡 |
+| $(printf '`')components/chat/VoiceMessagePlayer.tsx$(printf '`') | §1.2, §4 | 语音消息播放器 |
+| $(printf '`')components/chat/VoiceRecordButton.tsx$(printf '`') | §1.2, §4 | 语音录制按钮 |
+| $(printf '`')components/chat/ChatMediaPicker.tsx$(printf '`') | §1.2, §4 | 媒体选择器 |
+| $(printf '`')components/chat/ImagePreviewModal.tsx$(printf '`') | §1.2, §4 | 图片全屏预览弹窗 |
 | $(printf '`')components/UserAvatar.tsx$(printf '`') | §3, §4 | 通用头像组件 |
 | $(printf '`')components/AvatarPreviewModal.tsx$(printf '`') | §3, §4 | 头像点击预览放大弹窗 |
 | $(printf '`')components/ProfileEditModal.tsx$(printf '`') | §3, §4 | 个人资料编辑弹窗 |
@@ -127,6 +141,8 @@ $(printf '```')
 | $(printf '`')lib/profile.ts$(printf '`') | §3 编码规范 | 个人资料 CRUD |
 | $(printf '`')lib/store.ts$(printf '`') | §3 编码规范 | Zustand 状态管理 |
 | $(printf '`')lib/chat.ts$(printf '`') | §3 编码规范 | 聊天核心逻辑 |
+| $(printf '`')lib/chat-media.ts$(printf '`') | §3 编码规范 | 多媒体消息上传/发送 |
+| $(printf '`')lib/voice-recorder.ts$(printf '`') | §3 编码规范 | 语音录制工具 |
 | $(printf '`')lib/walletCrypto.ts$(printf '`') | §3 编码规范 | 钱包加密工具 |
 | $(printf '`')lib/wagmi.ts$(printf '`') | §3 编码规范 | Web3 连接配置 |
 | $(printf '`')lib/supabaseClient.ts$(printf '`') | §3 编码规范 | Supabase 客户端 |

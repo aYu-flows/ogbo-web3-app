@@ -4,6 +4,24 @@
 
 ---
 
+## 2026-03-10
+
+### feat: 实现多媒体聊天消息(图片/文件/语音) - Task75
+
+- **新增** `lib/chat-media.ts` — 多媒体消息上传/发送逻辑
+- **新增** `lib/voice-recorder.ts` — 语音录制工具
+- **新增** `components/chat/ImageMessageBubble.tsx` — 图片消息气泡
+- **新增** `components/chat/FileMessageBubble.tsx` — 文件消息气泡
+- **新增** `components/chat/VoiceMessagePlayer.tsx` — 语音消息播放器
+- **新增** `components/chat/VoiceRecordButton.tsx` — 语音录制按钮
+- **新增** `components/chat/ChatMediaPicker.tsx` — 媒体选择器
+- **新增** `components/chat/ImagePreviewModal.tsx` — 图片全屏预览弹窗
+- **更新** `specs/product.md` §1.2 — 图片/文件/语音消息标记为已实现
+- **更新** `specs/tech.md` §2 — messages 表新增 file_url/file_name/file_size/duration/thumbnail_url 字段
+- **更新** `specs/structure.md` — 新增 8 个文件到项目结构和映射表
+
+---
+
 ## 2026-03-08
 
 ### 好友搜索支持昵称搜索（Task73）

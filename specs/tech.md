@@ -154,8 +154,13 @@ OGBOX 采用纯前端 + BaaS 架构，无自建后端服务器：
 | chat_id | text | 会话标识（确定性生成：两个地址小写排序后以 `_` 连接） |
 | sender | text | 发送方钱包地址 |
 | content | text | 消息内容 |
-| msg_type | text | 消息类型：`'text'` / `'system'` |
+| msg_type | text | 消息类型：`'text'` / `'system'` / `'image'` / `'file'` / `'voice'` |
 | created_at | timestamptz | 创建时间 |
+| file_url | text | 媒体文件 URL（Supabase Storage `chat-files` bucket） |
+| file_name | text | 原始文件名 |
+| file_size | bigint | 文件大小（字节） |
+| duration | integer | 语音时长（秒），仅 voice 类型 |
+| thumbnail_url | text | 图片缩略图 URL，仅 image 类型 |
 
 chat_id 生成规则（`lib/chat.ts` 中 `getChatId` 函数）：
 ```
@@ -216,6 +221,7 @@ chat_id 生成规则（`lib/chat.ts` 中 `getChatId` 函数）：
 | 日期 | 变更内容 | 关联代码文件 |
 |------|---------|-------------|
 | 2026-03-08 | 初始化创建 | - |
+| 2026-03-10 | messages 表新增 file_url/file_name/file_size/duration/thumbnail_url 字段，msg_type 新增 image/file/voice；新增 chat-files Storage bucket | `lib/chat-media.ts` |
 
 ---
 

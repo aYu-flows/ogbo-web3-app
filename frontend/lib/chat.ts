@@ -30,13 +30,20 @@ export interface ContactRow {
   request_msg: string | null
 }
 
+export type MessageType = 'text' | 'system' | 'image' | 'file' | 'voice'
+
 export interface MessageRow {
   id: number
   created_at: string
   chat_id: string
   sender: string
   content: string
-  msg_type: 'text' | 'system'
+  msg_type: MessageType
+  file_url: string | null
+  file_name: string | null
+  file_size: number | null
+  duration: number | null
+  thumbnail_url: string | null
 }
 
 export interface GroupRow {
@@ -192,7 +199,14 @@ export async function sendMessage(
   chatId: string,
   sender: string,
   content: string,
-  msgType: 'text' | 'system' = 'text'
+  msgType: MessageType = 'text',
+  mediaFields?: {
+    file_url?: string
+    file_name?: string
+    file_size?: number
+    duration?: number | null
+    thumbnail_url?: string
+  }
 ): Promise<MessageRow> {
   const { data, error } = await supabase
     .from('messages')
@@ -201,6 +215,7 @@ export async function sendMessage(
       sender: sender.toLowerCase(),
       content,
       msg_type: msgType,
+      ...(mediaFields || {}),
     })
     .select()
     .single()

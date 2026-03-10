@@ -195,7 +195,14 @@ export interface Message {
   sender: 'me' | string
   content: string
   timestamp: number
-  status: 'sent' | 'delivered' | 'read'
+  status: 'sent' | 'delivered' | 'read' | 'failed'
+  msgType?: 'text' | 'image' | 'file' | 'voice'
+  fileUrl?: string
+  fileName?: string
+  fileSize?: number
+  duration?: number
+  thumbnailUrl?: string
+  uploadProgress?: number
 }
 
 export interface Chat {
@@ -268,6 +275,17 @@ function storedWalletToWallet(sw: StoredWalletType): Wallet {
   }
 }
 
+// ======== Helper: message summary for lastMessage display ========
+
+function getMessageSummary(msgType?: string | null, content?: string, fileName?: string | null): string {
+  switch (msgType) {
+    case 'image': return '[图片]'
+    case 'voice': return '[语音]'
+    case 'file': return `[文件] ${fileName || ''}`
+    default: return content || ''
+  }
+}
+
 // ======== Helper: map DB rows to Chat objects ========
 
 function contactToChat(contact: ContactRow, myAddress: string, lastMsg: MessageRow | null): Chat {
@@ -278,7 +296,7 @@ function contactToChat(contact: ContactRow, myAddress: string, lastMsg: MessageR
     id: chatId,
     name: `${peerAddr.slice(0, 6)}...${peerAddr.slice(-4)}`,
     avatarColor: addressToColor(peerAddr),
-    lastMessage: lastMsg?.content || '',
+    lastMessage: lastMsg ? getMessageSummary(lastMsg.msg_type, lastMsg.content, lastMsg.file_name) : '',
     timestamp: lastMsg ? new Date(lastMsg.created_at).getTime() : new Date(contact.created_at).getTime(),
     unread: 0,
     online: false,
@@ -294,7 +312,7 @@ function groupToChat(group: GroupRow, lastMsg: MessageRow | null): Chat {
     id: group.id,
     name: group.name,
     avatarColor: addressToColor(group.id),
-    lastMessage: lastMsg?.content || '',
+    lastMessage: lastMsg ? getMessageSummary(lastMsg.msg_type, lastMsg.content, lastMsg.file_name) : '',
     timestamp: lastMsg ? new Date(lastMsg.created_at).getTime() : new Date(group.created_at).getTime(),
     unread: 0,
     online: false,
@@ -380,6 +398,8 @@ interface AppState {
   sendFriendRequest: (address: string, message?: string) => Promise<{ mode: 'pending' | 'accepted' }>
   sendPushMessage: (address: string, content: string) => Promise<void>
   sendGroupPushMessage: (chatId: string, content: string) => Promise<void>
+  sendMediaMessage: (chatId: string, file: File, msgType: 'image' | 'file' | 'voice', duration?: number) => Promise<void>
+  retryMediaMessage: (chatId: string, messageId: string, file: File, msgType: 'image' | 'file' | 'voice', duration?: number) => Promise<void>
   loadChatHistory: (chatId: string) => Promise<void>
   searchUserByAddress: (address: string) => Promise<any>
   searchUserByNickname: (keyword: string) => Promise<Array<{ address: string; nickname: string; avatarUrl: string | null }>>
@@ -820,12 +840,19 @@ export const useStore = create<AppState>((set, get) => ({
               playMessageSound()
             }
 
+            const msgSummary = getMessageSummary(msg.msg_type, msg.content, msg.file_name)
             const newMsg: Message = {
               id: `db-${msg.id}`,
               sender: isMe ? 'me' : msg.sender,
               content: msg.content,
               timestamp: new Date(msg.created_at).getTime(),
               status: 'sent',
+              msgType: (msg.msg_type === 'text' || msg.msg_type === 'system') ? undefined : msg.msg_type as Message['msgType'],
+              fileUrl: msg.file_url || undefined,
+              fileName: msg.file_name || undefined,
+              fileSize: msg.file_size || undefined,
+              duration: msg.duration || undefined,
+              thumbnailUrl: msg.thumbnail_url || undefined,
             }
 
             set((s) => {
@@ -834,21 +861,29 @@ export const useStore = create<AppState>((set, get) => ({
 
                 // Deduplicate own messages: replace optimistic message with confirmed one
                 if (isMe) {
+                  const isMediaMsg = msg.msg_type === 'image' || msg.msg_type === 'file' || msg.msg_type === 'voice'
                   const optIdx = c.messages.reduceRight((found, m, idx) => {
                     if (found !== -1) return found
-                    if (m.sender === 'me' && m.content === msg.content && m.id.startsWith('opt-')) return idx
+                    if (!m.id.startsWith('opt-') || m.sender !== 'me') return -1
+                    if (isMediaMsg) {
+                      // Media: match by fileName + time window (60s)
+                      if (m.fileName === msg.file_name && Math.abs(m.timestamp - new Date(msg.created_at).getTime()) < 60000) return idx
+                    } else {
+                      // Text: match by content
+                      if (m.content === msg.content) return idx
+                    }
                     return -1
                   }, -1)
                   if (optIdx !== -1) {
                     const messages = [...c.messages]
                     messages[optIdx] = newMsg
-                    return { ...c, lastMessage: msg.content, timestamp: newMsg.timestamp, messages }
+                    return { ...c, lastMessage: msgSummary, timestamp: newMsg.timestamp, messages }
                   }
                 }
 
                 return {
                   ...c,
-                  lastMessage: msg.content,
+                  lastMessage: msgSummary,
                   timestamp: newMsg.timestamp,
                   unread: c.unread + (isMe ? 0 : 1),
                   messages: [...c.messages, newMsg],
@@ -1246,6 +1281,92 @@ export const useStore = create<AppState>((set, get) => ({
     }
   },
 
+  sendMediaMessage: async (chatId, file, msgType, duration) => {
+    const state = get()
+    if (!state.walletAddress) return
+    const me = state.walletAddress.toLowerCase()
+
+    if (!state.chats.some(c => c.id === chatId)) {
+      throw new Error('Chat session mismatch')
+    }
+
+    const summary = getMessageSummary(msgType, undefined, file.name)
+    const optimisticId = `opt-${Date.now()}`
+    const optimisticMsg: Message = {
+      id: optimisticId,
+      sender: 'me',
+      content: summary,
+      timestamp: Date.now(),
+      status: 'sent',
+      msgType,
+      fileName: file.name,
+      fileSize: file.size,
+      duration,
+      uploadProgress: 0,
+    }
+    set(s => ({
+      chats: s.chats.map(c =>
+        c.id === chatId
+          ? { ...c, lastMessage: summary, timestamp: Date.now(), messages: [...c.messages, optimisticMsg] }
+          : c
+      ),
+    }))
+
+    try {
+      const { uploadChatFile } = await import('@/lib/chat-media')
+      const result = await uploadChatFile(chatId, file, (pct) => {
+        set(s => ({
+          chats: s.chats.map(c =>
+            c.id === chatId
+              ? { ...c, messages: c.messages.map(m => m.id === optimisticId ? { ...m, uploadProgress: pct } : m) }
+              : c
+          ),
+        }))
+      })
+
+      // Update optimistic message with URL before DB write
+      set(s => ({
+        chats: s.chats.map(c =>
+          c.id === chatId
+            ? { ...c, messages: c.messages.map(m => m.id === optimisticId ? { ...m, fileUrl: result.url, uploadProgress: 100 } : m) }
+            : c
+        ),
+      }))
+
+      const { sendMessage: supabaseSend } = await import('@/lib/chat')
+      await supabaseSend(chatId, me, summary, msgType, {
+        file_url: result.url,
+        file_name: result.fileName,
+        file_size: result.fileSize,
+        duration: duration ?? null,
+      })
+    } catch (error) {
+      set(s => ({
+        chats: s.chats.map(c =>
+          c.id === chatId
+            ? { ...c, messages: c.messages.map(m => m.id === optimisticId ? { ...m, status: 'failed' as const, uploadProgress: undefined } : m) }
+            : c
+        ),
+      }))
+      throw error
+    }
+  },
+
+  retryMediaMessage: async (chatId, messageId, file, msgType, duration) => {
+    const state = get()
+    if (!state.walletAddress) return
+    // Remove the failed message first
+    set(s => ({
+      chats: s.chats.map(c =>
+        c.id === chatId
+          ? { ...c, messages: c.messages.filter(m => m.id !== messageId) }
+          : c
+      ),
+    }))
+    // Re-send
+    await get().sendMediaMessage(chatId, file, msgType, duration)
+  },
+
   searchUserByAddress: async (address) => {
     // With Supabase, any valid EVM address is searchable — no network call needed
     const ADDRESS_REGEX = /^0x[a-fA-F0-9]{40}$/
@@ -1273,6 +1394,12 @@ export const useStore = create<AppState>((set, get) => ({
         content: msg.content,
         timestamp: new Date(msg.created_at).getTime(),
         status: 'read' as const,
+        msgType: (msg.msg_type === 'text' || msg.msg_type === 'system') ? undefined : msg.msg_type as Message['msgType'],
+        fileUrl: msg.file_url || undefined,
+        fileName: msg.file_name || undefined,
+        fileSize: msg.file_size || undefined,
+        duration: msg.duration || undefined,
+        thumbnailUrl: msg.thumbnail_url || undefined,
       }))
       set((s) => ({
         chats: s.chats.map((c) => (c.id === chatId ? { ...c, messages } : c)),

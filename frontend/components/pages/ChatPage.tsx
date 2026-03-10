@@ -22,7 +22,7 @@ import {
   Send,
   Mail,
 } from "lucide-react";
-import { useStore, type Chat } from "@/lib/store";
+import { useStore, type Chat, type Message } from "@/lib/store";
 import { setActiveChatId } from "@/lib/soundPlayer";
 import { t } from "@/lib/i18n";
 import toast from "react-hot-toast";
@@ -30,6 +30,13 @@ import ChatRequestList from "@/components/chat/ChatRequestList";
 import WalletAddress from "@/components/chat/WalletAddress";
 import UserAvatar from "@/components/UserAvatar";
 import AvatarPreviewModal from "@/components/AvatarPreviewModal";
+import ChatMediaPicker from "@/components/chat/ChatMediaPicker";
+import ImagePreviewModal from "@/components/chat/ImagePreviewModal";
+import ImageMessageBubble from "@/components/chat/ImageMessageBubble";
+import FileMessageBubble from "@/components/chat/FileMessageBubble";
+import VoiceMessagePlayer from "@/components/chat/VoiceMessagePlayer";
+import VoiceRecordButton from "@/components/chat/VoiceRecordButton";
+import { validateImageFile, validateFile, compressImage } from "@/lib/chat-media";
 
 function formatTime(ts: number, locale: "zh" | "en") {
   const now = Date.now();
@@ -94,14 +101,18 @@ function EmojiPicker({ onSelect, onClose }: { onSelect: (emoji: string) => void;
 
 // Chat Detail View
 function ChatDetail({ chat, onBack, locale }: { chat: Chat; onBack: () => void; locale: "zh" | "en" }) {
-  const { sendMessage, sendPushMessage, sendGroupPushMessage, loadChatHistory, chatReady, walletAddress, getDisplayName, getAvatarUrl } = useStore();
+  const { sendMessage, sendPushMessage, sendGroupPushMessage, loadChatHistory, chatReady, walletAddress, getDisplayName, getAvatarUrl, sendMediaMessage, retryMediaMessage } = useStore();
   const [input, setInput] = useState("");
   const [showEmoji, setShowEmoji] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
   const [isComposing, setIsComposing] = useState(false);
   const [previewAddress, setPreviewAddress] = useState<string | null>(null);
+  const [previewImage, setPreviewImage] = useState<File | null>(null);
+  const [fullscreenImage, setFullscreenImage] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  // File cache for retry functionality
+  const fileCacheRef = useRef<Map<string, File>>(new Map());
   // Ref to the ChatDetail container — used to compute how much of keyboardHeight
   // actually overlaps this container (excluding BottomNav + system nav bar below it)
   const containerRef = useRef<HTMLDivElement>(null);
@@ -221,6 +232,58 @@ function ChatDetail({ chat, onBack, locale }: { chat: Chat; onBack: () => void; 
     }
   }, [x, onBack]);
 
+  // --- Media handlers ---
+  const sendingRef = useRef(false);
+
+  const handleImageSelect = useCallback((file: File) => {
+    const err = validateImageFile(file);
+    if (err) { toast.error(t(err, locale)); return; }
+    setPreviewImage(file);
+  }, [locale]);
+
+  const handlePhotoCapture = handleImageSelect;
+
+  const handleFileSelect = useCallback(async (file: File) => {
+    if (sendingRef.current) return;
+    const err = validateFile(file);
+    if (err) { toast.error(t(err, locale)); return; }
+    sendingRef.current = true;
+    try {
+      await sendMediaMessage(chat.id, file, 'file');
+    } catch { toast.error(t('chat.uploadFailed', locale)); }
+    finally { sendingRef.current = false; }
+  }, [chat.id, sendMediaMessage, locale]);
+
+  const handleImageSend = useCallback(async () => {
+    if (!previewImage || sendingRef.current) return;
+    const file = previewImage;
+    setPreviewImage(null);
+    sendingRef.current = true;
+    try {
+      const compressed = await compressImage(file);
+      await sendMediaMessage(chat.id, compressed, 'image');
+    } catch { toast.error(t('chat.uploadFailed', locale)); }
+    finally { sendingRef.current = false; }
+  }, [previewImage, chat.id, sendMediaMessage, locale]);
+
+  const handleVoiceSend = useCallback(async (blob: Blob, duration: number) => {
+    if (sendingRef.current) return;
+    sendingRef.current = true;
+    const file = new File([blob], `voice_${Date.now()}.webm`, { type: blob.type || 'audio/webm' });
+    try {
+      await sendMediaMessage(chat.id, file, 'voice', duration);
+    } catch { toast.error(t('chat.uploadFailed', locale)); }
+    finally { sendingRef.current = false; }
+  }, [chat.id, sendMediaMessage, locale]);
+
+  const handleRetry = useCallback((msg: Message) => {
+    const cachedFile = fileCacheRef.current.get(msg.id);
+    if (!cachedFile || !msg.msgType) return;
+    retryMediaMessage(chat.id, msg.id, cachedFile, msg.msgType as 'image' | 'file' | 'voice', msg.duration).catch(() => {
+      toast.error(t('chat.uploadFailed', locale));
+    });
+  }, [chat.id, retryMediaMessage, locale]);
+
   const handleSend = async () => {
     const rawValue = inputRef.current?.value ?? input;
     if (!rawValue.trim()) {
@@ -310,6 +373,53 @@ function ChatDetail({ chat, onBack, locale }: { chat: Chat; onBack: () => void; 
       <div className="flex-1 overflow-y-auto p-4 space-y-3">
         {chat.messages.map((msg) => {
           const isMe = msg.sender === "me";
+          const timeStr = `${new Date(msg.timestamp).getHours().toString().padStart(2, "0")}:${new Date(msg.timestamp).getMinutes().toString().padStart(2, "0")}`;
+
+          // Render media bubble based on msgType
+          const renderBubbleContent = () => {
+            switch (msg.msgType) {
+              case 'image':
+                return (
+                  <ImageMessageBubble
+                    fileUrl={msg.fileUrl}
+                    fileName={msg.fileName}
+                    uploadProgress={msg.uploadProgress}
+                    status={msg.status}
+                    isMe={isMe}
+                    onRetry={() => handleRetry(msg)}
+                    onClick={() => msg.fileUrl && setFullscreenImage(msg.fileUrl)}
+                  />
+                );
+              case 'file':
+                return (
+                  <FileMessageBubble
+                    fileUrl={msg.fileUrl}
+                    fileName={msg.fileName}
+                    fileSize={msg.fileSize}
+                    uploadProgress={msg.uploadProgress}
+                    status={msg.status}
+                    isMe={isMe}
+                    onRetry={() => handleRetry(msg)}
+                  />
+                );
+              case 'voice':
+                return (
+                  <VoiceMessagePlayer
+                    fileUrl={msg.fileUrl}
+                    duration={msg.duration}
+                    isMe={isMe}
+                    uploadProgress={msg.uploadProgress}
+                    status={msg.status}
+                    onRetry={() => handleRetry(msg)}
+                  />
+                );
+              default:
+                return <p className="text-sm leading-relaxed">{msg.content}</p>;
+            }
+          };
+
+          const isMediaMsg = msg.msgType === 'image' || msg.msgType === 'file' || msg.msgType === 'voice';
+
           return (
             <motion.div
               key={msg.id}
@@ -320,28 +430,27 @@ function ChatDetail({ chat, onBack, locale }: { chat: Chat; onBack: () => void; 
               {chat.type === 'group' && !isMe ? (
                 <div className="flex items-end gap-1.5">
                   <UserAvatar address={msg.sender} size="sm" className="!w-6 !h-6 flex-shrink-0" />
-                  <div className={`max-w-[75%] rounded-2xl px-3.5 py-2.5 bg-card text-card-foreground border border-border rounded-bl-md`}>
-                    <p className="text-[10px] font-semibold mb-1 text-[var(--ogbo-blue)]/80">
+                  <div className={`max-w-[75%] rounded-2xl ${isMediaMsg ? 'p-1' : 'px-3.5 py-2.5'} bg-card text-card-foreground border border-border rounded-bl-md`}>
+                    <p className={`text-[10px] font-semibold mb-1 text-[var(--ogbo-blue)]/80 ${isMediaMsg ? 'px-2.5 pt-1.5' : ''}`}>
                       {getDisplayName(msg.sender)}
                     </p>
-                    <p className="text-sm leading-relaxed">{msg.content}</p>
-                    <p className="text-[10px] mt-1 text-muted-foreground">
-                      {new Date(msg.timestamp).getHours().toString().padStart(2, "0")}:
-                      {new Date(msg.timestamp).getMinutes().toString().padStart(2, "0")}
+                    {renderBubbleContent()}
+                    <p className={`text-[10px] mt-1 text-muted-foreground ${isMediaMsg ? 'px-2.5 pb-1' : ''}`}>
+                      {timeStr}
                     </p>
                   </div>
                 </div>
               ) : (
-                <div className={`max-w-[75%] rounded-2xl px-3.5 py-2.5 ${
+                <div className={`max-w-[75%] rounded-2xl ${isMediaMsg ? 'p-1' : 'px-3.5 py-2.5'} ${
                   isMe
                     ? "bg-[var(--ogbo-blue)] text-white rounded-br-md"
                     : "bg-card text-card-foreground border border-border rounded-bl-md"
                 }`}>
-                  <p className="text-sm leading-relaxed">{msg.content}</p>
-                  <p className={`text-[10px] mt-1 ${isMe ? "text-white/60" : "text-muted-foreground"}`}>
-                    {new Date(msg.timestamp).getHours().toString().padStart(2, "0")}:
-                    {new Date(msg.timestamp).getMinutes().toString().padStart(2, "0")}
+                  {renderBubbleContent()}
+                  <p className={`text-[10px] mt-1 ${isMe ? "text-white/60" : "text-muted-foreground"} ${isMediaMsg ? 'px-2.5 pb-1' : ''}`}>
+                    {timeStr}
                     {isMe && msg.status === "read" && " ✓✓"}
+                    {isMe && msg.status === "failed" && ` ${locale === 'zh' ? '发送失败' : 'Failed'}`}
                   </p>
                 </div>
               )}
@@ -364,6 +473,11 @@ function ChatDetail({ chat, onBack, locale }: { chat: Chat; onBack: () => void; 
           {showEmoji && <EmojiPicker onSelect={(emoji) => setInput((prev) => prev + emoji)} onClose={() => setShowEmoji(false)} />}
         </AnimatePresence>
         <div className="flex items-center gap-1">
+          <ChatMediaPicker
+            onImageSelect={handleImageSelect}
+            onFileSelect={handleFileSelect}
+            onPhotoCapture={handlePhotoCapture}
+          />
           <motion.button whileTap={{ scale: 0.9 }} onClick={() => setShowEmoji(!showEmoji)} className="rounded-full p-1.5 hover:bg-muted transition-colors flex-shrink-0">
             <Smile className="w-5 h-5 text-muted-foreground" />
           </motion.button>
@@ -373,12 +487,10 @@ function ChatDetail({ chat, onBack, locale }: { chat: Chat; onBack: () => void; 
             onChange={(e) => setInput(e.target.value)}
             onCompositionStart={() => setIsComposing(true)}
             onCompositionEnd={() => {
-              // Delay to let onChange fire first
               setTimeout(() => setIsComposing(false), 0);
             }}
             onKeyDown={handleKeyDown}
             onFocus={() => {
-              // Wait for keyboard animation (~300ms) then ensure input and message end are visible
               setTimeout(() => {
                 inputRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
                 messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -387,16 +499,44 @@ function ChatDetail({ chat, onBack, locale }: { chat: Chat; onBack: () => void; 
             placeholder={t("chat.inputPlaceholder", locale)}
             className="flex-1 min-w-0 bg-muted rounded-full px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[var(--ogbo-blue)]/20 transition-all"
           />
-          {/* Send button: always visible regardless of input state */}
-          <motion.button
-            whileTap={{ scale: 0.9 }}
-            onClick={handleSend}
-            className="rounded-full p-1.5 bg-[var(--ogbo-blue)] text-white hover:bg-[var(--ogbo-blue-hover)] transition-colors flex-shrink-0"
-          >
-            <Send className="w-4 h-4" />
-          </motion.button>
+          {input.trim() ? (
+            <motion.button
+              whileTap={{ scale: 0.9 }}
+              onClick={handleSend}
+              className="rounded-full p-1.5 bg-[var(--ogbo-blue)] text-white hover:bg-[var(--ogbo-blue-hover)] transition-colors flex-shrink-0"
+            >
+              <Send className="w-4 h-4" />
+            </motion.button>
+          ) : (
+            <VoiceRecordButton onSend={handleVoiceSend} />
+          )}
         </div>
       </div>
+
+      {/* Image Preview Modal */}
+      <ImagePreviewModal
+        file={previewImage}
+        onSend={handleImageSend}
+        onCancel={() => setPreviewImage(null)}
+      />
+
+      {/* Fullscreen image viewer */}
+      <AnimatePresence>
+        {fullscreenImage && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center"
+            onClick={() => setFullscreenImage(null)}
+          >
+            <button className="absolute top-4 right-4 text-white/80 hover:text-white p-2" onClick={() => setFullscreenImage(null)}>
+              <X className="w-6 h-6" />
+            </button>
+            <img src={fullscreenImage} alt="" className="max-w-full max-h-full object-contain" />
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Avatar Preview Modal */}
       <AvatarPreviewModal

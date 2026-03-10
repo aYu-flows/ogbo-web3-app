@@ -29,6 +29,14 @@
 | components/pages/AssetsPage.tsx | product.md §4 钱包 |
 | components/pages/MarketPage.tsx | product.md §5 行情 |
 | components/pages/DiscoverPage.tsx | product.md §6 发现 |
+| lib/chat-media.ts | product.md §1.2 消息类型; tech.md §2 数据模型 |
+| lib/voice-recorder.ts | product.md §1.2 消息类型 |
+| components/chat/ImageMessageBubble.tsx | product.md §1.2 消息类型 |
+| components/chat/FileMessageBubble.tsx | product.md §1.2 消息类型 |
+| components/chat/VoiceMessagePlayer.tsx | product.md §1.2 消息类型 |
+| components/chat/VoiceRecordButton.tsx | product.md §1.2 消息类型 |
+| components/chat/ChatMediaPicker.tsx | product.md §1.2 消息类型 |
+| components/chat/ImagePreviewModal.tsx | product.md §1.2 消息类型 |
 | components/chat/ | product.md §1-§3 聊天/好友/群聊 |
 | components/login/ | product.md §7 登录; tech.md §5 安全 |
 | components/ui/ | structure.md §4 原子组件库 |
