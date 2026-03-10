@@ -866,8 +866,9 @@ export const useStore = create<AppState>((set, get) => ({
                     if (found !== -1) return found
                     if (!m.id.startsWith('opt-') || m.sender !== 'me') return -1
                     if (isMediaMsg) {
-                      // Media: match by fileName + time window (60s)
-                      if (m.fileName === msg.file_name && Math.abs(m.timestamp - new Date(msg.created_at).getTime()) < 60000) return idx
+                      // Media: match by msgType + fileSize + time window (60s)
+                      // fileName may differ (original vs sanitized by uploadChatFile), so use fileSize as stable identifier
+                      if (m.msgType === msg.msg_type && m.fileSize === (msg.file_size || undefined) && Math.abs(m.timestamp - new Date(msg.created_at).getTime()) < 60000) return idx
                     } else {
                       // Text: match by content
                       if (m.content === msg.content) return idx
