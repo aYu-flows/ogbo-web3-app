@@ -4,6 +4,23 @@
 
 ---
 
+## 2026-03-12 Task77: 聊天消息删除功能
+
+### 新增
+- `lib/message-delete.ts` — 本地删除存储层（localStorage，按钱包地址隔离）
+- `components/chat/MessageContextMenu.tsx` — 长按上下文菜单组件（删除/多选）
+- `lib/__tests__/message-delete.test.ts` — 12 项单元测试
+
+### 修改
+- `lib/store.ts` — 新增 `deleteMessages` action；`loadChatHistory`/Realtime INSERT/`initChat` 过滤已删除消息
+- `components/pages/ChatPage.tsx` — 长按菜单、多选模式（手动勾选+拖拽批量选中）、删除动画、多选工具栏
+- `lib/i18n.ts` — 新增 `chat.msg.delete/multiSelect/selected/cancel` 中英文键值
+- `specs/product.md` — 新增 §1.5 消息删除
+- `specs/structure.md` — 新增文件到项目结构
+- `frontend/CLAUDE.md` — 新增文件到映射表
+
+---
+
 ## 2026-03-12 Task79: 语音录制取消 & 输入框非受控模式修复
 
 ### 修复

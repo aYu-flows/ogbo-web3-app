@@ -29,7 +29,7 @@ OGBO-Project-quick-test/
 │   │   │   ├── DiscoverPage.tsx       # 发现页
 │   │   │   └── AssetsPage.tsx         # 资产页
 │   │   │
-│   │   ├── chat/                      # 聊天功能组件（23 个）
+│   │   ├── chat/                      # 聊天功能组件（24 个）
 │   │   │   ├── AddFriendModal.tsx     # 添加好友弹窗
 │   │   │   ├── ChatMediaPicker.tsx    # 媒体选择器（图片/文件/语音入口）
 │   │   │   ├── ChatRequestCard.tsx    # 聊天请求卡片
@@ -46,6 +46,7 @@ OGBO-Project-quick-test/
 │   │   │   ├── ImagePreviewModal.tsx  # 图片全屏预览弹窗
 │   │   │   ├── InviteFriendsToGroupModal.tsx # 邀请好友多选弹窗
 │   │   │   ├── JoinGroupModal.tsx     # 通过 token/链接加入群聊弹窗
+│   │   │   ├── MessageContextMenu.tsx # 消息长按上下文菜单（删除/多选）
 │   │   │   ├── MuteMemberModal.tsx    # 禁言时长选择弹窗
 │   │   │   ├── TransferOwnerModal.tsx # 群主转让弹窗
 │   │   │   ├── VoiceMessagePlayer.tsx # 语音消息播放器
@@ -82,6 +83,7 @@ OGBO-Project-quick-test/
 │   │   ├── debugLogger.ts            # 调试日志工具
 │   │   ├── group-management.ts        # 群管理功能（25 个函数）、类型、错误类
 │   │   ├── group-qrcode.ts            # 二维码/邀请链接辅助函数
+│   │   ├── message-delete.ts          # 消息删除本地存储层（localStorage）
 │   │   ├── utils.ts                   # 通用工具函数
 │   │   ├── ota-version.ts             # OTA Bundle 版本号常量
 │   │   ├── use-ota-updater.ts         # OTA 热更新核心逻辑（Android）
@@ -163,6 +165,8 @@ $(printf '```')
 | $(printf '`')app/group/join/page.tsx$(printf '`') | §1 目录结构 | Web 端群邀请链接落地页 |
 | $(printf '`')lib/group-management.ts$(printf '`') | §3 编码规范 | 群管理功能（25 函数）、类型、错误类 |
 | $(printf '`')lib/group-qrcode.ts$(printf '`') | §3 编码规范 | 二维码/邀请链接辅助函数 |
+| $(printf '`')lib/message-delete.ts$(printf '`') | §3 编码规范 | 消息删除本地存储层 |
+| $(printf '`')components/chat/MessageContextMenu.tsx$(printf '`') | §3, §4 | 消息长按上下文菜单（删除/多选） |
 | $(printf '`')components/UserAvatar.tsx$(printf '`') | §3, §4 | 通用头像组件 |
 | $(printf '`')components/AvatarPreviewModal.tsx$(printf '`') | §3, §4 | 头像点击预览放大弹窗 |
 | $(printf '`')components/ProfileEditModal.tsx$(printf '`') | §3, §4 | 个人资料编辑弹窗 |

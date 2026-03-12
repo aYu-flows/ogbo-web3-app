@@ -28,6 +28,7 @@ import { useStore, type Chat, type Message } from "@/lib/store";
 import { setActiveChatId } from "@/lib/soundPlayer";
 import { t } from "@/lib/i18n";
 import toast from "react-hot-toast";
+import MessageContextMenu from "@/components/chat/MessageContextMenu";
 import ChatRequestList from "@/components/chat/ChatRequestList";
 import WalletAddress from "@/components/chat/WalletAddress";
 import UserAvatar from "@/components/UserAvatar";
@@ -113,7 +114,7 @@ function EmojiPicker({ onSelect, onClose }: { onSelect: (emoji: string) => void;
 
 // Chat Detail View
 function ChatDetail({ chat, onBack, locale }: { chat: Chat; onBack: () => void; locale: "zh" | "en" }) {
-  const { sendMessage, sendPushMessage, sendGroupPushMessage, loadChatHistory, chatReady, walletAddress, getDisplayName, getGroupDisplayName, getAvatarUrl, sendMediaMessage, retryMediaMessage, myMuteStatus, myGroupSettings, chats: allChats } = useStore();
+  const { sendMessage, sendPushMessage, sendGroupPushMessage, loadChatHistory, chatReady, walletAddress, getDisplayName, getGroupDisplayName, getAvatarUrl, sendMediaMessage, retryMediaMessage, myMuteStatus, myGroupSettings, chats: allChats, deleteMessages } = useStore();
   const [hasText, setHasText] = useState(false);
   const [showEmoji, setShowEmoji] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
@@ -121,6 +122,17 @@ function ChatDetail({ chat, onBack, locale }: { chat: Chat; onBack: () => void; 
   const [previewAddress, setPreviewAddress] = useState<string | null>(null);
   const [previewImage, setPreviewImage] = useState<File | null>(null);
   const [fullscreenImage, setFullscreenImage] = useState<string | null>(null);
+  // Message deletion state
+  const [contextMenu, setContextMenu] = useState<{ visible: boolean; x: number; y: number; msgId: string }>({ visible: false, x: 0, y: 0, msgId: '' });
+  const [isSelectMode, setIsSelectMode] = useState(false);
+  const [selectedMsgIds, setSelectedMsgIds] = useState<Set<string>>(new Set());
+  const longPressTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const longPressTriggered = useRef(false);
+  const touchStartPos = useRef({ x: 0, y: 0 });
+  // Drag selection state
+  const isDragSelecting = useRef(false);
+  const dragStartIndex = useRef(-1);
+  const msgListRef = useRef<HTMLDivElement>(null);
   // Group management panel states
   const [groupInfoOpen, setGroupInfoOpen] = useState(false);
   const [groupMemberListOpen, setGroupMemberListOpen] = useState(false);
@@ -271,7 +283,7 @@ function ChatDetail({ chat, onBack, locale }: { chat: Chat; onBack: () => void; 
 
   // Touch: detect left-edge swipe to trigger back
   const handleTouchStart = useCallback((e: React.TouchEvent) => {
-    if (showEmoji) return;
+    if (showEmoji || isSelectMode) return;
     const touch = e.touches[0];
     touchStartX.current = touch.clientX;
     touchStartY.current = touch.clientY;
@@ -402,6 +414,121 @@ function ChatDetail({ chat, onBack, locale }: { chat: Chat; onBack: () => void; 
     }
   };
 
+  // ======== Message deletion handlers ========
+  const clearLongPress = useCallback(() => {
+    if (longPressTimer.current) {
+      clearTimeout(longPressTimer.current);
+      longPressTimer.current = null;
+    }
+  }, []);
+
+  const handleMsgTouchStart = useCallback((e: React.TouchEvent, msgId: string) => {
+    if (isSelectMode) return; // In select mode, touch = toggle select
+    const touch = e.touches[0];
+    touchStartPos.current = { x: touch.clientX, y: touch.clientY };
+    longPressTriggered.current = false;
+    clearLongPress();
+    longPressTimer.current = setTimeout(() => {
+      longPressTriggered.current = true;
+      setContextMenu({ visible: true, x: touch.clientX, y: touch.clientY, msgId });
+    }, 500);
+  }, [isSelectMode, clearLongPress]);
+
+  const handleMsgTouchMove = useCallback((e: React.TouchEvent) => {
+    if (isSelectMode && isDragSelecting.current) {
+      // Drag selection in multi-select mode
+      const touch = e.touches[0];
+      if (!msgListRef.current) return;
+      const elements = msgListRef.current.querySelectorAll('[data-msg-index]');
+      for (const el of elements) {
+        const rect = el.getBoundingClientRect();
+        if (touch.clientY >= rect.top && touch.clientY <= rect.bottom) {
+          const idx = parseInt(el.getAttribute('data-msg-index') || '-1');
+          if (idx >= 0 && dragStartIndex.current >= 0) {
+            const start = Math.min(dragStartIndex.current, idx);
+            const end = Math.max(dragStartIndex.current, idx);
+            setSelectedMsgIds(prev => {
+              const next = new Set(prev);
+              for (let i = start; i <= end; i++) {
+                const m = chat.messages[i];
+                if (m) next.add(m.id);
+              }
+              return next;
+            });
+          }
+          break;
+        }
+      }
+      return;
+    }
+    // Cancel long press if moved > 5px
+    const touch = e.touches[0];
+    const dx = Math.abs(touch.clientX - touchStartPos.current.x);
+    const dy = Math.abs(touch.clientY - touchStartPos.current.y);
+    if (dx > 5 || dy > 5) clearLongPress();
+  }, [isSelectMode, clearLongPress, chat.messages]);
+
+  const handleMsgTouchEnd = useCallback(() => {
+    clearLongPress();
+    isDragSelecting.current = false;
+    dragStartIndex.current = -1;
+  }, [clearLongPress]);
+
+  const handleMsgContextMenu = useCallback((e: React.MouseEvent, msgId: string) => {
+    e.preventDefault();
+    if (isSelectMode) return;
+    setContextMenu({ visible: true, x: e.clientX, y: e.clientY, msgId });
+  }, [isSelectMode]);
+
+  const handleDeleteSingle = useCallback(() => {
+    const msgId = contextMenu.msgId;
+    if (!msgId) return;
+    // Close fullscreen image if deleting the viewed image
+    const msg = chat.messages.find(m => m.id === msgId);
+    if (msg?.fileUrl && fullscreenImage === msg.fileUrl) setFullscreenImage(null);
+    deleteMessages(chat.id, [msgId]);
+    setContextMenu({ visible: false, x: 0, y: 0, msgId: '' });
+  }, [contextMenu.msgId, chat.id, chat.messages, deleteMessages, fullscreenImage]);
+
+  const handleEnterMultiSelect = useCallback(() => {
+    const msgId = contextMenu.msgId;
+    setContextMenu({ visible: false, x: 0, y: 0, msgId: '' });
+    setIsSelectMode(true);
+    setSelectedMsgIds(new Set(msgId ? [msgId] : []));
+  }, [contextMenu.msgId]);
+
+  const handleToggleSelect = useCallback((msgId: string) => {
+    setSelectedMsgIds(prev => {
+      const next = new Set(prev);
+      if (next.has(msgId)) next.delete(msgId); else next.add(msgId);
+      return next;
+    });
+  }, []);
+
+  const handleBatchDelete = useCallback(() => {
+    if (selectedMsgIds.size === 0) return;
+    // Close fullscreen image if any selected message is being viewed
+    if (fullscreenImage) {
+      const viewingDeleted = chat.messages.some(m => selectedMsgIds.has(m.id) && m.fileUrl === fullscreenImage);
+      if (viewingDeleted) setFullscreenImage(null);
+    }
+    deleteMessages(chat.id, Array.from(selectedMsgIds));
+    setIsSelectMode(false);
+    setSelectedMsgIds(new Set());
+  }, [selectedMsgIds, chat.id, chat.messages, deleteMessages, fullscreenImage]);
+
+  const exitSelectMode = useCallback(() => {
+    setIsSelectMode(false);
+    setSelectedMsgIds(new Set());
+  }, []);
+
+  // Drag select start in multi-select mode
+  const handleDragSelectStart = useCallback((e: React.TouchEvent, msgIndex: number) => {
+    if (!isSelectMode) return;
+    isDragSelecting.current = true;
+    dragStartIndex.current = msgIndex;
+  }, [isSelectMode]);
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey && !isComposing) {
       e.preventDefault();
@@ -420,7 +547,7 @@ function ChatDetail({ chat, onBack, locale }: { chat: Chat; onBack: () => void; 
     >
       {/* Header */}
       <div className="flex items-center gap-3 px-3 py-3 border-b border-border bg-card">
-        <motion.button whileTap={{ scale: 0.9 }} onClick={animateAndBack} className="rounded-full p-1 hover:bg-muted transition-colors lg:hidden">
+        <motion.button whileTap={{ scale: 0.9 }} onClick={isSelectMode ? exitSelectMode : animateAndBack} className="rounded-full p-1 hover:bg-muted transition-colors lg:hidden">
           <ArrowLeft className="w-5 h-5" />
         </motion.button>
         <div className="flex items-center gap-3 flex-1 min-w-0">
@@ -466,10 +593,13 @@ function ChatDetail({ chat, onBack, locale }: { chat: Chat; onBack: () => void; 
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-3">
-        {chat.messages.map((msg) => {
+      <div ref={msgListRef} className="flex-1 overflow-y-auto p-4 space-y-3" onScroll={() => { if (contextMenu.visible) setContextMenu(cm => ({ ...cm, visible: false })); }}>
+        <AnimatePresence>
+        {chat.messages.map((msg, msgIndex) => {
           const isMe = msg.sender === "me";
           const timeStr = `${new Date(msg.timestamp).getHours().toString().padStart(2, "0")}:${new Date(msg.timestamp).getMinutes().toString().padStart(2, "0")}`;
+          const isUploading = msg.uploadProgress !== undefined && msg.status !== 'failed';
+          const isSelected = selectedMsgIds.has(msg.id);
 
           // Render media bubble based on msgType
           const renderBubbleContent = () => {
@@ -483,7 +613,7 @@ function ChatDetail({ chat, onBack, locale }: { chat: Chat; onBack: () => void; 
                     status={msg.status}
                     isMe={isMe}
                     onRetry={() => handleRetry(msg)}
-                    onClick={() => msg.fileUrl && setFullscreenImage(msg.fileUrl)}
+                    onClick={() => !isSelectMode && msg.fileUrl && setFullscreenImage(msg.fileUrl)}
                   />
                 );
               case 'file':
@@ -516,17 +646,44 @@ function ChatDetail({ chat, onBack, locale }: { chat: Chat; onBack: () => void; 
 
           const isMediaMsg = msg.msgType === 'image' || msg.msgType === 'file' || msg.msgType === 'voice';
 
+          // Select mode checkbox
+          const checkbox = isSelectMode ? (
+            <button
+              className="flex-shrink-0 flex items-center justify-center w-5 h-5 mr-1.5 ml-1.5"
+              onClick={(e) => { e.stopPropagation(); handleToggleSelect(msg.id); }}
+            >
+              <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors ${
+                isSelected ? 'bg-[var(--ogbo-blue)] border-[var(--ogbo-blue)]' : 'border-muted-foreground/40'
+              }`}>
+                {isSelected && <Check className="w-3 h-3 text-white" />}
+              </div>
+            </button>
+          ) : null;
+
           return (
             <motion.div
               key={msg.id}
+              data-msg-index={msgIndex}
+              layout
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
-              className={`flex ${isMe ? "justify-end" : "justify-start"}`}
+              exit={{ opacity: 0, height: 0, marginBottom: 0 }}
+              transition={{ duration: 0.2 }}
+              className={`flex items-center ${isMe ? "justify-end" : "justify-start"}`}
+              onTouchStart={!isUploading ? (e) => {
+                if (isSelectMode) { handleDragSelectStart(e, msgIndex); }
+                else { handleMsgTouchStart(e, msg.id); }
+              } : undefined}
+              onTouchMove={!isUploading ? handleMsgTouchMove : undefined}
+              onTouchEnd={!isUploading ? handleMsgTouchEnd : undefined}
+              onContextMenu={!isUploading && !isSelectMode ? (e) => handleMsgContextMenu(e, msg.id) : undefined}
+              onClick={isSelectMode ? () => handleToggleSelect(msg.id) : undefined}
             >
+              {!isMe && checkbox}
               {chat.type === 'group' && !isMe ? (
                 <div className="flex items-end gap-1.5">
                   <UserAvatar address={msg.sender} size="sm" className="!w-6 !h-6 flex-shrink-0" />
-                  <div className={`max-w-[75%] rounded-2xl ${isMediaMsg ? 'p-1' : 'px-3.5 py-2.5'} bg-card text-card-foreground border border-border rounded-bl-md`}>
+                  <div className={`max-w-[75%] rounded-2xl ${isMediaMsg ? 'p-1' : 'px-3.5 py-2.5'} bg-card text-card-foreground border border-border rounded-bl-md ${isSelected ? 'ring-2 ring-[var(--ogbo-blue)]/50' : ''}`}>
                     <p className={`text-[10px] font-semibold mb-1 text-[var(--ogbo-blue)]/80 ${isMediaMsg ? 'px-2.5 pt-1.5' : ''}`}>
                       {getGroupDisplayName(chat.id, msg.sender)}
                     </p>
@@ -541,7 +698,7 @@ function ChatDetail({ chat, onBack, locale }: { chat: Chat; onBack: () => void; 
                   isMe
                     ? "bg-[var(--ogbo-blue)] text-white rounded-br-md"
                     : "bg-card text-card-foreground border border-border rounded-bl-md"
-                }`}>
+                } ${isSelected ? 'ring-2 ring-[var(--ogbo-blue)]/50' : ''}`}>
                   {renderBubbleContent()}
                   <p className={`text-[10px] mt-1 ${isMe ? "text-white/60" : "text-muted-foreground"} ${isMediaMsg ? 'px-2.5 pb-1' : ''}`}>
                     {timeStr}
@@ -550,9 +707,11 @@ function ChatDetail({ chat, onBack, locale }: { chat: Chat; onBack: () => void; 
                   </p>
                 </div>
               )}
+              {isMe && checkbox}
             </motion.div>
           );
         })}
+        </AnimatePresence>
         {isTyping && (
           <div className="flex justify-start">
             <div className="bg-card border border-border rounded-2xl rounded-bl-md">
@@ -563,7 +722,42 @@ function ChatDetail({ chat, onBack, locale }: { chat: Chat; onBack: () => void; 
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Input bar */}
+      {/* Context menu */}
+      <MessageContextMenu
+        visible={contextMenu.visible}
+        x={contextMenu.x}
+        y={contextMenu.y}
+        locale={locale}
+        onDelete={handleDeleteSingle}
+        onMultiSelect={handleEnterMultiSelect}
+        onClose={() => setContextMenu(cm => ({ ...cm, visible: false }))}
+      />
+
+      {/* Input bar or Multi-select toolbar */}
+      {isSelectMode ? (
+        <div className="border-t border-border bg-card px-4 py-3 flex items-center justify-between">
+          <button
+            className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+            onClick={exitSelectMode}
+          >
+            {t('chat.msg.cancel', locale)}
+          </button>
+          <span className="text-sm text-muted-foreground">
+            {t('chat.msg.selected', locale).replace('{n}', String(selectedMsgIds.size))}
+          </span>
+          <button
+            className={`text-sm font-medium transition-colors ${
+              selectedMsgIds.size > 0
+                ? 'text-red-500 hover:text-red-600'
+                : 'text-muted-foreground/40 cursor-not-allowed'
+            }`}
+            onClick={handleBatchDelete}
+            disabled={selectedMsgIds.size === 0}
+          >
+            {t('chat.msg.delete', locale)}
+          </button>
+        </div>
+      ) : (
       <div className="border-t border-border bg-card px-2 py-2 relative">
         {(myMute || isMuteAll) ? (
           <div className="flex items-center justify-center py-2.5 text-sm text-muted-foreground">
@@ -619,6 +813,7 @@ function ChatDetail({ chat, onBack, locale }: { chat: Chat; onBack: () => void; 
           </>
         )}
       </div>
+      )}
 
       {/* Image Preview Modal */}
       <ImagePreviewModal

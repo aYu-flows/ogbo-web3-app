@@ -388,6 +388,7 @@ interface AppState {
   markChatRead: (chatId: string) => void
   pinChat: (chatId: string) => void
   deleteChat: (chatId: string) => void
+  deleteMessages: (chatId: string, messageIds: string[]) => void
   sendMessage: (chatId: string, content: string, sender?: string) => void
   initMarketData: () => Promise<void>
   updatePrices: () => Promise<void>
@@ -556,6 +557,25 @@ export const useStore = create<AppState>((set, get) => ({
       const chats = s.chats.filter((c) => c.id !== chatId)
       return { chats, unreadChatCount: chats.reduce((acc, c) => acc + c.unread, 0) }
     }),
+  deleteMessages: (chatId, messageIds) => {
+    const state = get()
+    if (!state.walletAddress) return
+    const { addDeletedMessages } = require('@/lib/message-delete')
+    addDeletedMessages(state.walletAddress, chatId, messageIds)
+    set((s) => ({
+      chats: s.chats.map(c => {
+        if (c.id !== chatId) return c
+        const remaining = c.messages.filter(m => !messageIds.includes(m.id))
+        const lastMsg = remaining[remaining.length - 1]
+        return {
+          ...c,
+          messages: remaining,
+          lastMessage: lastMsg ? getMessageSummary(lastMsg.msgType, lastMsg.content, lastMsg.fileName) : '',
+          timestamp: lastMsg?.timestamp ?? c.timestamp,
+        }
+      })
+    }))
+  },
   sendMessage: (chatId, content, sender = 'me') =>
     set((s) => ({
       chats: s.chats.map((c) =>
@@ -871,13 +891,22 @@ export const useStore = create<AppState>((set, get) => ({
         myMuteStatus[gId] = myMuteRows.find(m => m.group_id === gId) || null
       }
 
+      // Filter deleted lastMessages before building Chat objects
+      const { getDeletedMessageIds: getDelIds } = require('@/lib/message-delete')
+      const filteredLastMsgs: typeof lastMsgs = {}
+      for (const [cid, msg] of Object.entries(lastMsgs)) {
+        if (msg && !getDelIds(me, cid).has(`db-${msg.id}`)) {
+          filteredLastMsgs[cid] = msg
+        }
+      }
+
       // Build Chat objects
       const personalChats = contacts.map(c => {
         const peerAddr = c.wallet_a.toLowerCase() === me ? c.wallet_b : c.wallet_a
         const chatId = getChatId(me, peerAddr)
-        return contactToChat(c, me, lastMsgs[chatId] || null)
+        return contactToChat(c, me, filteredLastMsgs[chatId] || null)
       })
-      const groupChats = groups.map(g => groupToChat(g, lastMsgs[g.id] || null, myGroupSettings[g.id]))
+      const groupChats = groups.map(g => groupToChat(g, filteredLastMsgs[g.id] || null, myGroupSettings[g.id]))
       const chats = [...personalChats, ...groupChats].sort((a, b) => b.timestamp - a.timestamp)
 
       // Build ChatRequest objects from pending incoming requests
@@ -924,6 +953,11 @@ export const useStore = create<AppState>((set, get) => ({
             if (!isMe && !isDND && !(currentState.activeTab === 'chat' && getActiveChatId() === msg.chat_id)) {
               playMessageSound()
             }
+
+            // Check if this message was locally deleted (Realtime replay protection)
+            const { getDeletedMessageIds: getDeleted } = require('@/lib/message-delete')
+            const deletedIds = getDeleted(myAddr, msg.chat_id)
+            if (deletedIds.has(`db-${msg.id}`)) return
 
             const msgSummary = getMessageSummary(msg.msg_type, msg.content, msg.file_name)
             const newMsg: Message = {
@@ -1640,8 +1674,16 @@ export const useStore = create<AppState>((set, get) => ({
         duration: msg.duration || undefined,
         thumbnailUrl: msg.thumbnail_url || undefined,
       }))
+      // Filter out locally deleted messages
+      const { filterDeletedMessages } = require('@/lib/message-delete')
+      const filtered = filterDeletedMessages(me, chatId, messages)
+      const lastVisibleMsg = filtered[filtered.length - 1]
       set((s) => ({
-        chats: s.chats.map((c) => (c.id === chatId ? { ...c, messages } : c)),
+        chats: s.chats.map((c) => c.id === chatId ? {
+          ...c,
+          messages: filtered,
+          ...(lastVisibleMsg ? { lastMessage: getMessageSummary(lastVisibleMsg.msgType, lastVisibleMsg.content, lastVisibleMsg.fileName) } : {}),
+        } : c),
       }))
     } catch (error) {
       console.error('loadChatHistory failed:', error)

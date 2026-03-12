@@ -37,6 +37,8 @@
 | components/chat/VoiceRecordButton.tsx | product.md §1.2 消息类型 |
 | components/chat/ChatMediaPicker.tsx | product.md §1.2 消息类型 |
 | components/chat/ImagePreviewModal.tsx | product.md §1.2 消息类型 |
+| lib/message-delete.ts | product.md §1.5 消息删除 |
+| components/chat/MessageContextMenu.tsx | product.md §1.5 消息删除 |
 | lib/group-management.ts | product.md §3 群聊; tech.md §2 数据模型 |
 | lib/group-qrcode.ts | product.md §3 群聊 |
 | components/chat/GroupInfoPanel.tsx | product.md §3 群聊 |
