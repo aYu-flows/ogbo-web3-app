@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { Suspense, useEffect, useState } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { useStore } from '@/lib/store'
 import { t } from '@/lib/i18n'
@@ -18,7 +18,7 @@ type JoinStatus =
   | 'error'
   | 'no_token'
 
-export default function GroupJoinPage() {
+function GroupJoinPageInner() {
   const searchParams = useSearchParams()
   const router = useRouter()
   const { isLoggedIn, joinGroupViaToken, locale } = useStore()
@@ -218,5 +218,17 @@ export default function GroupJoinPage() {
         )}
       </div>
     </div>
+  )
+}
+
+export default function GroupJoinPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <Loader2 className="w-12 h-12 animate-spin text-[var(--ogbo-blue)]" />
+      </div>
+    }>
+      <GroupJoinPageInner />
+    </Suspense>
   )
 }
