@@ -37,6 +37,19 @@
 | components/chat/VoiceRecordButton.tsx | product.md §1.2 消息类型 |
 | components/chat/ChatMediaPicker.tsx | product.md §1.2 消息类型 |
 | components/chat/ImagePreviewModal.tsx | product.md §1.2 消息类型 |
+| lib/group-management.ts | product.md §3 群聊; tech.md §2 数据模型 |
+| lib/group-qrcode.ts | product.md §3 群聊 |
+| components/chat/GroupInfoPanel.tsx | product.md §3 群聊 |
+| components/chat/GroupMemberList.tsx | product.md §3 群聊 |
+| components/chat/GroupSettingsPanel.tsx | product.md §3 群聊 |
+| components/chat/GroupAnnouncementModal.tsx | product.md §3 群聊 |
+| components/chat/GroupInviteModal.tsx | product.md §3 群聊 |
+| components/chat/GroupJoinRequestList.tsx | product.md §3 群聊 |
+| components/chat/InviteFriendsToGroupModal.tsx | product.md §3 群聊 |
+| components/chat/MuteMemberModal.tsx | product.md §3 群聊 |
+| components/chat/TransferOwnerModal.tsx | product.md §3 群聊 |
+| components/chat/JoinGroupModal.tsx | product.md §3 群聊 |
+| app/group/join/page.tsx | product.md §3 群聊 |
 | components/chat/ | product.md §1-§3 聊天/好友/群聊 |
 | components/login/ | product.md §7 登录; tech.md §5 安全 |
 | components/ui/ | structure.md §4 原子组件库 |
@@ -52,6 +65,7 @@
 | components/AvatarPreviewModal.tsx | product.md §2 个人资料; structure.md §4 |
 | components/ProfileEditModal.tsx | product.md §2 个人资料; structure.md §4 |
 | components/theme-provider.tsx | structure.md §4 主题系统 |
+| hooks/use-ime-composition.ts | structure.md §3 编码规范 |
 | hooks/use-mobile.tsx | tech.md §6 跨平台适配 |
 | hooks/use-toast.ts | structure.md §4 UI 反馈 |
 | app/login/page.tsx | product.md §7 登录 |

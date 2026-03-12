@@ -15,8 +15,11 @@ OGBO-Project-quick-test/
 │   │   ├── layout.tsx                 # 根布局
 │   │   ├── page.tsx                   # 首页入口
 │   │   ├── globals.css                # 全局样式 & CSS 变量
-│   │   └── login/
-│   │       └── page.tsx               # 登录页路由
+│   │   ├── login/
+│   │   │   └── page.tsx               # 登录页路由
+│   │   └── group/
+│   │       └── join/
+│   │           └── page.tsx           # Web 端群邀请链接落地页
 │   │
 │   ├── components/                    # 组件目录
 │   │   ├── pages/                     # 页面级组件（5 个主页面）
@@ -26,15 +29,25 @@ OGBO-Project-quick-test/
 │   │   │   ├── DiscoverPage.tsx       # 发现页
 │   │   │   └── AssetsPage.tsx         # 资产页
 │   │   │
-│   │   ├── chat/                      # 聊天功能组件（13 个）
+│   │   ├── chat/                      # 聊天功能组件（23 个）
 │   │   │   ├── AddFriendModal.tsx     # 添加好友弹窗
 │   │   │   ├── ChatMediaPicker.tsx    # 媒体选择器（图片/文件/语音入口）
 │   │   │   ├── ChatRequestCard.tsx    # 聊天请求卡片
 │   │   │   ├── ChatRequestList.tsx    # 聊天请求列表
 │   │   │   ├── CreateGroupModal.tsx   # 创建群聊弹窗
 │   │   │   ├── FileMessageBubble.tsx  # 文件消息气泡
+│   │   │   ├── GroupAnnouncementModal.tsx # 群公告查看/编辑弹窗
+│   │   │   ├── GroupInfoPanel.tsx     # 群信息主面板
+│   │   │   ├── GroupInviteModal.tsx   # 邀请链接+二维码生成弹窗
+│   │   │   ├── GroupJoinRequestList.tsx # 入群申请审批列表
+│   │   │   ├── GroupMemberList.tsx    # 群成员列表（含角色管理）
+│   │   │   ├── GroupSettingsPanel.tsx # 群设置（入群方式/邀请审批/全群禁言）
 │   │   │   ├── ImageMessageBubble.tsx # 图片消息气泡
 │   │   │   ├── ImagePreviewModal.tsx  # 图片全屏预览弹窗
+│   │   │   ├── InviteFriendsToGroupModal.tsx # 邀请好友多选弹窗
+│   │   │   ├── JoinGroupModal.tsx     # 通过 token/链接加入群聊弹窗
+│   │   │   ├── MuteMemberModal.tsx    # 禁言时长选择弹窗
+│   │   │   ├── TransferOwnerModal.tsx # 群主转让弹窗
 │   │   │   ├── VoiceMessagePlayer.tsx # 语音消息播放器
 │   │   │   ├── VoiceRecordButton.tsx  # 语音录制按钮
 │   │   │   └── WalletAddress.tsx      # 钱包地址展示
@@ -67,6 +80,8 @@ OGBO-Project-quick-test/
 │   │   ├── soundPlayer.ts            # 消息提示音播放
 │   │   ├── i18n.ts                    # 国际化核心（zh/en）
 │   │   ├── debugLogger.ts            # 调试日志工具
+│   │   ├── group-management.ts        # 群管理功能（25 个函数）、类型、错误类
+│   │   ├── group-qrcode.ts            # 二维码/邀请链接辅助函数
 │   │   ├── utils.ts                   # 通用工具函数
 │   │   ├── ota-version.ts             # OTA Bundle 版本号常量
 │   │   ├── use-ota-updater.ts         # OTA 热更新核心逻辑（Android）
@@ -76,6 +91,7 @@ OGBO-Project-quick-test/
 │   │       └── use-ota-updater.test.ts
 │   │
 │   ├── hooks/                         # 自定义 React Hooks
+│   │   ├── use-ime-composition.ts     # IME 中文输入法兼容 Hook
 │   │   ├── use-mobile.tsx             # 移动端检测
 │   │   └── use-toast.ts              # Toast 通知
 │   │
@@ -106,6 +122,7 @@ $(printf '```')
 
 | 日期 | 变更内容 | 关联代码文件 |
 |------|----------|-------------|
+| 2026-03-12 | Task76: 新增群管理相关 13 个文件（2 lib + 10 组件 + 1 页面） | lib/group-management.ts, lib/group-qrcode.ts, components/chat/Group*.tsx 等, app/group/join/page.tsx |
 | 2026-03-08 | 初始化创建 | - |
 
 ---
@@ -133,6 +150,19 @@ $(printf '```')
 | $(printf '`')components/chat/VoiceRecordButton.tsx$(printf '`') | §1.2, §4 | 语音录制按钮 |
 | $(printf '`')components/chat/ChatMediaPicker.tsx$(printf '`') | §1.2, §4 | 媒体选择器 |
 | $(printf '`')components/chat/ImagePreviewModal.tsx$(printf '`') | §1.2, §4 | 图片全屏预览弹窗 |
+| $(printf '`')components/chat/GroupInfoPanel.tsx$(printf '`') | §3, §4 | 群信息主面板 |
+| $(printf '`')components/chat/GroupMemberList.tsx$(printf '`') | §3, §4 | 群成员列表（含角色管理） |
+| $(printf '`')components/chat/GroupSettingsPanel.tsx$(printf '`') | §3, §4 | 群设置（入群方式/邀请审批/全群禁言） |
+| $(printf '`')components/chat/GroupAnnouncementModal.tsx$(printf '`') | §3, §4 | 群公告查看/编辑弹窗 |
+| $(printf '`')components/chat/GroupInviteModal.tsx$(printf '`') | §3, §4 | 邀请链接+二维码生成弹窗 |
+| $(printf '`')components/chat/GroupJoinRequestList.tsx$(printf '`') | §3, §4 | 入群申请审批列表 |
+| $(printf '`')components/chat/InviteFriendsToGroupModal.tsx$(printf '`') | §3, §4 | 邀请好友多选弹窗 |
+| $(printf '`')components/chat/MuteMemberModal.tsx$(printf '`') | §3, §4 | 禁言时长选择弹窗 |
+| $(printf '`')components/chat/TransferOwnerModal.tsx$(printf '`') | §3, §4 | 群主转让弹窗 |
+| $(printf '`')components/chat/JoinGroupModal.tsx$(printf '`') | §3, §4 | 通过 token/链接加入群聊弹窗 |
+| $(printf '`')app/group/join/page.tsx$(printf '`') | §1 目录结构 | Web 端群邀请链接落地页 |
+| $(printf '`')lib/group-management.ts$(printf '`') | §3 编码规范 | 群管理功能（25 函数）、类型、错误类 |
+| $(printf '`')lib/group-qrcode.ts$(printf '`') | §3 编码规范 | 二维码/邀请链接辅助函数 |
 | $(printf '`')components/UserAvatar.tsx$(printf '`') | §3, §4 | 通用头像组件 |
 | $(printf '`')components/AvatarPreviewModal.tsx$(printf '`') | §3, §4 | 头像点击预览放大弹窗 |
 | $(printf '`')components/ProfileEditModal.tsx$(printf '`') | §3, §4 | 个人资料编辑弹窗 |
@@ -150,6 +180,7 @@ $(printf '```')
 | $(printf '`')lib/i18n.ts$(printf '`') | §5 国际化规范 | 国际化核心模块 |
 | $(printf '`')lib/debugLogger.ts$(printf '`') | §3 编码规范 | 调试日志 |
 | $(printf '`')lib/utils.ts$(printf '`') | §3 编码规范 | 通用工具 |
+| $(printf '`')hooks/use-ime-composition.ts$(printf '`') | §3 编码规范 | IME 中文输入法兼容 Hook |
 | $(printf '`')hooks/use-mobile.tsx$(printf '`') | §3 编码规范 | 移动端检测 Hook |
 | $(printf '`')hooks/use-toast.ts$(printf '`') | §3 编码规范 | Toast Hook |
 
@@ -157,6 +188,7 @@ $(printf '```')
 
 | 日期 | 变更内容 | 关联代码文件 |
 |------|----------|-------------|
+| 2026-03-12 | Task76: 新增 14 个群管理文件到映射表 | lib/group-management.ts, lib/group-qrcode.ts, Group*.tsx 等 |
 | 2026-03-08 | 初始化创建 | - |
 
 ---

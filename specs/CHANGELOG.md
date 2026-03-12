@@ -4,6 +4,51 @@
 
 ---
 
+## 2026-03-12 Task78: 中文输入法(IME)兼容性修复
+
+### 新增
+- `hooks/use-ime-composition.ts` — IME composition 状态跟踪 Hook
+
+### 修复
+- ProfileEditModal 中文昵称输入后保存按钮不响应问题（添加 compositionEnd 事件同步 + DOM ref 兜底读取）
+- AddFriendModal 中文昵称搜索不触发问题（composition 期间跳过 debounce 搜索 + compositionEnd 同步 state）
+- GroupInfoPanel 群名/群昵称中文编辑兼容性（添加 compositionEnd 事件同步 + DOM ref 兜底读取）
+
+### 修改
+- `structure.md` 新增 `hooks/use-ime-composition.ts` 文件映射
+- `frontend/CLAUDE.md` 新增文件映射条目
+
+---
+
+## 2026-03-12 Task76: 群管理功能
+
+### 新增
+- 三级角色体系：群主(owner) > 管理员(admin) > 普通成员(member)
+- 禁言功能：个人定时禁言（5档）+ 全群禁言
+- 群成员管理：设置/取消管理员、移除成员
+- 入群控制：入群方式设置（自由/审批/禁止）、成员邀请审批开关
+- 群邀请链接/二维码：生成、分享、撤销、过期设置
+- 群公告：发布、自动弹窗提醒、已读标记
+- 群设置：修改群名、我的群昵称、置顶群聊、消息免打扰
+- 群主转让、解散群聊、退出群聊
+- Web 端邀请链接落地页 (app/group/join/page.tsx)
+
+### 修改
+- groups 表新增 7 个字段（admins, announcement, announcement_at, announcement_by, join_mode, invite_approval, mute_all）
+- 新增 4 张数据库表（group_members, group_mutes, group_invites, group_join_requests）
+- store.ts 新增 25+ 群管理 actions 和 6 个 Realtime 订阅
+- ChatPage.tsx 增加群管理面板集成、禁言输入框、未读公告弹窗
+- i18n.ts 新增 100+ 群管理国际化键值
+- chat.ts fetchMessages 支持 sinceTimestamp、createGroup 创建 group_members 行
+
+### 新增文件
+- lib/group-management.ts (572行)
+- lib/group-qrcode.ts (43行)
+- 10 个新 UI 组件 (components/chat/Group*.tsx 等)
+- app/group/join/page.tsx
+
+---
+
 ## 2026-03-10
 
 ### feat: 实现多媒体聊天消息(图片/文件/语音) - Task75

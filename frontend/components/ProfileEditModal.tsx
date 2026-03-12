@@ -7,6 +7,7 @@ import { useStore } from '@/lib/store'
 import { t } from '@/lib/i18n'
 import { validateAvatarFile } from '@/lib/profile'
 import type { FriendPermission } from '@/lib/profile'
+import { useIMEComposition } from '@/hooks/use-ime-composition'
 import UserAvatar from '@/components/UserAvatar'
 import WalletAddress from '@/components/chat/WalletAddress'
 import toast from 'react-hot-toast'
@@ -30,6 +31,8 @@ export default function ProfileEditModal({ isOpen, onClose }: ProfileEditModalPr
   const [uploadingAvatar, setUploadingAvatar] = useState(false)
   const [savingPermission, setSavingPermission] = useState<FriendPermission | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+  const nicknameInputRef = useRef<HTMLInputElement>(null)
+  const { onCompositionStart, onCompositionEnd } = useIMEComposition()
 
   // Sync nickname when modal opens
   const [lastOpen, setLastOpen] = useState(false)
@@ -44,7 +47,7 @@ export default function ProfileEditModal({ isOpen, onClose }: ProfileEditModalPr
   if (!walletAddress) return null
 
   const handleSaveNickname = async () => {
-    const trimmed = nickname.trim()
+    const trimmed = (nicknameInputRef.current?.value ?? nickname).trim()
     // No change — skip silently
     if (trimmed === (myProfile?.nickname || '')) return
     if (trimmed.length > 20) {
@@ -174,8 +177,11 @@ export default function ProfileEditModal({ isOpen, onClose }: ProfileEditModalPr
               </label>
               <div className="relative">
                 <input
+                  ref={nicknameInputRef}
                   value={nickname}
                   onChange={(e) => setNickname(e.target.value)}
+                  onCompositionStart={onCompositionStart}
+                  onCompositionEnd={(e) => { onCompositionEnd(); setNickname(e.currentTarget.value) }}
                   maxLength={20}
                   placeholder={t('profile.nicknamePlaceholder', locale)}
                   className="w-full rounded-xl bg-muted px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-[var(--ogbo-blue)]/20 transition-all pr-12"

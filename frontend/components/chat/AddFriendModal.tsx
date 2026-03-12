@@ -6,6 +6,7 @@ import { useState, useEffect, useRef } from 'react'
 import { utils as ethersUtils } from 'ethers'
 import { useStore } from '@/lib/store'
 import { t } from '@/lib/i18n'
+import { useIMEComposition } from '@/hooks/use-ime-composition'
 import WalletAddress from '@/components/chat/WalletAddress'
 
 interface AddFriendModalProps {
@@ -63,6 +64,7 @@ export default function AddFriendModal({ isOpen, onClose, onOpenChat }: AddFrien
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const autoFillSessionRef = useRef(0)
   const requestMsgRef = useRef<HTMLTextAreaElement>(null)
+  const { isComposingRef, onCompositionStart, onCompositionEnd } = useIMEComposition()
 
   // Helper: check friend/request status for a given address
   const isAlreadyFriend = (addr: string) =>
@@ -146,6 +148,8 @@ export default function AddFriendModal({ isOpen, onClose, onOpenChat }: AddFrien
       if (raw.length < 1) return
 
       debounceRef.current = setTimeout(async () => {
+        // Skip search while IME is composing (e.g. typing pinyin for Chinese)
+        if (isComposingRef.current) return
         setSearching(true)
         try {
           const results = await searchUserByNickname(raw)
@@ -379,6 +383,8 @@ export default function AddFriendModal({ isOpen, onClose, onOpenChat }: AddFrien
                   type="text"
                   value={searchInput}
                   onChange={(e) => setSearchInput(e.target.value)}
+                  onCompositionStart={onCompositionStart}
+                  onCompositionEnd={(e) => { onCompositionEnd(); setSearchInput(e.currentTarget.value) }}
                   onPaste={(e) => {
                     // Explicit paste handler for Android IME compatibility:
                     // some IME implementations bypass onChange on paste.
