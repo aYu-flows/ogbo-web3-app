@@ -17,6 +17,7 @@ import AppDownloadBanner from "@/components/AppDownloadBanner";
 import StatusBarConfig from "@/components/StatusBarConfig";
 import AddFriendModal from "@/components/chat/AddFriendModal";
 import CreateGroupModal from "@/components/chat/CreateGroupModal";
+import JoinGroupModal from "@/components/chat/JoinGroupModal";
 import { unlockAudio } from "@/lib/soundPlayer";
 import { useOtaUpdater } from "@/lib/use-ota-updater";
 export default function Page() {
@@ -26,6 +27,7 @@ export default function Page() {
   const [chatSearchOpen, setChatSearchOpen] = useState(false);
   const [addFriendOpen, setAddFriendOpen] = useState(false);
   const [createGroupOpen, setCreateGroupOpen] = useState(false);
+  const [joinGroupOpen, setJoinGroupOpen] = useState(false);
   const [marketSearchOpen, setMarketSearchOpen] = useState(false);
 
   // Wagmi wallet state
@@ -106,6 +108,10 @@ export default function Page() {
     setCreateGroupOpen(true);
   }, []);
 
+  const handleJoinGroup = useCallback(() => {
+    setJoinGroupOpen(true);
+  }, []);
+
   if (isChecking) {
     return (
       <div className="flex h-dvh items-center justify-center bg-background">
@@ -159,6 +165,7 @@ export default function Page() {
           onSearch={handleSearch}
           onAddFriend={handleAddFriend}
           onCreateGroup={handleCreateGroup}
+          onJoinGroup={handleJoinGroup}
         />
 
         <main className="flex-1 overflow-hidden relative">
@@ -193,6 +200,12 @@ export default function Page() {
         isOpen={createGroupOpen}
         onClose={() => setCreateGroupOpen(false)}
         friends={chats.filter((c) => c.type === 'personal' && !!c.walletAddress)}
+      />
+
+      {/* Join Group Modal - global, accessible from TopBar */}
+      <JoinGroupModal
+        open={joinGroupOpen}
+        onClose={() => setJoinGroupOpen(false)}
       />
     </div>
   );

@@ -175,7 +175,64 @@ chat_id 生成规则（`lib/chat.ts` 中 `getChatId` 函数）：
 | name | text | 群组名称 |
 | creator | text | 创建者钱包地址 |
 | members | text[] | 成员钱包地址数组 |
+| admins | text[] DEFAULT '{}' | 管理员钱包地址数组 |
+| announcement | text DEFAULT NULL | 群公告内容 |
+| announcement_at | timestamptz DEFAULT NULL | 群公告发布时间 |
+| announcement_by | text DEFAULT NULL | 群公告发布者钱包地址 |
+| join_mode | text DEFAULT 'free' | 入群模式：`'free'` / `'approval'` / `'disabled'`（CHECK 约束） |
+| invite_approval | boolean DEFAULT false | 邀请是否需要管理员审批 |
+| mute_all | boolean DEFAULT false | 全员禁言开关 |
 | created_at | timestamptz | 创建时间 |
+
+#### group_members 表 — 群成员详情
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| group_id | text FK→groups(id) ON DELETE CASCADE | 群组 ID |
+| wallet_address | text NOT NULL | 成员钱包地址 |
+| group_nickname | text DEFAULT NULL | 群内昵称 |
+| pinned | boolean DEFAULT false | 是否置顶该群 |
+| muted_notifications | boolean DEFAULT false | 是否免打扰 |
+| joined_at | timestamptz DEFAULT now() | 加入时间 |
+| last_read_announcement_at | timestamptz DEFAULT NULL | 最后已读公告时间 |
+
+主键：`PRIMARY KEY (group_id, wallet_address)`
+
+#### group_mutes 表 — 群成员禁言
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| id | serial | 自增主键 |
+| group_id | text FK→groups(id) ON DELETE CASCADE | 群组 ID |
+| wallet_address | text NOT NULL | 被禁言成员地址 |
+| muted_by | text NOT NULL | 执行禁言的管理员地址 |
+| mute_until | timestamptz | 禁言截止时间（NULL = 永久） |
+| created_at | timestamptz DEFAULT now() | 创建时间 |
+
+#### group_invites 表 — 群邀请链接
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| id | serial | 自增主键 |
+| group_id | text FK→groups(id) ON DELETE CASCADE | 群组 ID |
+| token | uuid DEFAULT gen_random_uuid() UNIQUE | 邀请令牌 |
+| created_by | text NOT NULL | 创建者钱包地址 |
+| expires_at | timestamptz | 过期时间 |
+| created_at | timestamptz DEFAULT now() | 创建时间 |
+
+#### group_join_requests 表 — 入群申请
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| id | serial | 自增主键 |
+| group_id | text FK→groups(id) ON DELETE CASCADE | 群组 ID |
+| requester | text NOT NULL | 申请者钱包地址 |
+| invited_by | text DEFAULT NULL | 邀请人地址（通过邀请链接时填入） |
+| request_type | text | 申请类型：`'link'` / `'invite'`（CHECK 约束） |
+| status | text DEFAULT 'pending' | 状态：`'pending'` / `'approved'` / `'rejected'`（CHECK 约束） |
+| handled_by | text DEFAULT NULL | 处理人地址 |
+| created_at | timestamptz DEFAULT now() | 申请时间 |
+| handled_at | timestamptz DEFAULT NULL | 处理时间 |
 
 #### profiles 表 — 用户资料
 
@@ -198,6 +255,7 @@ chat_id 生成规则（`lib/chat.ts` 中 `getChatId` 函数）：
 - RLS（Row Level Security）策略在 Supabase Dashboard 中管理
 - 客户端使用 anon key 进行所有操作
 - 具体策略无法从客户端代码中推断，需查阅 Supabase 后台配置
+- 新增表（group_members、group_mutes、group_invites、group_join_requests）均使用 `USING(true)` + `WITH CHECK(true)` 策略，与现有表保持一致
 
 ### §2.3 实时订阅配置
 
@@ -211,6 +269,9 @@ chat_id 生成规则（`lib/chat.ts` 中 `getChatId` 函数）：
 | 2 | contacts | INSERT | `wallet_b=eq.{myAddress}` | 接收好友请求 |
 | 3 | contacts | UPDATE | `wallet_a=eq.{myAddress}` | 发出的请求被接受/拒绝 |
 | 4 | groups | INSERT | 无（客户端过滤成员关系） | 被拉入新群组 |
+| 5 | group_members | INSERT/UPDATE/DELETE | 无（客户端过滤） | 群成员变动 |
+| 6 | group_mutes | INSERT/DELETE | 无（客户端过滤） | 群禁言变动 |
+| 7 | group_join_requests | INSERT/UPDATE | 无（客户端过滤） | 入群申请变动 |
 
 防护机制：
 - **过期检查模式**：异步操作完成后验证 `walletAddress` 是否已变更，防止跨钱包数据泄露
@@ -222,6 +283,7 @@ chat_id 生成规则（`lib/chat.ts` 中 `getChatId` 函数）：
 |------|---------|-------------|
 | 2026-03-08 | 初始化创建 | - |
 | 2026-03-10 | messages 表新增 file_url/file_name/file_size/duration/thumbnail_url 字段，msg_type 新增 image/file/voice；新增 chat-files Storage bucket | `lib/chat-media.ts` |
+| 2026-03-12 | Task76: groups 表新增 7 字段（admins, announcement, announcement_at, announcement_by, join_mode, invite_approval, mute_all）；新增 group_members、group_mutes、group_invites、group_join_requests 4 张表 | - |
 
 ---
 

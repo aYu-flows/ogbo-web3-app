@@ -25,11 +25,13 @@ export default function TopBar({
   onAdd,
   onAddFriend,
   onCreateGroup,
+  onJoinGroup,
 }: {
   onSearch?: () => void;
   onAdd?: () => void;
   onAddFriend?: () => void;
   onCreateGroup?: () => void;
+  onJoinGroup?: () => void;
 }) {
   const { activeTab, locale, switchLocale, logout, walletAddress } = useStore();
   const { disconnect } = useDisconnect();
@@ -144,6 +146,17 @@ export default function TopBar({
                     >
                       <Users className="w-4 h-4 text-muted-foreground flex-shrink-0" />
                       {t("chat.createGroup", locale)}
+                    </button>
+                    <div className="mx-3 h-px bg-border" />
+                    <button
+                      onClick={() => {
+                        setPlusMenuOpen(false);
+                        if (onJoinGroup) onJoinGroup();
+                      }}
+                      className="w-full flex items-center gap-2.5 px-4 py-3 text-sm text-foreground hover:bg-muted transition-colors"
+                    >
+                      <Users className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                      {t("group.joinGroup", locale)}
                     </button>
                   </motion.div>
                 </>

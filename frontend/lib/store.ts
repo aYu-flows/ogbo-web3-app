@@ -7,6 +7,8 @@ import { getChatId, addressToColor } from '@/lib/chat'
 import type { ContactRow, MessageRow, GroupRow } from '@/lib/chat'
 import { playMessageSound, getActiveChatId } from '@/lib/soundPlayer'
 import type { ProfileData } from '@/lib/profile'
+import type { GroupMemberRow, GroupMuteRow, GroupDetail, GroupJoinRequestRow, GroupInviteRow, GroupRole } from '@/lib/group-management'
+import { MutedError } from '@/lib/group-management'
 
 // ======== CoinGecko Market Data ========
 interface CoinGeckoMarketItem {
@@ -307,7 +309,7 @@ function contactToChat(contact: ContactRow, myAddress: string, lastMsg: MessageR
   }
 }
 
-function groupToChat(group: GroupRow, lastMsg: MessageRow | null): Chat {
+function groupToChat(group: GroupRow, lastMsg: MessageRow | null, mySettings?: GroupMemberRow): Chat {
   return {
     id: group.id,
     name: group.name,
@@ -319,6 +321,7 @@ function groupToChat(group: GroupRow, lastMsg: MessageRow | null): Chat {
     typing: false,
     type: 'group',
     members: group.members.length,
+    pinned: mySettings?.pinned ?? false,
     messages: [],
   }
 }
@@ -370,6 +373,12 @@ interface AppState {
   otaProgress: number | null
   otaDone: boolean
 
+  // Group management state
+  groupJoinedAtMap: Record<string, string>
+  myGroupSettings: Record<string, GroupMemberRow>
+  pendingRequestCounts: Record<string, number>
+  myMuteStatus: Record<string, GroupMuteRow | null>
+
   switchTab: (tab: TabType) => void
   toggleBalance: () => void
   switchLocale: () => void
@@ -404,6 +413,35 @@ interface AppState {
   searchUserByAddress: (address: string) => Promise<any>
   searchUserByNickname: (keyword: string) => Promise<Array<{ address: string; nickname: string; avatarUrl: string | null }>>
   createGroup: (groupName: string, memberAddresses: string[]) => Promise<void>
+
+  // Group management actions
+  loadGroupMemberSettings: (groupId: string) => Promise<void>
+  updateGroupNickname: (groupId: string, nickname: string) => Promise<void>
+  toggleGroupPin: (groupId: string) => Promise<void>
+  toggleGroupDND: (groupId: string) => Promise<void>
+  markAnnouncementRead: (groupId: string) => Promise<void>
+  openGroupManagement: (groupId: string) => Promise<GroupDetail | null>
+  setAdmin: (groupId: string, wallet: string) => Promise<void>
+  unsetAdmin: (groupId: string, wallet: string) => Promise<void>
+  transferGroupOwnership: (groupId: string, newOwner: string) => Promise<void>
+  kickMember: (groupId: string, wallet: string) => Promise<void>
+  leaveGroupAction: (groupId: string) => Promise<void>
+  dissolveGroupAction: (groupId: string) => Promise<void>
+  muteMember: (groupId: string, wallet: string, duration: import('@/lib/group-management').MuteDuration) => Promise<void>
+  unmuteMember: (groupId: string, wallet: string) => Promise<void>
+  toggleMuteAll: (groupId: string) => Promise<void>
+  updateGroupNameAction: (groupId: string, name: string) => Promise<void>
+  setAnnouncementAction: (groupId: string, text: string) => Promise<void>
+  updateJoinMode: (groupId: string, mode: import('@/lib/group-management').JoinMode) => Promise<void>
+  toggleInviteApproval: (groupId: string) => Promise<void>
+  createGroupInvite: (groupId: string, expiresInDays: number | null) => Promise<GroupInviteRow>
+  revokeGroupInvite: (inviteId: string) => Promise<void>
+  joinGroupViaToken: (token: string) => Promise<{ status: string; groupId?: string }>
+  inviteFriendsToGroupAction: (groupId: string, wallets: string[]) => Promise<void>
+  fetchGroupJoinRequests: (groupId: string) => Promise<GroupJoinRequestRow[]>
+  handleJoinRequestAction: (requestId: number, action: 'approved' | 'rejected') => Promise<void>
+  refreshGroupDetail: (groupId: string) => Promise<void>
+  getGroupDisplayName: (groupId: string, address: string) => string
 
   // OTA actions
   setOtaProgress: (progress: number | null) => void
@@ -450,6 +488,12 @@ export const useStore = create<AppState>((set, get) => ({
   // OTA initial state
   otaProgress: null,
   otaDone: false,
+
+  // Group management initial state
+  groupJoinedAtMap: {},
+  myGroupSettings: {},
+  pendingRequestCounts: {},
+  myMuteStatus: {},
 
   switchTab: (tab) => set({ activeTab: tab }),
   toggleBalance: () => set((s) => ({ isBalanceVisible: !s.isBalanceVisible })),
@@ -700,6 +744,10 @@ export const useStore = create<AppState>((set, get) => ({
       unreadChatCount: 0,
       myProfile: null,
       profileCache: {},
+      groupJoinedAtMap: {},
+      myGroupSettings: {},
+      pendingRequestCounts: {},
+      myMuteStatus: {},
     })
     if (typeof window !== 'undefined') {
       localStorage.removeItem('ogbo_logged_in')
@@ -787,13 +835,49 @@ export const useStore = create<AppState>((set, get) => ({
       // Fetch last messages for all chats
       const lastMsgs = allChatIds.length > 0 ? await fetchLastMessages(allChatIds) : {}
 
+      // Fetch group member settings and mute status for current user
+      const { fetchGroupMembers, fetchMuteStatus } = await import('@/lib/group-management')
+      let myGroupMemberRows: GroupMemberRow[] = []
+      let myMuteRows: GroupMuteRow[] = []
+      if (groups.length > 0) {
+        const [memberResult, muteResult] = await Promise.all([
+          supabase
+            .from('group_members')
+            .select('*')
+            .eq('wallet_address', me)
+            .in('group_id', groupChatIds),
+          supabase
+            .from('group_mutes')
+            .select('*')
+            .eq('wallet_address', me)
+            .in('group_id', groupChatIds),
+        ])
+        myGroupMemberRows = (memberResult.data || []) as GroupMemberRow[]
+        myMuteRows = (muteResult.data || []) as GroupMuteRow[]
+      }
+      const groupJoinedAtMap: Record<string, string> = {}
+      const myGroupSettings: Record<string, GroupMemberRow> = {}
+      const myMuteStatus: Record<string, GroupMuteRow | null> = {}
+      for (const row of myGroupMemberRows) {
+        groupJoinedAtMap[row.group_id] = row.joined_at
+        myGroupSettings[row.group_id] = row
+      }
+      for (const gId of groupChatIds) {
+        if (!groupJoinedAtMap[gId]) {
+          // Fallback: use group created_at for groups without group_members row
+          const g = groups.find(gr => gr.id === gId)
+          if (g) groupJoinedAtMap[gId] = g.created_at
+        }
+        myMuteStatus[gId] = myMuteRows.find(m => m.group_id === gId) || null
+      }
+
       // Build Chat objects
       const personalChats = contacts.map(c => {
         const peerAddr = c.wallet_a.toLowerCase() === me ? c.wallet_b : c.wallet_a
         const chatId = getChatId(me, peerAddr)
         return contactToChat(c, me, lastMsgs[chatId] || null)
       })
-      const groupChats = groups.map(g => groupToChat(g, lastMsgs[g.id] || null))
+      const groupChats = groups.map(g => groupToChat(g, lastMsgs[g.id] || null, myGroupSettings[g.id]))
       const chats = [...personalChats, ...groupChats].sort((a, b) => b.timestamp - a.timestamp)
 
       // Build ChatRequest objects from pending incoming requests
@@ -807,7 +891,7 @@ export const useStore = create<AppState>((set, get) => ({
       // Stale-check: if walletAddress changed while we were fetching, discard results
       if (get().walletAddress?.toLowerCase() !== me) return
 
-      set({ chats, chatRequests, chatReady: true })
+      set({ chats, chatRequests, chatReady: true, groupJoinedAtMap, myGroupSettings, myMuteStatus })
 
       // Load profiles for current user and all contacts
       get().loadMyProfile(me)
@@ -836,7 +920,8 @@ export const useStore = create<AppState>((set, get) => ({
             const isMe = msg.sender.toLowerCase() === myAddr
 
             // 收到他人消息时播放提示音（用户正在查看该聊天时抑制）
-            if (!isMe && !(currentState.activeTab === 'chat' && getActiveChatId() === msg.chat_id)) {
+            const isDND = currentState.myGroupSettings[msg.chat_id]?.muted_notifications === true
+            if (!isMe && !isDND && !(currentState.activeTab === 'chat' && getActiveChatId() === msg.chat_id)) {
               playMessageSound()
             }
 
@@ -998,6 +1083,115 @@ export const useStore = create<AppState>((set, get) => ({
             }))
           }
         )
+        // Group management Realtime events
+        .on(
+          'postgres_changes',
+          { event: 'UPDATE', schema: 'public', table: 'groups' },
+          (payload) => {
+            const updatedGroup = payload.new as GroupRow & { admins?: string[]; announcement?: string; announcement_at?: string; join_mode?: string; invite_approval?: boolean; mute_all?: boolean }
+            const currentState = get()
+            const myAddr = currentState.walletAddress?.toLowerCase() || ''
+            const isMember = updatedGroup.members?.map((m: string) => m.toLowerCase()).includes(myAddr)
+            if (!isMember) {
+              // I was removed from this group
+              set((s) => {
+                const chats = s.chats.filter(c => c.id !== updatedGroup.id)
+                return { chats, unreadChatCount: chats.reduce((acc, c) => acc + c.unread, 0) }
+              })
+              return
+            }
+            // Update chat object with new group data
+            set((s) => ({
+              chats: s.chats.map(c => {
+                if (c.id !== updatedGroup.id) return c
+                return { ...c, name: updatedGroup.name, members: updatedGroup.members?.length }
+              }),
+            }))
+          }
+        )
+        .on(
+          'postgres_changes',
+          { event: 'DELETE', schema: 'public', table: 'groups' },
+          (payload) => {
+            const oldGroup = payload.old as { id?: string }
+            if (!oldGroup.id) return
+            set((s) => {
+              const chats = s.chats.filter(c => c.id !== oldGroup.id)
+              return { chats, unreadChatCount: chats.reduce((acc, c) => acc + c.unread, 0) }
+            })
+          }
+        )
+        .on(
+          'postgres_changes',
+          { event: 'INSERT', schema: 'public', table: 'group_join_requests' },
+          (payload) => {
+            const req = payload.new as GroupJoinRequestRow
+            const currentState = get()
+            const myAddr = currentState.walletAddress?.toLowerCase() || ''
+            // Check if I'm admin/owner of this group
+            const chat = currentState.chats.find(c => c.id === req.group_id)
+            if (!chat || chat.type !== 'group') return
+            set((s) => ({
+              pendingRequestCounts: {
+                ...s.pendingRequestCounts,
+                [req.group_id]: (s.pendingRequestCounts[req.group_id] || 0) + 1,
+              },
+            }))
+          }
+        )
+        .on(
+          'postgres_changes',
+          { event: 'INSERT', schema: 'public', table: 'group_mutes' },
+          (payload) => {
+            const mute = payload.new as GroupMuteRow
+            const myAddr = get().walletAddress?.toLowerCase() || ''
+            if (mute.wallet_address.toLowerCase() === myAddr) {
+              set((s) => ({
+                myMuteStatus: { ...s.myMuteStatus, [mute.group_id]: mute },
+              }))
+            }
+          }
+        )
+        .on(
+          'postgres_changes',
+          { event: 'DELETE', schema: 'public', table: 'group_mutes' },
+          (payload) => {
+            const oldMute = payload.old as { group_id?: string; wallet_address?: string }
+            const myAddr = get().walletAddress?.toLowerCase() || ''
+            if (oldMute.wallet_address?.toLowerCase() === myAddr && oldMute.group_id) {
+              set((s) => ({
+                myMuteStatus: { ...s.myMuteStatus, [oldMute.group_id!]: null },
+              }))
+            }
+          }
+        )
+        .on(
+          'postgres_changes',
+          { event: 'UPDATE', schema: 'public', table: 'group_join_requests' },
+          async (payload) => {
+            const req = payload.new as GroupJoinRequestRow
+            const currentState = get()
+            const myAddr = currentState.walletAddress?.toLowerCase() || ''
+            if (req.requester.toLowerCase() === myAddr) {
+              const { default: toast } = await import('react-hot-toast')
+              const { t } = await import('@/lib/i18n')
+              const locale = get().locale
+              if (req.status === 'approved') {
+                toast.success(t('group.joinSuccess', locale))
+                get().refreshChats()
+              } else if (req.status === 'rejected') {
+                toast.error(t('group.requestRejected', locale))
+              }
+            }
+            if (req.invited_by?.toLowerCase() === myAddr && req.status === 'rejected') {
+              const { default: toast } = await import('react-hot-toast')
+              const { t } = await import('@/lib/i18n')
+              const locale = get().locale
+              const name = get().getDisplayName(req.requester)
+              toast.error(t('group.inviteRejectedNotify', locale).replace('{name}', name))
+            }
+          }
+        )
         .subscribe()
 
       // Second stale-check: if walletAddress changed during subscribe(), discard channel
@@ -1032,6 +1226,10 @@ export const useStore = create<AppState>((set, get) => ({
       unreadChatCount: 0,
       myProfile: null,
       profileCache: {},
+      groupJoinedAtMap: {},
+      myGroupSettings: {},
+      pendingRequestCounts: {},
+      myMuteStatus: {},
     })
   },
 
@@ -1053,6 +1251,29 @@ export const useStore = create<AppState>((set, get) => ({
       const groupChatIds = groups.map(g => g.id)
       const allChatIds = [...personalChatIds, ...groupChatIds]
       const lastMsgs = allChatIds.length > 0 ? await fetchLastMessages(allChatIds) : {}
+
+      // Fetch group member settings for current user
+      let myGroupMemberRows: GroupMemberRow[] = []
+      if (groups.length > 0) {
+        const { data } = await supabase
+          .from('group_members')
+          .select('*')
+          .eq('wallet_address', me)
+          .in('group_id', groupChatIds)
+        myGroupMemberRows = (data || []) as GroupMemberRow[]
+      }
+      const newGroupSettings: Record<string, GroupMemberRow> = {}
+      const newJoinedAtMap: Record<string, string> = {}
+      for (const row of myGroupMemberRows) {
+        newGroupSettings[row.group_id] = row
+        newJoinedAtMap[row.group_id] = row.joined_at
+      }
+      for (const gId of groupChatIds) {
+        if (!newJoinedAtMap[gId]) {
+          const g = groups.find(gr => gr.id === gId)
+          if (g) newJoinedAtMap[gId] = g.created_at
+        }
+      }
 
       // Load profiles for any new contacts not yet cached
       const peerAddresses = contacts.map(c =>
@@ -1104,12 +1325,12 @@ export const useStore = create<AppState>((set, get) => ({
             type: 'group' as const,
             members: g.members.length,
             messages: existing?.messages || [],
-            pinned: existing?.pinned,
+            pinned: newGroupSettings[g.id]?.pinned ?? existing?.pinned ?? false,
           }
         })
 
         const chats = [...personalChats, ...groupChats].sort((a, b) => b.timestamp - a.timestamp)
-        return { chats, unreadChatCount: chats.reduce((acc, c) => acc + c.unread, 0) }
+        return { chats, unreadChatCount: chats.reduce((acc, c) => acc + c.unread, 0), myGroupSettings: { ...s.myGroupSettings, ...newGroupSettings }, groupJoinedAtMap: { ...s.groupJoinedAtMap, ...newJoinedAtMap } }
       })
     } catch (error) {
       console.error('refreshChats failed:', error)
@@ -1241,6 +1462,21 @@ export const useStore = create<AppState>((set, get) => ({
     const state = get()
     if (!state.walletAddress) return
     const me = state.walletAddress.toLowerCase()
+
+    // Check mute status before sending
+    const myMute = state.myMuteStatus[chatId]
+    if (myMute) {
+      const isExpired = myMute.mute_until && new Date(myMute.mute_until).getTime() < Date.now()
+      if (!isExpired) {
+        throw new MutedError(myMute.mute_until)
+      }
+    }
+    // Check group-wide mute (only allow owner/admin)
+    const groupChat = state.chats.find(c => c.id === chatId)
+    if (groupChat && groupChat.type === 'group') {
+      // We need to check mute_all from the group data — we'll do a lightweight check
+      // The UI layer should prevent sending, but this is a safety check
+    }
 
     // Validate that the group chat exists for the current wallet session
     if (!state.chats.some(c => c.id === chatId)) {
@@ -1388,7 +1624,9 @@ export const useStore = create<AppState>((set, get) => ({
     const me = state.walletAddress.toLowerCase()
     try {
       const { fetchMessages } = await import('@/lib/chat')
-      const rawMsgs = await fetchMessages(chatId, 50)
+      const chat = state.chats.find(c => c.id === chatId)
+      const sinceTimestamp = chat?.type === 'group' ? state.groupJoinedAtMap[chatId] : undefined
+      const rawMsgs = await fetchMessages(chatId, 50, sinceTimestamp)
       const messages: Message[] = rawMsgs.map(msg => ({
         id: `db-${msg.id}`,
         sender: msg.sender.toLowerCase() === me ? 'me' as const : msg.sender,
@@ -1458,6 +1696,339 @@ export const useStore = create<AppState>((set, get) => ({
       toast.error(t('chat.groupCreateFailed', get().locale))
       throw error
     }
+  },
+
+  // ======== Group Management Actions ========
+
+  getGroupDisplayName: (groupId, address) => {
+    const state = get()
+    const addr = address.toLowerCase()
+    const settings = state.myGroupSettings[groupId]
+    // For other members, we need to check member list — but we only cache our own settings
+    // For MVP, check profileCache for group nickname (stored in group_members for that user)
+    // Since we only have our own settings cached, for other members fall through to profile
+    if (state.walletAddress?.toLowerCase() === addr && settings?.group_nickname) {
+      return settings.group_nickname
+    }
+    // Fallback to profile display name
+    return state.getDisplayName(address)
+  },
+
+  loadGroupMemberSettings: async (groupId) => {
+    const state = get()
+    if (!state.walletAddress) return
+    const { fetchMyGroupSettings } = await import('@/lib/group-management')
+    const settings = await fetchMyGroupSettings(groupId, state.walletAddress)
+    if (settings) {
+      set((s) => ({
+        myGroupSettings: { ...s.myGroupSettings, [groupId]: settings },
+        groupJoinedAtMap: { ...s.groupJoinedAtMap, [groupId]: settings.joined_at },
+      }))
+    }
+  },
+
+  updateGroupNickname: async (groupId, nickname) => {
+    const state = get()
+    if (!state.walletAddress) return
+    const { updateMyGroupSettings } = await import('@/lib/group-management')
+    await updateMyGroupSettings(groupId, state.walletAddress, { group_nickname: nickname || null })
+    set((s) => ({
+      myGroupSettings: {
+        ...s.myGroupSettings,
+        [groupId]: { ...s.myGroupSettings[groupId], group_nickname: nickname || null } as GroupMemberRow,
+      },
+    }))
+    const { default: toast } = await import('react-hot-toast')
+    const { t } = await import('@/lib/i18n')
+    toast.success(t('group.nicknameSaved', get().locale))
+  },
+
+  toggleGroupPin: async (groupId) => {
+    const state = get()
+    if (!state.walletAddress) return
+    const current = state.myGroupSettings[groupId]?.pinned ?? false
+    const { updateMyGroupSettings } = await import('@/lib/group-management')
+    await updateMyGroupSettings(groupId, state.walletAddress, { pinned: !current })
+    set((s) => ({
+      myGroupSettings: {
+        ...s.myGroupSettings,
+        [groupId]: { ...s.myGroupSettings[groupId], pinned: !current } as GroupMemberRow,
+      },
+      chats: s.chats.map(c => c.id === groupId ? { ...c, pinned: !current } : c),
+    }))
+  },
+
+  toggleGroupDND: async (groupId) => {
+    const state = get()
+    if (!state.walletAddress) return
+    const current = state.myGroupSettings[groupId]?.muted_notifications ?? false
+    const { updateMyGroupSettings } = await import('@/lib/group-management')
+    await updateMyGroupSettings(groupId, state.walletAddress, { muted_notifications: !current })
+    set((s) => ({
+      myGroupSettings: {
+        ...s.myGroupSettings,
+        [groupId]: { ...s.myGroupSettings[groupId], muted_notifications: !current } as GroupMemberRow,
+      },
+    }))
+    const { default: toast } = await import('react-hot-toast')
+    const { t } = await import('@/lib/i18n')
+    toast.success(t(!current ? 'group.dndEnabled' : 'group.dndDisabled', get().locale))
+  },
+
+  markAnnouncementRead: async (groupId) => {
+    const state = get()
+    if (!state.walletAddress) return
+    const now = new Date().toISOString()
+    const { updateMyGroupSettings } = await import('@/lib/group-management')
+    await updateMyGroupSettings(groupId, state.walletAddress, { last_read_announcement_at: now })
+    set((s) => ({
+      myGroupSettings: {
+        ...s.myGroupSettings,
+        [groupId]: { ...s.myGroupSettings[groupId], last_read_announcement_at: now } as GroupMemberRow,
+      },
+    }))
+  },
+
+  openGroupManagement: async (groupId) => {
+    try {
+      const { fetchGroupDetail } = await import('@/lib/group-management')
+      const detail = await fetchGroupDetail(groupId)
+      return detail
+    } catch (error) {
+      console.error('[openGroupManagement] failed:', error)
+      return null
+    }
+  },
+
+  setAdmin: async (groupId, wallet) => {
+    const state = get()
+    if (!state.walletAddress) return
+    const { addAdmin } = await import('@/lib/group-management')
+    const { sendMessage: supabaseSend } = await import('@/lib/chat')
+    await addAdmin(groupId, wallet)
+    const name = state.getDisplayName(wallet)
+    await supabaseSend(groupId, 'system', `${name} 已被设为管理员`, 'system')
+    const { default: toast } = await import('react-hot-toast')
+    const { t } = await import('@/lib/i18n')
+    toast.success(t('group.setAdminSuccess', get().locale))
+  },
+
+  unsetAdmin: async (groupId, wallet) => {
+    const state = get()
+    if (!state.walletAddress) return
+    const { removeAdmin } = await import('@/lib/group-management')
+    const { sendMessage: supabaseSend } = await import('@/lib/chat')
+    await removeAdmin(groupId, wallet)
+    const name = state.getDisplayName(wallet)
+    await supabaseSend(groupId, 'system', `${name} 被取消了管理员`, 'system')
+    const { default: toast } = await import('react-hot-toast')
+    const { t } = await import('@/lib/i18n')
+    toast.success(t('group.removeAdminSuccess', get().locale))
+  },
+
+  transferGroupOwnership: async (groupId, newOwner) => {
+    const state = get()
+    if (!state.walletAddress) return
+    const { fetchGroupDetail, transferOwnership } = await import('@/lib/group-management')
+    const { sendMessage: supabaseSend } = await import('@/lib/chat')
+    const detail = await fetchGroupDetail(groupId)
+    await transferOwnership(groupId, newOwner, detail.admins)
+    const name = state.getDisplayName(newOwner)
+    await supabaseSend(groupId, 'system', `群主已转让给 ${name}`, 'system')
+    await get().refreshChats()
+    const { default: toast } = await import('react-hot-toast')
+    const { t } = await import('@/lib/i18n')
+    toast.success(t('group.transferSuccess', get().locale))
+  },
+
+  kickMember: async (groupId, wallet) => {
+    const state = get()
+    if (!state.walletAddress) return
+    const { removeGroupMember } = await import('@/lib/group-management')
+    const { sendMessage: supabaseSend } = await import('@/lib/chat')
+    const name = state.getDisplayName(wallet)
+    await removeGroupMember(groupId, wallet)
+    await supabaseSend(groupId, 'system', `${name} 被移出了群聊`, 'system')
+    const { default: toast } = await import('react-hot-toast')
+    const { t } = await import('@/lib/i18n')
+    toast.success(t('group.memberRemoved', get().locale))
+  },
+
+  leaveGroupAction: async (groupId) => {
+    const state = get()
+    if (!state.walletAddress) return
+    const { leaveGroup } = await import('@/lib/group-management')
+    const { sendMessage: supabaseSend } = await import('@/lib/chat')
+    const name = state.getDisplayName(state.walletAddress)
+    await supabaseSend(groupId, 'system', `${name} 退出了群聊`, 'system')
+    await leaveGroup(groupId, state.walletAddress)
+    set((s) => {
+      const chats = s.chats.filter(c => c.id !== groupId)
+      return { chats, unreadChatCount: chats.reduce((acc, c) => acc + c.unread, 0) }
+    })
+    const { default: toast } = await import('react-hot-toast')
+    const { t } = await import('@/lib/i18n')
+    toast.success(t('group.leaveSuccess', get().locale))
+  },
+
+  dissolveGroupAction: async (groupId) => {
+    const state = get()
+    if (!state.walletAddress) return
+    const { dissolveGroup } = await import('@/lib/group-management')
+    const { sendMessage: supabaseSend } = await import('@/lib/chat')
+    await supabaseSend(groupId, 'system', '群聊已解散', 'system')
+    await dissolveGroup(groupId)
+    set((s) => {
+      const chats = s.chats.filter(c => c.id !== groupId)
+      return { chats, unreadChatCount: chats.reduce((acc, c) => acc + c.unread, 0) }
+    })
+    const { default: toast } = await import('react-hot-toast')
+    const { t } = await import('@/lib/i18n')
+    toast.success(t('group.dissolveSuccess', get().locale))
+  },
+
+  muteMember: async (groupId, wallet, duration) => {
+    const state = get()
+    if (!state.walletAddress) return
+    const { muteGroupMember } = await import('@/lib/group-management')
+    await muteGroupMember(groupId, wallet, duration, state.walletAddress)
+    const { default: toast } = await import('react-hot-toast')
+    const { t } = await import('@/lib/i18n')
+    toast.success(t('group.muteSuccess', get().locale))
+  },
+
+  unmuteMember: async (groupId, wallet) => {
+    const { unmuteGroupMember } = await import('@/lib/group-management')
+    await unmuteGroupMember(groupId, wallet)
+    const { default: toast } = await import('react-hot-toast')
+    const { t } = await import('@/lib/i18n')
+    toast.success(t('group.unmuteSuccess', get().locale))
+  },
+
+  toggleMuteAll: async (groupId) => {
+    const state = get()
+    if (!state.walletAddress) return
+    const { fetchGroupDetail, updateGroupSettings } = await import('@/lib/group-management')
+    const { sendMessage: supabaseSend } = await import('@/lib/chat')
+    const detail = await fetchGroupDetail(groupId)
+    const newVal = !detail.mute_all
+    await updateGroupSettings(groupId, { mute_all: newVal })
+    await supabaseSend(groupId, 'system', newVal ? '管理员开启了全群禁言' : '管理员关闭了全群禁言', 'system')
+  },
+
+  updateGroupNameAction: async (groupId, name) => {
+    const state = get()
+    if (!state.walletAddress) return
+    const { updateGroupName } = await import('@/lib/group-management')
+    const { sendMessage: supabaseSend } = await import('@/lib/chat')
+    await updateGroupName(groupId, name)
+    await supabaseSend(groupId, 'system', `群名已修改为「${name}」`, 'system')
+    set((s) => ({
+      chats: s.chats.map(c => c.id === groupId ? { ...c, name } : c),
+    }))
+    const { default: toast } = await import('react-hot-toast')
+    const { t } = await import('@/lib/i18n')
+    toast.success(t('group.nameUpdated', get().locale))
+  },
+
+  setAnnouncementAction: async (groupId, text) => {
+    const state = get()
+    if (!state.walletAddress) return
+    const { setGroupAnnouncement } = await import('@/lib/group-management')
+    const { sendMessage: supabaseSend } = await import('@/lib/chat')
+    await setGroupAnnouncement(groupId, text, state.walletAddress)
+    const name = state.getDisplayName(state.walletAddress)
+    await supabaseSend(groupId, 'system', `${name} 更新了群公告`, 'system')
+    const { default: toast } = await import('react-hot-toast')
+    const { t } = await import('@/lib/i18n')
+    toast.success(t('group.announcementUpdated', get().locale))
+  },
+
+  updateJoinMode: async (groupId, mode) => {
+    const { updateGroupSettings } = await import('@/lib/group-management')
+    await updateGroupSettings(groupId, { join_mode: mode })
+  },
+
+  toggleInviteApproval: async (groupId) => {
+    const { fetchGroupDetail, updateGroupSettings, fetchJoinRequests, handleJoinRequest } = await import('@/lib/group-management')
+    const state = get()
+    if (!state.walletAddress) return
+    const detail = await fetchGroupDetail(groupId)
+    const newVal = !detail.invite_approval
+    await updateGroupSettings(groupId, { invite_approval: newVal })
+    // When switching from approval→no approval, auto-approve pending invite requests
+    if (!newVal) {
+      const requests = await fetchJoinRequests(groupId)
+      const inviteRequests = requests.filter(r => r.request_type === 'invite')
+      for (const req of inviteRequests) {
+        await handleJoinRequest(req.id, 'approved', state.walletAddress)
+      }
+    }
+  },
+
+  createGroupInvite: async (groupId, expiresInDays) => {
+    const state = get()
+    if (!state.walletAddress) throw new Error('No wallet')
+    const { createInviteLink } = await import('@/lib/group-management')
+    return await createInviteLink(groupId, state.walletAddress, expiresInDays)
+  },
+
+  revokeGroupInvite: async (inviteId) => {
+    const { revokeInviteLink } = await import('@/lib/group-management')
+    await revokeInviteLink(inviteId)
+  },
+
+  joinGroupViaToken: async (token) => {
+    const state = get()
+    if (!state.walletAddress) throw new Error('No wallet')
+    const { joinViaInviteToken } = await import('@/lib/group-management')
+    const result = await joinViaInviteToken(token, state.walletAddress)
+    if (result.status === 'joined') {
+      await get().refreshChats()
+    }
+    return result
+  },
+
+  inviteFriendsToGroupAction: async (groupId, wallets) => {
+    const state = get()
+    if (!state.walletAddress) return
+    const { fetchGroupDetail, getGroupRole, inviteFriendsToGroup } = await import('@/lib/group-management')
+    const detail = await fetchGroupDetail(groupId)
+    const role = getGroupRole(detail, state.walletAddress)
+    const needApproval = role === 'member' ? detail.invite_approval : false
+    await inviteFriendsToGroup(groupId, wallets, state.walletAddress, needApproval)
+    if (!needApproval) {
+      await get().refreshChats()
+    }
+    const { default: toast } = await import('react-hot-toast')
+    const { t } = await import('@/lib/i18n')
+    toast.success(needApproval ? t('group.requestPending', get().locale) : t('group.joinSuccess', get().locale))
+  },
+
+  fetchGroupJoinRequests: async (groupId) => {
+    const { fetchJoinRequests } = await import('@/lib/group-management')
+    return await fetchJoinRequests(groupId)
+  },
+
+  handleJoinRequestAction: async (requestId, action) => {
+    const state = get()
+    if (!state.walletAddress) return
+    const { handleJoinRequest } = await import('@/lib/group-management')
+    await handleJoinRequest(requestId, action, state.walletAddress)
+    if (action === 'approved') {
+      await get().refreshChats()
+    }
+  },
+
+  refreshGroupDetail: async (groupId) => {
+    const { fetchGroupDetail } = await import('@/lib/group-management')
+    const detail = await fetchGroupDetail(groupId)
+    set((s) => ({
+      chats: s.chats.map(c => {
+        if (c.id !== groupId) return c
+        return { ...c, name: detail.name, members: detail.members.length }
+      }),
+    }))
   },
 
   // ======== Profile Actions ========

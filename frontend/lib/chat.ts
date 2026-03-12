@@ -226,11 +226,19 @@ export async function sendMessage(
 /**
  * Fetch message history for a chat, ordered oldest → newest.
  */
-export async function fetchMessages(chatId: string, limit = 50): Promise<MessageRow[]> {
-  const { data, error } = await supabase
+export async function fetchMessages(
+  chatId: string,
+  limit = 50,
+  sinceTimestamp?: string
+): Promise<MessageRow[]> {
+  let query = supabase
     .from('messages')
     .select('*')
     .eq('chat_id', chatId)
+  if (sinceTimestamp) {
+    query = query.gte('created_at', sinceTimestamp)
+  }
+  const { data, error } = await query
     .order('created_at', { ascending: true })
     .limit(limit)
   if (error) throw error
@@ -280,6 +288,11 @@ export async function createGroup(
     new Set([creator.toLowerCase(), ...memberAddresses.map((a) => a.toLowerCase())])
   )
 
+  // Validate member count (max 200)
+  if (members.length > 200) {
+    throw new Error('Group member limit reached (200)')
+  }
+
   const { data: group, error } = await supabase
     .from('groups')
     .insert({ name, creator: creator.toLowerCase(), members })
@@ -288,6 +301,14 @@ export async function createGroup(
   if (error) throw error
 
   const groupData = group as GroupRow
+
+  // Insert group_members rows for all members
+  const memberRows = members.map((wallet) => ({
+    group_id: groupData.id,
+    wallet_address: wallet,
+    joined_at: groupData.created_at,
+  }))
+  await supabase.from('group_members').insert(memberRows)
 
   // Insert a system message to mark group creation
   await supabase.from('messages').insert({
