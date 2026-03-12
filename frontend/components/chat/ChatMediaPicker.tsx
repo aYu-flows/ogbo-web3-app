@@ -56,12 +56,12 @@ export default function ChatMediaPicker({
       : []),
     {
       icon: ImageIcon,
-      label: t('chat.image', locale) || '图片',
+      label: t('chat.selectImage', locale) || '图片',
       action: () => imageInputRef.current?.click(),
     },
     {
       icon: Paperclip,
-      label: t('chat.file', locale) || '文件',
+      label: t('chat.selectFile', locale) || '文件',
       action: () => fileInputRef.current?.click(),
     },
   ]
@@ -83,7 +83,7 @@ export default function ChatMediaPicker({
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 8, scale: 0.95 }}
             transition={{ duration: 0.15 }}
-            className="absolute bottom-full left-0 mb-2 bg-card border border-border rounded-xl shadow-lg overflow-hidden"
+            className="absolute bottom-full left-0 mb-2 bg-card border border-border rounded-xl shadow-lg overflow-hidden flex"
           >
             {options.map((opt) => (
               <button
@@ -92,7 +92,7 @@ export default function ChatMediaPicker({
                   opt.action()
                   setOpen(false)
                 }}
-                className="flex items-center gap-3 w-full px-4 py-3 hover:bg-muted transition-colors text-sm"
+                className="flex flex-col items-center gap-1.5 px-4 py-3 hover:bg-muted transition-colors text-xs whitespace-nowrap"
               >
                 <opt.icon className="w-5 h-5 text-muted-foreground" />
                 <span>{opt.label}</span>
