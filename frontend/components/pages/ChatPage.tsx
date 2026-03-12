@@ -21,6 +21,8 @@ import {
   Users,
   Send,
   Mail,
+  BellOff,
+  LogOut,
 } from "lucide-react";
 import { useStore, type Chat, type Message } from "@/lib/store";
 import { setActiveChatId } from "@/lib/soundPlayer";
@@ -37,6 +39,16 @@ import FileMessageBubble from "@/components/chat/FileMessageBubble";
 import VoiceMessagePlayer from "@/components/chat/VoiceMessagePlayer";
 import VoiceRecordButton from "@/components/chat/VoiceRecordButton";
 import { validateImageFile, validateFile, compressImage } from "@/lib/chat-media";
+import { MutedError } from "@/lib/group-management";
+import GroupInfoPanel from "@/components/chat/GroupInfoPanel";
+import GroupMemberList from "@/components/chat/GroupMemberList";
+import GroupSettingsPanel from "@/components/chat/GroupSettingsPanel";
+import GroupAnnouncementModal from "@/components/chat/GroupAnnouncementModal";
+import GroupInviteModal from "@/components/chat/GroupInviteModal";
+import GroupJoinRequestList from "@/components/chat/GroupJoinRequestList";
+import InviteFriendsToGroupModal from "@/components/chat/InviteFriendsToGroupModal";
+import MuteMemberModal from "@/components/chat/MuteMemberModal";
+import TransferOwnerModal from "@/components/chat/TransferOwnerModal";
 
 function formatTime(ts: number, locale: "zh" | "en") {
   const now = Date.now();
@@ -101,14 +113,28 @@ function EmojiPicker({ onSelect, onClose }: { onSelect: (emoji: string) => void;
 
 // Chat Detail View
 function ChatDetail({ chat, onBack, locale }: { chat: Chat; onBack: () => void; locale: "zh" | "en" }) {
-  const { sendMessage, sendPushMessage, sendGroupPushMessage, loadChatHistory, chatReady, walletAddress, getDisplayName, getAvatarUrl, sendMediaMessage, retryMediaMessage } = useStore();
-  const [input, setInput] = useState("");
+  const { sendMessage, sendPushMessage, sendGroupPushMessage, loadChatHistory, chatReady, walletAddress, getDisplayName, getGroupDisplayName, getAvatarUrl, sendMediaMessage, retryMediaMessage, myMuteStatus, myGroupSettings, chats: allChats } = useStore();
+  const [hasText, setHasText] = useState(false);
   const [showEmoji, setShowEmoji] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
   const [isComposing, setIsComposing] = useState(false);
   const [previewAddress, setPreviewAddress] = useState<string | null>(null);
   const [previewImage, setPreviewImage] = useState<File | null>(null);
   const [fullscreenImage, setFullscreenImage] = useState<string | null>(null);
+  // Group management panel states
+  const [groupInfoOpen, setGroupInfoOpen] = useState(false);
+  const [groupMemberListOpen, setGroupMemberListOpen] = useState(false);
+  const [groupSettingsOpen, setGroupSettingsOpen] = useState(false);
+  const [groupAnnouncementOpen, setGroupAnnouncementOpen] = useState(false);
+  const [groupInviteOpen, setGroupInviteOpen] = useState(false);
+  const [groupJoinRequestsOpen, setGroupJoinRequestsOpen] = useState(false);
+  const [inviteFriendsOpen, setInviteFriendsOpen] = useState(false);
+  const [transferOwnerOpen, setTransferOwnerOpen] = useState(false);
+  const [groupDetail, setGroupDetail] = useState<import("@/lib/group-management").GroupDetail | null>(null);
+  const [muteMemberOpen, setMuteMemberOpen] = useState(false);
+  const [muteMemberTarget, setMuteMemberTarget] = useState<string | null>(null);
+  const [removedAlert, setRemovedAlert] = useState<'removed' | 'dissolved' | null>(null);
+  const [muteCountdown, setMuteCountdown] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   // File cache for retry functionality
@@ -173,6 +199,57 @@ function ChatDetail({ chat, onBack, locale }: { chat: Chat; onBack: () => void; 
     if (!chatReady || chat.messages.length > 0) return
     loadChatHistory(chat.id)
   }, [chat.id, chatReady]);
+
+  // 4F.3 + 4F.9: Mute status check with countdown timer
+  const myMute = chat.type === 'group' ? myMuteStatus[chat.id] : null;
+  const isMuteAll = chat.type === 'group' && groupDetail?.mute_all && walletAddress &&
+    groupDetail.creator !== walletAddress.toLowerCase() &&
+    !(groupDetail.admins || []).includes(walletAddress.toLowerCase());
+
+  useEffect(() => {
+    if (!myMute || !myMute.mute_until) {
+      setMuteCountdown(null);
+      return;
+    }
+    const updateCountdown = () => {
+      const until = new Date(myMute.mute_until!).getTime();
+      const now = Date.now();
+      const diff = until - now;
+      if (diff <= 0) {
+        setMuteCountdown(null);
+        // Clear expired mute from local state
+        useStore.setState((s) => ({
+          myMuteStatus: { ...s.myMuteStatus, [chat.id]: null }
+        }));
+        return;
+      }
+      const h = Math.floor(diff / 3600000);
+      const m = Math.floor((diff % 3600000) / 60000);
+      setMuteCountdown(h > 0 ? `${h}h ${m}m` : `${m}m`);
+    };
+    updateCountdown();
+    const iv = setInterval(updateCountdown, 60_000);
+    return () => clearInterval(iv);
+  }, [myMute, chat.id]);
+
+  // 4F.4: Check unread announcement on ChatDetail enter
+  useEffect(() => {
+    if (chat.type !== 'group' || !groupDetail?.announcement || !groupDetail.announcement_at) return;
+    const settings = myGroupSettings[chat.id];
+    const lastRead = settings?.last_read_announcement_at;
+    if (!lastRead || new Date(lastRead) < new Date(groupDetail.announcement_at)) {
+      setGroupAnnouncementOpen(true);
+    }
+  }, [chat.id, groupDetail?.announcement_at]);
+
+  // 4F.8: Detect removal / dissolution
+  useEffect(() => {
+    if (chat.type !== 'group' || !walletAddress) return;
+    const currentChat = allChats.find(c => c.id === chat.id);
+    if (!currentChat) {
+      setRemovedAlert('dissolved');
+    }
+  }, [allChats, chat.id, chat.type, walletAddress]);
 
   // Mount: slide in from right (mobile only)
   useEffect(() => {
@@ -284,14 +361,20 @@ function ChatDetail({ chat, onBack, locale }: { chat: Chat; onBack: () => void; 
     });
   }, [chat.id, retryMediaMessage, locale]);
 
+  const handleInput = useCallback(() => {
+    const val = inputRef.current?.value ?? '';
+    setHasText(val.trim().length > 0);
+  }, []);
+
   const handleSend = async () => {
-    const rawValue = inputRef.current?.value ?? input;
+    const rawValue = inputRef.current?.value ?? '';
     if (!rawValue.trim()) {
       toast(locale === 'zh' ? '请先输入消息内容' : 'Please enter a message first')
       return
     }
     const content = rawValue.trim();
-    setInput("");
+    if (inputRef.current) inputRef.current.value = '';
+    setHasText(false);
     setShowEmoji(false);
 
     if (chatReady && walletAddress) {
@@ -304,9 +387,14 @@ function ChatDetail({ chat, onBack, locale }: { chat: Chat; onBack: () => void; 
         } else {
           sendMessage(chat.id, content);
         }
-      } catch {
-        toast.error(locale === "zh" ? "发送失败" : "Send failed");
-        setInput(content);
+      } catch (err) {
+        if (err instanceof MutedError) {
+          toast.error(t('group.error.muted', locale));
+        } else {
+          toast.error(locale === "zh" ? "发送失败" : "Send failed");
+          if (inputRef.current) inputRef.current.value = content;
+          setHasText(true);
+        }
       }
     } else {
       // Fallback local message (chat not ready)
@@ -364,7 +452,15 @@ function ChatDetail({ chat, onBack, locale }: { chat: Chat; onBack: () => void; 
         <button className="rounded-full p-1.5 hover:bg-muted transition-colors">
           <Phone className="w-4 h-4 text-muted-foreground" />
         </button>
-        <button className="rounded-full p-1.5 hover:bg-muted transition-colors">
+        <button
+          className="rounded-full p-1.5 hover:bg-muted transition-colors"
+          onClick={() => {
+            if (chat.type === 'group') {
+              setGroupInfoOpen(true);
+              useStore.getState().openGroupManagement(chat.id).then(d => { if (d) setGroupDetail(d); });
+            }
+          }}
+        >
           <MoreVertical className="w-4 h-4 text-muted-foreground" />
         </button>
       </div>
@@ -432,7 +528,7 @@ function ChatDetail({ chat, onBack, locale }: { chat: Chat; onBack: () => void; 
                   <UserAvatar address={msg.sender} size="sm" className="!w-6 !h-6 flex-shrink-0" />
                   <div className={`max-w-[75%] rounded-2xl ${isMediaMsg ? 'p-1' : 'px-3.5 py-2.5'} bg-card text-card-foreground border border-border rounded-bl-md`}>
                     <p className={`text-[10px] font-semibold mb-1 text-[var(--ogbo-blue)]/80 ${isMediaMsg ? 'px-2.5 pt-1.5' : ''}`}>
-                      {getDisplayName(msg.sender)}
+                      {getGroupDisplayName(chat.id, msg.sender)}
                     </p>
                     {renderBubbleContent()}
                     <p className={`text-[10px] mt-1 text-muted-foreground ${isMediaMsg ? 'px-2.5 pb-1' : ''}`}>
@@ -469,48 +565,59 @@ function ChatDetail({ chat, onBack, locale }: { chat: Chat; onBack: () => void; 
 
       {/* Input bar */}
       <div className="border-t border-border bg-card px-2 py-2 relative">
-        <AnimatePresence>
-          {showEmoji && <EmojiPicker onSelect={(emoji) => setInput((prev) => prev + emoji)} onClose={() => setShowEmoji(false)} />}
-        </AnimatePresence>
-        <div className="flex items-center gap-1">
-          <ChatMediaPicker
-            onImageSelect={handleImageSelect}
-            onFileSelect={handleFileSelect}
-            onPhotoCapture={handlePhotoCapture}
-          />
-          <motion.button whileTap={{ scale: 0.9 }} onClick={() => setShowEmoji(!showEmoji)} className="rounded-full p-1.5 hover:bg-muted transition-colors flex-shrink-0">
-            <Smile className="w-5 h-5 text-muted-foreground" />
-          </motion.button>
-          <input
-            ref={inputRef}
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onCompositionStart={() => setIsComposing(true)}
-            onCompositionEnd={() => {
-              setTimeout(() => setIsComposing(false), 0);
-            }}
-            onKeyDown={handleKeyDown}
-            onFocus={() => {
-              setTimeout(() => {
-                inputRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
-                messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-              }, 300);
-            }}
-            placeholder={t("chat.inputPlaceholder", locale)}
-            className="flex-1 min-w-0 bg-muted rounded-full px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[var(--ogbo-blue)]/20 transition-all"
-          />
-          {input.trim() ? (
-            <motion.button
-              whileTap={{ scale: 0.9 }}
-              onClick={handleSend}
-              className="rounded-full p-1.5 bg-[var(--ogbo-blue)] text-white hover:bg-[var(--ogbo-blue-hover)] transition-colors flex-shrink-0"
-            >
-              <Send className="w-4 h-4" />
-            </motion.button>
-          ) : (
-            <VoiceRecordButton onSend={handleVoiceSend} />
-          )}
-        </div>
+        {(myMute || isMuteAll) ? (
+          <div className="flex items-center justify-center py-2.5 text-sm text-muted-foreground">
+            {isMuteAll
+              ? t('group.muteAll', locale)
+              : myMute?.mute_until
+                ? `${t('group.error.muted', locale)}${muteCountdown ? ` (${muteCountdown})` : ''}`
+                : t('group.error.muted', locale)}
+          </div>
+        ) : (
+          <>
+            <AnimatePresence>
+              {showEmoji && <EmojiPicker onSelect={(emoji) => { if (inputRef.current) { inputRef.current.value += emoji; setHasText(true); } }} onClose={() => setShowEmoji(false)} />}
+            </AnimatePresence>
+            <div className="flex items-center gap-1">
+              <ChatMediaPicker
+                onImageSelect={handleImageSelect}
+                onFileSelect={handleFileSelect}
+                onPhotoCapture={handlePhotoCapture}
+              />
+              <motion.button whileTap={{ scale: 0.9 }} onClick={() => setShowEmoji(!showEmoji)} className="rounded-full p-1.5 hover:bg-muted transition-colors flex-shrink-0">
+                <Smile className="w-5 h-5 text-muted-foreground" />
+              </motion.button>
+              <input
+                ref={inputRef}
+                onInput={handleInput}
+                onCompositionStart={() => setIsComposing(true)}
+                onCompositionEnd={() => {
+                  setTimeout(() => setIsComposing(false), 0);
+                }}
+                onKeyDown={handleKeyDown}
+                onFocus={() => {
+                  setTimeout(() => {
+                    inputRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+                    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+                  }, 300);
+                }}
+                placeholder={t("chat.inputPlaceholder", locale)}
+                className="flex-1 min-w-0 bg-muted rounded-full px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[var(--ogbo-blue)]/20 transition-all"
+              />
+              {hasText ? (
+                <motion.button
+                  whileTap={{ scale: 0.9 }}
+                  onClick={handleSend}
+                  className="rounded-full p-1.5 bg-[var(--ogbo-blue)] text-white hover:bg-[var(--ogbo-blue-hover)] transition-colors flex-shrink-0"
+                >
+                  <Send className="w-4 h-4" />
+                </motion.button>
+              ) : (
+                <VoiceRecordButton onSend={handleVoiceSend} />
+              )}
+            </div>
+          </>
+        )}
       </div>
 
       {/* Image Preview Modal */}
@@ -545,12 +652,103 @@ function ChatDetail({ chat, onBack, locale }: { chat: Chat; onBack: () => void; 
         open={!!previewAddress}
         onClose={() => setPreviewAddress(null)}
       />
+
+      {/* Group Management Panels */}
+      {chat.type === 'group' && (
+        <>
+          <GroupInfoPanel
+            open={groupInfoOpen}
+            onClose={() => setGroupInfoOpen(false)}
+            groupId={chat.id}
+            onOpenMemberList={() => setGroupMemberListOpen(true)}
+            onOpenSettings={() => setGroupSettingsOpen(true)}
+            onOpenAnnouncement={() => setGroupAnnouncementOpen(true)}
+            onOpenInviteLink={() => setGroupInviteOpen(true)}
+            onOpenJoinRequests={() => setGroupJoinRequestsOpen(true)}
+            onOpenInviteFriends={() => setInviteFriendsOpen(true)}
+            onOpenTransferOwner={() => setTransferOwnerOpen(true)}
+          />
+          <GroupMemberList
+            open={groupMemberListOpen}
+            onClose={() => setGroupMemberListOpen(false)}
+            groupId={chat.id}
+            groupDetail={groupDetail}
+          />
+          <GroupSettingsPanel
+            open={groupSettingsOpen}
+            onClose={() => setGroupSettingsOpen(false)}
+            groupId={chat.id}
+            groupDetail={groupDetail}
+          />
+          <GroupAnnouncementModal
+            open={groupAnnouncementOpen}
+            onClose={() => setGroupAnnouncementOpen(false)}
+            groupId={chat.id}
+            groupDetail={groupDetail}
+            canEdit={!!groupDetail && !!walletAddress && (groupDetail.creator === walletAddress.toLowerCase() || groupDetail.admins.includes(walletAddress.toLowerCase()))}
+          />
+          <GroupInviteModal
+            open={groupInviteOpen}
+            onClose={() => setGroupInviteOpen(false)}
+            groupId={chat.id}
+          />
+          <GroupJoinRequestList
+            open={groupJoinRequestsOpen}
+            onClose={() => setGroupJoinRequestsOpen(false)}
+            groupId={chat.id}
+          />
+          <InviteFriendsToGroupModal
+            open={inviteFriendsOpen}
+            onClose={() => setInviteFriendsOpen(false)}
+            groupId={chat.id}
+            existingMembers={groupDetail?.members || []}
+          />
+          <TransferOwnerModal
+            open={transferOwnerOpen}
+            onClose={() => setTransferOwnerOpen(false)}
+            groupId={chat.id}
+            members={groupDetail?.members || []}
+            currentOwner={groupDetail?.creator || ''}
+          />
+        </>
+      )}
+
+      {/* 4F.8: Removed / Dissolved alert */}
+      <AnimatePresence>
+        {removedAlert && (
+          <motion.div
+            className="fixed inset-0 z-50 flex items-center justify-center px-4"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+          >
+            <div className="absolute inset-0 bg-foreground/40 backdrop-blur-sm" />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.92 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className="relative w-full max-w-xs rounded-2xl bg-card border border-border shadow-xl p-6 text-center"
+            >
+              <p className="text-sm font-semibold mb-4">
+                {removedAlert === 'removed'
+                  ? t('group.removedFromGroup', locale)
+                  : t('group.groupDissolved', locale)}
+              </p>
+              <button
+                onClick={() => { setRemovedAlert(null); onBack(); }}
+                className="rounded-xl bg-[var(--ogbo-blue)] text-white px-6 py-2 text-sm font-medium"
+              >
+                {t('common.confirm', locale)}
+              </button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 }
 
 export default function ChatPage({ searchOpen: searchOpenProp, onCloseSearch }: { searchOpen?: boolean; onCloseSearch?: () => void }) {
-  const { chats, locale, markChatRead, pinChat, deleteChat, chatRequests, getDisplayName, getAvatarUrl } = useStore();
+  const { chats, locale, markChatRead, pinChat, deleteChat, chatRequests, getDisplayName, getAvatarUrl, toggleGroupPin, leaveGroupAction, myGroupSettings } = useStore();
   const walletAddress = useStore((s) => s.walletAddress);
   const isConnectingChat = useStore((s) => s.isConnectingChat);
   const [searchQuery, setSearchQuery] = useState("");
@@ -686,7 +884,15 @@ export default function ChatPage({ searchOpen: searchOpenProp, onCloseSearch }: 
                         animate={{ x: 0, opacity: 1 }}
                         transition={{ delay: 0 }}
                         whileTap={{ scale: 0.9 }}
-                        onClick={() => { pinChat(chat.id); setSwipedId(null); toast.success(locale === "zh" ? (chat.pinned ? "已取消置顶" : "已置顶") : (chat.pinned ? "Unpinned" : "Pinned")); }}
+                        onClick={async () => {
+                          if (chat.type === 'group') {
+                            await toggleGroupPin(chat.id);
+                          } else {
+                            pinChat(chat.id);
+                          }
+                          setSwipedId(null);
+                          toast.success(locale === "zh" ? (chat.pinned ? "已取消置顶" : "已置顶") : (chat.pinned ? "Unpinned" : "Pinned"));
+                        }}
                         className="rounded-xl bg-[var(--ogbo-blue)] p-2.5 text-white"
                       >
                         <Pin className="w-4 h-4" />
@@ -706,10 +912,18 @@ export default function ChatPage({ searchOpen: searchOpenProp, onCloseSearch }: 
                         animate={{ x: 0, opacity: 1 }}
                         transition={{ delay: 0.1 }}
                         whileTap={{ scale: 0.9 }}
-                        onClick={() => { deleteChat(chat.id); setSwipedId(null); toast.success(locale === "zh" ? "已删除" : "Deleted"); }}
+                        onClick={async () => {
+                          if (chat.type === 'group') {
+                            await leaveGroupAction(chat.id);
+                          } else {
+                            deleteChat(chat.id);
+                            toast.success(locale === "zh" ? "已删除" : "Deleted");
+                          }
+                          setSwipedId(null);
+                        }}
                         className="rounded-xl bg-[var(--ogbo-red)] p-2.5 text-white"
                       >
-                        <Trash2 className="w-4 h-4" />
+                        {chat.type === 'group' ? <LogOut className="w-4 h-4" /> : <Trash2 className="w-4 h-4" />}
                       </motion.button>
                     </motion.div>
                   )}
@@ -761,6 +975,9 @@ export default function ChatPage({ searchOpen: searchOpenProp, onCloseSearch }: 
                       <p className="text-xs text-muted-foreground truncate pr-2">
                         {chat.typing ? t("chat.typing", locale) : chat.lastMessage}
                       </p>
+                      {chat.type === 'group' && myGroupSettings[chat.id]?.muted_notifications && (
+                        <BellOff className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
+                      )}
                       {chat.unread > 0 && (
                         <motion.span
                           key={chat.unread}

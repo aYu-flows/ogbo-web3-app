@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useRef, useCallback } from 'react'
-import { Mic, Square } from 'lucide-react'
+import { Mic, Square, Send, X } from 'lucide-react'
 import { motion } from 'framer-motion'
 import toast from 'react-hot-toast'
 import { VoiceRecorder } from '@/lib/voice-recorder'
@@ -87,6 +87,14 @@ export default function VoiceRecordButton({ onSend, disabled }: VoiceRecordButto
     }
   }, [isCancelling, onSend])
 
+  const cancelRecording = useCallback(() => {
+    if (!recorderRef.current) return
+    recorderRef.current.cancel()
+    recorderRef.current = null
+    setIsRecording(false)
+    setIsCancelling(false)
+  }, [])
+
   // Web: click to toggle
   const handleClick = useCallback(async () => {
     if (isNative) return
@@ -117,46 +125,93 @@ export default function VoiceRecordButton({ onSend, disabled }: VoiceRecordButto
 
   return (
     <div className="relative">
-      <motion.button
-        whileTap={{ scale: 0.9 }}
-        onClick={handleClick}
-        onTouchStart={handleTouchStart}
-        onTouchMove={handleTouchMove}
-        onTouchEnd={handleTouchEnd}
-        disabled={disabled}
-        className={`rounded-full p-1.5 transition-colors flex-shrink-0 ${
-          isRecording
-            ? 'bg-red-500 text-white'
-            : 'hover:bg-muted text-muted-foreground'
-        } ${disabled ? 'opacity-50 pointer-events-none' : ''}`}
-      >
-        {isRecording && !isNative ? (
-          <Square className="w-5 h-5" />
-        ) : (
-          <Mic className={`w-5 h-5 ${isRecording ? 'text-white' : ''}`} />
-        )}
-      </motion.button>
-
-      {/* Web: show duration next to button */}
-      {isRecording && !isNative && (
-        <span className="absolute -top-6 left-1/2 -translate-x-1/2 text-xs text-red-500 font-medium whitespace-nowrap">
-          {formatDuration(duration)}
-        </span>
-      )}
+      {isRecording && !isNative ? (
+        /* Web: recording state — cancel + stop/send buttons */
+        <div className="flex items-center gap-1 relative">
+          <span className="absolute -top-6 left-1/2 -translate-x-1/2 text-xs text-red-500 font-medium whitespace-nowrap">
+            {formatDuration(duration)}
+          </span>
+          <motion.button
+            whileTap={{ scale: 0.9 }}
+            onClick={cancelRecording}
+            className="rounded-full p-1.5 hover:bg-muted text-muted-foreground transition-colors flex-shrink-0"
+          >
+            <X className="w-5 h-5" />
+          </motion.button>
+          <motion.button
+            whileTap={{ scale: 0.9 }}
+            onClick={handleClick}
+            className="rounded-full p-1.5 bg-red-500 text-white transition-colors flex-shrink-0"
+          >
+            <Square className="w-5 h-5" />
+          </motion.button>
+        </div>
+      ) : !isRecording ? (
+        /* Not recording — mic button */
+        <motion.button
+          whileTap={{ scale: 0.9 }}
+          onClick={handleClick}
+          onTouchStart={handleTouchStart}
+          onTouchMove={handleTouchMove}
+          onTouchEnd={handleTouchEnd}
+          disabled={disabled}
+          className={`rounded-full p-1.5 transition-colors flex-shrink-0 hover:bg-muted text-muted-foreground ${disabled ? 'opacity-50 pointer-events-none' : ''}`}
+        >
+          <Mic className="w-5 h-5" />
+        </motion.button>
+      ) : null}
 
       {/* Mobile: full-screen recording overlay */}
       {isRecording && isNative && (
-        <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-black/60">
-          <p className="text-white text-4xl font-mono mb-4">{formatDuration(duration)}</p>
-          <p className={`text-lg ${isCancelling ? 'text-red-400' : 'text-white/80'}`}>
+        <div
+          className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-black/60"
+          onTouchStart={(e) => {
+            touchStartY.current = e.touches[0].clientY
+          }}
+          onTouchMove={(e) => {
+            const deltaY = touchStartY.current - e.touches[0].clientY
+            setIsCancelling(deltaY > 80)
+          }}
+          onTouchEnd={(e) => {
+            // Only cancel on swipe-up release, otherwise do nothing (buttons handle their own taps)
+            if (isCancelling) {
+              recorderRef.current?.cancel()
+              recorderRef.current = null
+              setIsRecording(false)
+              setIsCancelling(false)
+            }
+          }}
+        >
+          {/* Recording animation indicator */}
+          <div className="mb-6 w-20 h-20 rounded-full flex items-center justify-center bg-white/10 border-2 border-white/30">
+            <Mic className="w-10 h-10 text-white animate-pulse" />
+          </div>
+          <p className="text-white text-4xl font-mono mb-3">{formatDuration(duration)}</p>
+          <p className={`text-sm mb-10 ${isCancelling ? 'text-red-400' : 'text-white/60'}`}>
             {isCancelling
               ? (locale === 'zh' ? '松开取消' : 'Release to cancel')
               : t('chat.slideToCancel', locale)}
           </p>
-          <div className={`mt-6 w-16 h-16 rounded-full flex items-center justify-center ${
-            isCancelling ? 'bg-red-500/30' : 'bg-red-500/50'
-          }`}>
-            <Mic className="w-8 h-8 text-white" />
+          {/* Cancel + Send buttons */}
+          <div className="flex items-center gap-8">
+            <button
+              onTouchEnd={(e) => {
+                e.stopPropagation()
+                cancelRecording()
+              }}
+              className="w-14 h-14 rounded-full bg-red-500/80 flex items-center justify-center active:scale-90 transition-transform"
+            >
+              <X className="w-7 h-7 text-white" />
+            </button>
+            <button
+              onTouchEnd={async (e) => {
+                e.stopPropagation()
+                await stopAndSend()
+              }}
+              className="w-14 h-14 rounded-full bg-green-500 flex items-center justify-center active:scale-90 transition-transform"
+            >
+              <Send className="w-7 h-7 text-white" />
+            </button>
           </div>
         </div>
       )}
