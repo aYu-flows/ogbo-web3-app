@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Search, X, Star, TrendingUp, TrendingDown, ChevronRight } from "lucide-react";
 import { useStore, type Coin } from "@/lib/store";
+import { useIMEInput } from "@/hooks/use-ime-input";
 import { t } from "@/lib/i18n";
 import toast from "react-hot-toast";
 import { LineChart, Line, ResponsiveContainer, AreaChart, Area, Tooltip, XAxis, YAxis } from "recharts";
@@ -130,9 +131,9 @@ function CoinDetailModal({ open, onClose, coin, locale }: { open: boolean; onClo
 
 export default function MarketPage() {
   const { coins, locale, updatePrices, toggleCoinFavorite, initMarketData, marketLoading, marketError } = useStore();
+  const { value: searchQuery, setValue: setSearchQuery, deferredValue: deferredSearch, getInputProps: getSearchInputProps } = useIMEInput("");
   const [activeTab, setActiveTab] = useState<MarketTab>("trending");
   const [searchOpen, setSearchOpen] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
   const [selectedCoin, setSelectedCoin] = useState<Coin | null>(null);
 
   useEffect(() => {
@@ -144,9 +145,9 @@ export default function MarketPage() {
 
   const getFilteredCoins = () => {
     let filtered = coins;
-    if (searchQuery) {
+    if (deferredSearch) {
       filtered = coins.filter(
-        (c) => c.symbol.toLowerCase().includes(searchQuery.toLowerCase()) || c.name.toLowerCase().includes(searchQuery.toLowerCase())
+        (c) => c.symbol.toLowerCase().includes(deferredSearch.toLowerCase()) || c.name.toLowerCase().includes(deferredSearch.toLowerCase())
       );
     }
     switch (activeTab) {
@@ -187,7 +188,7 @@ export default function MarketPage() {
               <input
                 autoFocus
                 value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
+                {...getSearchInputProps()}
                 placeholder={t("market.searchCoin", locale)}
                 className="w-full rounded-xl bg-muted pl-9 pr-10 py-2.5 text-sm outline-none focus:ring-2 focus:ring-[var(--ogbo-blue)]/20 transition-all"
               />

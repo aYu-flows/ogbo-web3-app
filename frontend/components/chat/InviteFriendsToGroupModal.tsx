@@ -3,6 +3,7 @@
 import { useState, useMemo } from 'react'
 import { Search, Users, Loader2, Check } from 'lucide-react'
 import { useStore } from '@/lib/store'
+import { useIMEInput } from '@/hooks/use-ime-input'
 import { t } from '@/lib/i18n'
 import UserAvatar from '@/components/UserAvatar'
 import toast from 'react-hot-toast'
@@ -28,8 +29,8 @@ export default function InviteFriendsToGroupModal({
   existingMembers,
 }: InviteFriendsToGroupModalProps) {
   const { locale, chats, getDisplayName, inviteFriendsToGroupAction } = useStore()
+  const { value: searchQuery, setValue: setSearchQuery, deferredValue: deferredSearch, getInputProps: getSearchInputProps } = useIMEInput('')
   const [selectedWallets, setSelectedWallets] = useState<string[]>([])
-  const [searchQuery, setSearchQuery] = useState('')
   const [loading, setLoading] = useState(false)
 
   // Normalize existing members for comparison
@@ -49,13 +50,13 @@ export default function InviteFriendsToGroupModal({
 
   // Filter by search
   const filteredFriends = useMemo(() => {
-    if (!searchQuery.trim()) return availableFriends
-    const q = searchQuery.trim().toLowerCase()
+    if (!deferredSearch.trim()) return availableFriends
+    const q = deferredSearch.trim().toLowerCase()
     return availableFriends.filter((f) => {
       const name = f.walletAddress ? getDisplayName(f.walletAddress).toLowerCase() : f.name.toLowerCase()
       return name.includes(q) || (f.walletAddress?.toLowerCase().includes(q) ?? false)
     })
-  }, [availableFriends, searchQuery, getDisplayName])
+  }, [availableFriends, deferredSearch, getDisplayName])
 
   const toggleSelect = (address: string) => {
     setSelectedWallets((prev) =>
@@ -100,7 +101,7 @@ export default function InviteFriendsToGroupModal({
             <input
               type="text"
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              {...getSearchInputProps()}
               placeholder={locale === 'zh' ? '搜索好友' : 'Search friends'}
               className="w-full bg-muted rounded-xl pl-9 pr-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--ogbo-blue)]/30"
               disabled={loading}

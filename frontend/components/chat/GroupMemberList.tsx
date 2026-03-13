@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react'
 import { Search, Crown, Shield, MicOff, Loader2, X } from 'lucide-react'
 import { useStore } from '@/lib/store'
+import { useIMEInput } from '@/hooks/use-ime-input'
 import { t } from '@/lib/i18n'
 import UserAvatar from '@/components/UserAvatar'
 import MuteMemberModal from '@/components/chat/MuteMemberModal'
@@ -41,10 +42,10 @@ export default function GroupMemberList({
 }: GroupMemberListProps) {
   const { locale, walletAddress, getDisplayName, setAdmin, unsetAdmin, kickMember } = useStore()
 
+  const { value: searchQuery, setValue: setSearchQuery, deferredValue: deferredSearch, getInputProps: getSearchInputProps } = useIMEInput('')
   const [members, setMembers] = useState<GroupMemberRow[]>([])
   const [mutes, setMutes] = useState<GroupMuteRow[]>([])
   const [loading, setLoading] = useState(false)
-  const [searchQuery, setSearchQuery] = useState('')
   const [actionMenuTarget, setActionMenuTarget] = useState<string | null>(null)
   const [actionLoading, setActionLoading] = useState(false)
   const [confirmKick, setConfirmKick] = useState<string | null>(null)
@@ -131,13 +132,13 @@ export default function GroupMemberList({
 
   // Filter by search
   const filteredMembers = useMemo(() => {
-    if (!searchQuery.trim()) return sortedMembers
-    const q = searchQuery.trim().toLowerCase()
+    if (!deferredSearch.trim()) return sortedMembers
+    const q = deferredSearch.trim().toLowerCase()
     return sortedMembers.filter((m) => {
       const name = getDisplayName(m.wallet).toLowerCase()
       return name.includes(q) || m.wallet.includes(q)
     })
-  }, [sortedMembers, searchQuery, getDisplayName])
+  }, [sortedMembers, deferredSearch, getDisplayName])
 
   // My role
   const myRole = useMemo<GroupRole>(() => {
@@ -275,7 +276,7 @@ export default function GroupMemberList({
               <input
                 type="text"
                 value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
+                {...getSearchInputProps()}
                 placeholder={locale === 'zh' ? '搜索成员' : 'Search members'}
                 className="w-full bg-muted rounded-xl pl-9 pr-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--ogbo-blue)]/30"
               />

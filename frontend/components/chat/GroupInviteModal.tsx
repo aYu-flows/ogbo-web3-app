@@ -8,6 +8,7 @@ import { t } from '@/lib/i18n'
 import { generateInviteUrl } from '@/lib/group-qrcode'
 import { fetchInviteLinks } from '@/lib/group-management'
 import type { GroupInviteRow } from '@/lib/group-management'
+import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import {
   Drawer,
   DrawerContent,
@@ -133,32 +134,40 @@ export default function GroupInviteModal({ open, onClose, groupId }: GroupInvite
         </DrawerHeader>
 
         <div className="p-4 space-y-4 overflow-y-auto">
-          {/* Generate new link */}
-          <div className="flex items-center gap-2">
-            <select
+          {/* Expiry selection */}
+          <div className="bg-card border border-border rounded-xl overflow-hidden">
+            <RadioGroup
               value={expiryDays === null ? 'null' : String(expiryDays)}
-              onChange={(e) => setExpiryDays(e.target.value === 'null' ? null : Number(e.target.value))}
-              className="flex-1 bg-muted rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--ogbo-blue)]/30"
+              onValueChange={(v) => setExpiryDays(v === 'null' ? null : Number(v))}
+              className="flex flex-col"
             >
-              {EXPIRY_OPTIONS.map((opt) => (
-                <option key={String(opt.value)} value={opt.value === null ? 'null' : String(opt.value)}>
-                  {locale === 'zh' ? opt.labelZh : opt.label}
-                </option>
+              {EXPIRY_OPTIONS.map((opt, idx) => (
+                <label
+                  key={String(opt.value)}
+                  className={`flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-muted/50 transition-colors ${
+                    idx < EXPIRY_OPTIONS.length - 1 ? 'border-b border-border' : ''
+                  }`}
+                >
+                  <RadioGroupItem value={opt.value === null ? 'null' : String(opt.value)} />
+                  <span className="text-sm">{locale === 'zh' ? opt.labelZh : opt.label}</span>
+                </label>
               ))}
-            </select>
-            <button
-              onClick={handleCreate}
-              disabled={creating}
-              className="flex items-center gap-1.5 bg-[var(--ogbo-blue)] text-white rounded-xl px-4 py-2.5 text-sm font-medium hover:bg-[var(--ogbo-blue-hover)] disabled:opacity-50 transition-colors whitespace-nowrap"
-            >
-              {creating ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <Plus className="w-4 h-4" />
-              )}
-              {locale === 'zh' ? '生成链接' : 'New Link'}
-            </button>
+            </RadioGroup>
           </div>
+
+          {/* Generate button */}
+          <button
+            onClick={handleCreate}
+            disabled={creating}
+            className="w-full flex items-center justify-center gap-1.5 bg-[var(--ogbo-blue)] text-white rounded-xl px-4 py-2.5 text-sm font-medium hover:bg-[var(--ogbo-blue-hover)] disabled:opacity-50 transition-colors"
+          >
+            {creating ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <Plus className="w-4 h-4" />
+            )}
+            {locale === 'zh' ? '生成链接' : 'New Link'}
+          </button>
 
           {/* QR code for selected link */}
           {selectedLink && (

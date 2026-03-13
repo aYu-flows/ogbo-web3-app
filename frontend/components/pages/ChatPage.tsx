@@ -3,14 +3,13 @@
 import React from "react";
 import { MessageCircle } from "lucide-react"; // Import MessageCircle
 
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback, useDeferredValue } from "react";
 import { Capacitor } from "@capacitor/core";
 import { Keyboard } from "@capacitor/keyboard";
 import { motion, AnimatePresence, useMotionValue, animate } from "framer-motion";
 import {
   Search,
   Plus,
-  Phone,
   MoreVertical,
   ArrowLeft,
   Smile,
@@ -41,6 +40,7 @@ import VoiceMessagePlayer from "@/components/chat/VoiceMessagePlayer";
 import VoiceRecordButton from "@/components/chat/VoiceRecordButton";
 import { validateImageFile, validateFile, compressImage } from "@/lib/chat-media";
 import { MutedError } from "@/lib/group-management";
+import { useIMEInput } from "@/hooks/use-ime-input";
 import GroupInfoPanel from "@/components/chat/GroupInfoPanel";
 import GroupMemberList from "@/components/chat/GroupMemberList";
 import GroupSettingsPanel from "@/components/chat/GroupSettingsPanel";
@@ -142,10 +142,11 @@ function ChatDetail({ chat, onBack, locale }: { chat: Chat; onBack: () => void; 
   const [groupJoinRequestsOpen, setGroupJoinRequestsOpen] = useState(false);
   const [inviteFriendsOpen, setInviteFriendsOpen] = useState(false);
   const [transferOwnerOpen, setTransferOwnerOpen] = useState(false);
-  const [groupDetail, setGroupDetail] = useState<import("@/lib/group-management").GroupDetail | null>(null);
+  const groupDetail = useStore(s => s.activeGroupDetail[chat.id]) ?? null;
   const [muteMemberOpen, setMuteMemberOpen] = useState(false);
   const [muteMemberTarget, setMuteMemberTarget] = useState<string | null>(null);
   const [removedAlert, setRemovedAlert] = useState<'removed' | 'dissolved' | null>(null);
+  const announcementShownRef = useRef(false);
   const [muteCountdown, setMuteCountdown] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -244,12 +245,22 @@ function ChatDetail({ chat, onBack, locale }: { chat: Chat; onBack: () => void; 
     return () => clearInterval(iv);
   }, [myMute, chat.id]);
 
-  // 4F.4: Check unread announcement on ChatDetail enter
+  // Auto-load groupDetail when entering a group chat
+  useEffect(() => {
+    if (chat.type !== 'group') return;
+    if (!groupDetail) {
+      useStore.getState().openGroupManagement(chat.id);
+    }
+  }, [chat.id, chat.type, groupDetail]);
+
+  // 4F.4: Check unread announcement on ChatDetail enter (once)
   useEffect(() => {
     if (chat.type !== 'group' || !groupDetail?.announcement || !groupDetail.announcement_at) return;
+    if (announcementShownRef.current) return;
     const settings = myGroupSettings[chat.id];
     const lastRead = settings?.last_read_announcement_at;
     if (!lastRead || new Date(lastRead) < new Date(groupDetail.announcement_at)) {
+      announcementShownRef.current = true;
       setGroupAnnouncementOpen(true);
     }
   }, [chat.id, groupDetail?.announcement_at]);
@@ -550,12 +561,34 @@ function ChatDetail({ chat, onBack, locale }: { chat: Chat; onBack: () => void; 
         <motion.button whileTap={{ scale: 0.9 }} onClick={isSelectMode ? exitSelectMode : animateAndBack} className="rounded-full p-1 hover:bg-muted transition-colors lg:hidden">
           <ArrowLeft className="w-5 h-5" />
         </motion.button>
-        <div className="flex items-center gap-3 flex-1 min-w-0">
+        <div
+          className={`flex items-center gap-3 flex-1 min-w-0 ${chat.type === 'group' ? 'cursor-pointer' : ''}`}
+          onClick={() => {
+            if (chat.type === 'group') {
+              setGroupInfoOpen(true);
+              useStore.getState().openGroupManagement(chat.id);
+            }
+          }}
+        >
           <div className="relative">
             {chat.type === 'group' ? (
-              <div className="w-9 h-9 rounded-full flex items-center justify-center text-white text-sm font-semibold" style={{ backgroundColor: chat.avatarColor }}>
-                <Users className="w-4 h-4" />
-              </div>
+              chat.groupAvatarUrl ? (
+                <>
+                  <img
+                    src={chat.groupAvatarUrl}
+                    alt=""
+                    className="w-9 h-9 rounded-full object-cover"
+                    onError={(e) => { const el = e.target as HTMLImageElement; el.onerror = null; el.style.display = 'none'; (el.nextElementSibling as HTMLElement)?.classList.remove('hidden'); }}
+                  />
+                  <div className="w-9 h-9 rounded-full flex items-center justify-center text-white text-sm font-semibold hidden" style={{ backgroundColor: chat.avatarColor }}>
+                    <Users className="w-4 h-4" />
+                  </div>
+                </>
+              ) : (
+                <div className="w-9 h-9 rounded-full flex items-center justify-center text-white text-sm font-semibold" style={{ backgroundColor: chat.avatarColor }}>
+                  <Users className="w-4 h-4" />
+                </div>
+              )
             ) : chat.walletAddress ? (
               <UserAvatar address={chat.walletAddress} size="sm" className="!w-9 !h-9" onPreview={() => setPreviewAddress(chat.walletAddress!)} />
             ) : (
@@ -576,15 +609,12 @@ function ChatDetail({ chat, onBack, locale }: { chat: Chat; onBack: () => void; 
             )}
           </div>
         </div>
-        <button className="rounded-full p-1.5 hover:bg-muted transition-colors">
-          <Phone className="w-4 h-4 text-muted-foreground" />
-        </button>
         <button
           className="rounded-full p-1.5 hover:bg-muted transition-colors"
           onClick={() => {
             if (chat.type === 'group') {
               setGroupInfoOpen(true);
-              useStore.getState().openGroupManagement(chat.id).then(d => { if (d) setGroupDetail(d); });
+              useStore.getState().openGroupManagement(chat.id);
             }
           }}
         >
@@ -881,6 +911,7 @@ function ChatDetail({ chat, onBack, locale }: { chat: Chat; onBack: () => void; 
             groupId={chat.id}
             groupDetail={groupDetail}
             canEdit={!!groupDetail && !!walletAddress && (groupDetail.creator === walletAddress.toLowerCase() || groupDetail.admins.includes(walletAddress.toLowerCase()))}
+            isUnread={!!groupDetail?.announcement_at && (!myGroupSettings[chat.id]?.last_read_announcement_at || new Date(myGroupSettings[chat.id].last_read_announcement_at!) < new Date(groupDetail.announcement_at))}
           />
           <GroupInviteModal
             open={groupInviteOpen}
@@ -946,7 +977,9 @@ export default function ChatPage({ searchOpen: searchOpenProp, onCloseSearch }: 
   const { chats, locale, markChatRead, pinChat, deleteChat, chatRequests, getDisplayName, getAvatarUrl, toggleGroupPin, leaveGroupAction, myGroupSettings } = useStore();
   const walletAddress = useStore((s) => s.walletAddress);
   const isConnectingChat = useStore((s) => s.isConnectingChat);
-  const [searchQuery, setSearchQuery] = useState("");
+  const searchIME = useIMEInput("");
+  const searchQuery = searchIME.value;
+  const deferredSearchQuery = searchIME.deferredValue;
   const [selectedChat, setSelectedChat] = useState<string | null>(null);
   const [showRequests, setShowRequests] = useState(false);
   const [swipedId, setSwipedId] = useState<string | null>(null);
@@ -970,11 +1003,11 @@ export default function ChatPage({ searchOpen: searchOpenProp, onCloseSearch }: 
     return b.timestamp - a.timestamp;
   });
 
-  const filteredChats = searchQuery
+  const filteredChats = deferredSearchQuery
     ? sortedChats.filter(
         (c) =>
-          c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          c.lastMessage.toLowerCase().includes(searchQuery.toLowerCase())
+          c.name.toLowerCase().includes(deferredSearchQuery.toLowerCase()) ||
+          c.lastMessage.toLowerCase().includes(deferredSearchQuery.toLowerCase())
       )
     : sortedChats;
 
@@ -1005,11 +1038,11 @@ export default function ChatPage({ searchOpen: searchOpenProp, onCloseSearch }: 
                 <input
                   autoFocus
                   value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
+                  {...searchIME.getInputProps()}
                   placeholder={t("chat.searchPlaceholder", locale)}
                   className="w-full rounded-xl bg-muted pl-9 pr-10 py-2.5 text-sm outline-none focus:ring-2 focus:ring-[var(--ogbo-blue)]/20 transition-all"
                 />
-                <button onClick={() => { if (onCloseSearch) onCloseSearch(); setSearchQuery(""); }} className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-1 hover:bg-background transition-colors">
+                <button onClick={() => { if (onCloseSearch) onCloseSearch(); searchIME.setValue(""); }} className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-1 hover:bg-background transition-colors">
                   <X className="w-4 h-4 text-muted-foreground" />
                 </button>
               </div>
@@ -1143,12 +1176,29 @@ export default function ChatPage({ searchOpen: searchOpenProp, onCloseSearch }: 
                 >
                   <div className="relative flex-shrink-0">
                     {chat.type === "group" ? (
-                      <div
-                        className="w-12 h-12 rounded-full flex items-center justify-center text-white font-semibold"
-                        style={{ backgroundColor: chat.avatarColor }}
-                      >
-                        <Users className="w-5 h-5" />
-                      </div>
+                      chat.groupAvatarUrl ? (
+                        <>
+                          <img
+                            src={chat.groupAvatarUrl}
+                            alt=""
+                            className="w-12 h-12 rounded-full object-cover"
+                            onError={(e) => { const el = e.target as HTMLImageElement; el.onerror = null; el.style.display = 'none'; (el.nextElementSibling as HTMLElement)?.classList.remove('hidden'); }}
+                          />
+                          <div
+                            className="w-12 h-12 rounded-full flex items-center justify-center text-white font-semibold hidden"
+                            style={{ backgroundColor: chat.avatarColor }}
+                          >
+                            <Users className="w-5 h-5" />
+                          </div>
+                        </>
+                      ) : (
+                        <div
+                          className="w-12 h-12 rounded-full flex items-center justify-center text-white font-semibold"
+                          style={{ backgroundColor: chat.avatarColor }}
+                        >
+                          <Users className="w-5 h-5" />
+                        </div>
+                      )
                     ) : chat.walletAddress ? (
                       <UserAvatar address={chat.walletAddress} size="lg" onPreview={() => setPreviewAddress(chat.walletAddress!)} />
                     ) : (

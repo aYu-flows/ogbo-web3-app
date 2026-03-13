@@ -5,6 +5,7 @@ import { Loader2, Megaphone } from 'lucide-react'
 import { useStore } from '@/lib/store'
 import { t } from '@/lib/i18n'
 import { toast } from '@/hooks/use-toast'
+import { useIMEInput } from '@/hooks/use-ime-input'
 import {
   Drawer,
   DrawerContent,
@@ -12,11 +13,7 @@ import {
   DrawerTitle,
   DrawerDescription,
 } from '@/components/ui/drawer'
-import {
-  setGroupAnnouncement,
-  updateMyGroupSettings,
-  type GroupDetail,
-} from '@/lib/group-management'
+import { type GroupDetail } from '@/lib/group-management'
 
 interface GroupAnnouncementModalProps {
   open: boolean
@@ -40,10 +37,12 @@ export default function GroupAnnouncementModal({
   const locale = useStore((s) => s.locale)
   const walletAddress = useStore((s) => s.walletAddress)
   const getDisplayName = useStore((s) => s.getDisplayName)
+  const markAnnouncementRead = useStore((s) => s.markAnnouncementRead)
+  const setAnnouncementAction = useStore((s) => s.setAnnouncementAction)
 
   const [isEditing, setIsEditing] = useState(false)
-  const [editText, setEditText] = useState('')
   const [saving, setSaving] = useState(false)
+  const { value: editText, setValue: setEditText, getInputProps } = useIMEInput('')
 
   const announcement = groupDetail?.announcement ?? null
   const announcementBy = groupDetail?.announcement_by ?? null
@@ -58,12 +57,10 @@ export default function GroupAnnouncementModal({
   }, [open, announcement])
 
   const handleClose = async () => {
-    // If this was an unread announcement notification, mark it as read
+    // Mark announcement as read via store action
     if (isUnread && walletAddress && announcement) {
       try {
-        await updateMyGroupSettings(groupId, walletAddress, {
-          last_read_announcement_at: new Date().toISOString(),
-        })
+        await markAnnouncementRead(groupId)
       } catch {
         // silent fail for marking read
       }
@@ -82,7 +79,7 @@ export default function GroupAnnouncementModal({
 
     setSaving(true)
     try {
-      await setGroupAnnouncement(groupId, trimmed, walletAddress)
+      await setAnnouncementAction(groupId, trimmed)
       toast({ title: t('group.announcementUpdated', locale) })
       setIsEditing(false)
     } catch {
@@ -127,15 +124,10 @@ export default function GroupAnnouncementModal({
               <div className="relative">
                 <textarea
                   value={editText}
-                  onChange={(e) => {
-                    if (e.target.value.length <= MAX_ANNOUNCEMENT_LENGTH) {
-                      setEditText(e.target.value)
-                    }
-                  }}
+                  {...getInputProps({ maxLength: MAX_ANNOUNCEMENT_LENGTH })}
                   placeholder={
                     locale === 'zh' ? '输入群公告内容...' : 'Enter announcement...'
                   }
-                  maxLength={MAX_ANNOUNCEMENT_LENGTH}
                   rows={5}
                   className="w-full bg-muted rounded-xl px-4 py-3 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-[var(--ogbo-blue)]/30"
                   disabled={saving}
@@ -193,15 +185,26 @@ export default function GroupAnnouncementModal({
                 </span>
               </div>
 
-              {/* Edit button */}
-              {canEdit && (
+              {/* Action buttons */}
+              <div className="flex gap-2">
+                {canEdit && (
+                  <button
+                    onClick={handleStartEdit}
+                    className="flex-1 rounded-xl px-4 py-2.5 text-sm font-medium bg-muted hover:bg-muted/80 transition-colors"
+                  >
+                    {t('group.editAnnouncement', locale)}
+                  </button>
+                )}
                 <button
-                  onClick={handleStartEdit}
-                  className="w-full rounded-xl px-4 py-2.5 text-sm font-medium bg-muted hover:bg-muted/80 transition-colors"
+                  onClick={async () => {
+                    await markAnnouncementRead(groupId)
+                    onClose()
+                  }}
+                  className="flex-1 rounded-xl px-4 py-2.5 text-sm font-semibold bg-[var(--ogbo-blue)] text-white hover:bg-[var(--ogbo-blue-hover)] transition-colors"
                 >
-                  {t('group.editAnnouncement', locale)}
+                  {t('group.confirmAnnouncement', locale)}
                 </button>
-              )}
+              </div>
             </div>
           ) : (
             /* ─── No announcement placeholder ─── */

@@ -68,6 +68,7 @@
 | components/ProfileEditModal.tsx | product.md §2 个人资料; structure.md §4 |
 | components/theme-provider.tsx | structure.md §4 主题系统 |
 | hooks/use-ime-composition.ts | structure.md §3 编码规范 |
+| hooks/use-ime-input.ts | structure.md §3 编码规范 |
 | hooks/use-mobile.tsx | tech.md §6 跨平台适配 |
 | hooks/use-toast.ts | structure.md §4 UI 反馈 |
 | app/login/page.tsx | product.md §7 登录 |

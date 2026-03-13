@@ -182,6 +182,7 @@ chat_id 生成规则（`lib/chat.ts` 中 `getChatId` 函数）：
 | join_mode | text DEFAULT 'free' | 入群模式：`'free'` / `'approval'` / `'disabled'`（CHECK 约束） |
 | invite_approval | boolean DEFAULT false | 邀请是否需要管理员审批 |
 | mute_all | boolean DEFAULT false | 全员禁言开关 |
+| avatar_url | text DEFAULT NULL | 群头像 URL（Supabase Storage `group-avatars` bucket） |
 | created_at | timestamptz | 创建时间 |
 
 #### group_members 表 — 群成员详情
@@ -283,6 +284,7 @@ chat_id 生成规则（`lib/chat.ts` 中 `getChatId` 函数）：
 |------|---------|-------------|
 | 2026-03-08 | 初始化创建 | - |
 | 2026-03-10 | messages 表新增 file_url/file_name/file_size/duration/thumbnail_url 字段，msg_type 新增 image/file/voice；新增 chat-files Storage bucket | `lib/chat-media.ts` |
+| 2026-03-13 | Task80: groups 表新增 avatar_url 字段；新增 group-avatars Storage bucket（public，2MB，image/* only） | - |
 | 2026-03-12 | Task76: groups 表新增 7 字段（admins, announcement, announcement_at, announcement_by, join_mode, invite_approval, mute_all）；新增 group_members、group_mutes、group_invites、group_join_requests 4 张表 | - |
 
 ---
@@ -621,7 +623,7 @@ interface StoredWallet {
 | PostgreSQL 数据库 | 启用，表：contacts, messages, groups, push_debug_logs |
 | Realtime | 启用，监听：messages, contacts, groups |
 | Auth | 未使用（钱包地址作为身份标识） |
-| Storage | 未观察到使用 |
+| Storage | 启用，bucket：`chat-files`（聊天媒体）、`avatars`（用户头像）、`group-avatars`（群头像，public，2MB，image/* only） |
 
 ### §7.4 OTA 热更新
 

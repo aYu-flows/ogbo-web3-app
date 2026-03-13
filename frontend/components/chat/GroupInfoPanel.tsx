@@ -3,8 +3,9 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useStore } from '@/lib/store'
 import { t } from '@/lib/i18n'
-import type { GroupDetail, GroupRole } from '@/lib/group-management'
+import type { GroupRole } from '@/lib/group-management'
 import { getGroupRole } from '@/lib/group-management'
+import { useIMEInput } from '@/hooks/use-ime-input'
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from '@/components/ui/drawer'
 import { Switch } from '@/components/ui/switch'
 import {
@@ -73,21 +74,31 @@ export default function GroupInfoPanel({
   const updateGroupNickname = useStore((s) => s.updateGroupNickname)
   const leaveGroupAction = useStore((s) => s.leaveGroupAction)
   const dissolveGroupAction = useStore((s) => s.dissolveGroupAction)
+  const updateGroupAvatarAction = useStore((s) => s.updateGroupAvatarAction)
 
-  const [groupDetail, setGroupDetail] = useState<GroupDetail | null>(null)
+  // Read groupDetail from store instead of local state
+  const groupDetail = useStore((s) => s.activeGroupDetail[groupId]) ?? null
+
   const [loading, setLoading] = useState(true)
   const [role, setRole] = useState<GroupRole>('member')
 
   // Inline edit states
   const [editingName, setEditingName] = useState(false)
-  const [nameValue, setNameValue] = useState('')
   const [savingName, setSavingName] = useState(false)
   const nameInputRef = useRef<HTMLInputElement>(null)
 
   const [editingNickname, setEditingNickname] = useState(false)
-  const [nicknameValue, setNicknameValue] = useState('')
   const [savingNickname, setSavingNickname] = useState(false)
   const nicknameInputRef = useRef<HTMLInputElement>(null)
+
+  // IME input hooks for group name and nickname
+  const nameIME = useIMEInput('')
+  const nicknameIME = useIMEInput('')
+
+  // Avatar upload states
+  const [uploadingAvatar, setUploadingAvatar] = useState(false)
+  const [avatarError, setAvatarError] = useState(false)
+  const avatarInputRef = useRef<HTMLInputElement>(null)
 
   // Toggle loading states
   const [togglingPin, setTogglingPin] = useState(false)
@@ -113,7 +124,6 @@ export default function GroupInfoPanel({
     setLoading(true)
     openGroupManagement(groupId).then((detail) => {
       if (cancelled) return
-      setGroupDetail(detail)
       if (detail && walletAddress) {
         setRole(getGroupRole(detail, walletAddress))
       }
@@ -125,12 +135,18 @@ export default function GroupInfoPanel({
     }
   }, [open, groupId, walletAddress, openGroupManagement])
 
+  // Update role when groupDetail changes from store
+  useEffect(() => {
+    if (groupDetail && walletAddress) {
+      setRole(getGroupRole(groupDetail, walletAddress))
+    }
+  }, [groupDetail, walletAddress])
+
   // Reset edit states when closing
   useEffect(() => {
     if (!open) {
       setEditingName(false)
       setEditingNickname(false)
-      setGroupDetail(null)
       setLoading(true)
     }
   }, [open])
@@ -151,7 +167,7 @@ export default function GroupInfoPanel({
 
   const handleSaveName = useCallback(async () => {
     if (!groupDetail || savingName) return
-    const trimmed = (nameInputRef.current?.value ?? nameValue).trim()
+    const trimmed = (nameInputRef.current?.value ?? nameIME.value).trim()
     if (!trimmed || trimmed === groupDetail.name) {
       setEditingName(false)
       return
@@ -159,18 +175,17 @@ export default function GroupInfoPanel({
     setSavingName(true)
     try {
       await updateGroupNameAction(groupId, trimmed)
-      setGroupDetail((prev) => (prev ? { ...prev, name: trimmed } : prev))
       setEditingName(false)
     } catch (err) {
       console.error('[GroupInfoPanel] save name failed:', err)
     } finally {
       setSavingName(false)
     }
-  }, [groupDetail, nameValue, savingName, updateGroupNameAction, groupId])
+  }, [groupDetail, nameIME.value, savingName, updateGroupNameAction, groupId])
 
   const handleSaveNickname = useCallback(async () => {
     if (savingNickname) return
-    const trimmed = (nicknameInputRef.current?.value ?? nicknameValue).trim()
+    const trimmed = (nicknameInputRef.current?.value ?? nicknameIME.value).trim()
     if (trimmed === (myNickname || '')) {
       setEditingNickname(false)
       return
@@ -184,7 +199,7 @@ export default function GroupInfoPanel({
     } finally {
       setSavingNickname(false)
     }
-  }, [nicknameValue, myNickname, savingNickname, updateGroupNickname, groupId])
+  }, [nicknameIME.value, myNickname, savingNickname, updateGroupNickname, groupId])
 
   const handleTogglePin = useCallback(async () => {
     if (togglingPin) return
@@ -238,27 +253,44 @@ export default function GroupInfoPanel({
     }
   }, [dissolvingGroup, dissolveGroupAction, groupId, onClose])
 
+  const handleAvatarUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file || !groupId) return
+    setUploadingAvatar(true)
+    setAvatarError(false)
+    try {
+      await updateGroupAvatarAction(groupId, file)
+    } catch (err) {
+      console.error('[GroupInfoPanel] avatar upload failed:', err)
+      setAvatarError(true)
+    } finally {
+      setUploadingAvatar(false)
+      // Reset file input so same file can be re-selected
+      if (avatarInputRef.current) avatarInputRef.current.value = ''
+    }
+  }, [groupId, updateGroupAvatarAction])
+
   // --- Render helpers ---
 
   const renderSkeleton = () => (
     <div className="animate-pulse space-y-4 p-4">
       <div className="flex items-center gap-3">
-        <div className="w-14 h-14 rounded-full bg-white/10" />
+        <div className="w-14 h-14 rounded-full bg-muted" />
         <div className="flex-1 space-y-2">
-          <div className="h-5 w-32 rounded bg-white/10" />
-          <div className="h-3 w-20 rounded bg-white/10" />
+          <div className="h-5 w-32 rounded bg-muted" />
+          <div className="h-3 w-20 rounded bg-muted" />
         </div>
       </div>
-      <div className="h-16 rounded-xl bg-white/10" />
+      <div className="h-16 rounded-xl bg-muted" />
       <div className="flex gap-2">
         {Array.from({ length: 5 }).map((_, i) => (
-          <div key={i} className="w-10 h-10 rounded-full bg-white/10" />
+          <div key={i} className="w-10 h-10 rounded-full bg-muted" />
         ))}
       </div>
       <div className="space-y-2">
-        <div className="h-12 rounded-xl bg-white/10" />
-        <div className="h-12 rounded-xl bg-white/10" />
-        <div className="h-12 rounded-xl bg-white/10" />
+        <div className="h-12 rounded-xl bg-muted" />
+        <div className="h-12 rounded-xl bg-muted" />
+        <div className="h-12 rounded-xl bg-muted" />
       </div>
     </div>
   )
@@ -292,14 +324,14 @@ export default function GroupInfoPanel({
   ) => (
     <button
       onClick={onClick}
-      className={`w-full flex items-center gap-3 px-4 py-3 hover:bg-white/5 active:bg-white/10 transition-colors ${className ?? ''}`}
+      className={`w-full flex items-center gap-3 px-4 py-3 hover:bg-muted active:bg-muted transition-colors ${className ?? ''}`}
     >
-      <span className="text-white/60">{icon}</span>
-      <span className={`flex-1 text-left text-sm ${className?.includes('text-red') ? '' : 'text-white'}`}>
+      <span className="text-muted-foreground">{icon}</span>
+      <span className={`flex-1 text-left text-sm ${className?.includes('text-red') ? '' : 'text-foreground'}`}>
         {label}
       </span>
       {extra}
-      <ChevronRight className="w-4 h-4 text-white/30" />
+      <ChevronRight className="w-4 h-4 text-muted-foreground" />
     </button>
   )
 
@@ -308,17 +340,21 @@ export default function GroupInfoPanel({
   const groupColor = groupDetail ? addressToColor(groupDetail.id) : '#6366f1'
   const groupInitial = groupDetail?.name?.charAt(0)?.toUpperCase() ?? '?'
 
+  // Get IME input props for name and nickname
+  const nameInputProps = nameIME.getInputProps({ onEnter: handleSaveName, maxLength: 50 })
+  const nicknameInputProps = nicknameIME.getInputProps({ onEnter: handleSaveNickname })
+
   return (
     <>
       <Drawer open={open} onOpenChange={(o) => !o && onClose()}>
-        <DrawerContent className="max-h-[90vh] bg-[#1a1a2e] border-white/10">
+        <DrawerContent className="max-h-[90vh] bg-card border-border">
           <DrawerHeader className="relative pb-0">
-            <DrawerTitle className="text-white text-center">
+            <DrawerTitle className="text-foreground text-center">
               {t('group.info', locale)}
             </DrawerTitle>
             <button
               onClick={onClose}
-              className="absolute right-4 top-4 text-white/60 hover:text-white transition-colors"
+              className="absolute right-4 top-4 text-muted-foreground hover:text-foreground transition-colors"
             >
               <X className="w-5 h-5" />
             </button>
@@ -329,64 +365,94 @@ export default function GroupInfoPanel({
               renderSkeleton()
             ) : groupDetail ? (
               <>
-                {/* ── Header: Avatar + Name + Member Count ── */}
+                {/* -- Header: Avatar + Name + Member Count -- */}
                 <div className="flex items-center gap-3 pt-2">
+                  {/* Group Avatar with upload support */}
                   <div
-                    className="w-14 h-14 rounded-full flex items-center justify-center flex-shrink-0 text-xl font-bold text-white"
+                    className={`w-14 h-14 rounded-full flex items-center justify-center flex-shrink-0 text-xl font-bold text-white relative overflow-hidden ${isAdminOrOwner ? 'cursor-pointer' : ''}`}
                     style={{ backgroundColor: groupColor }}
+                    onClick={() => {
+                      if (isAdminOrOwner && !uploadingAvatar) {
+                        avatarInputRef.current?.click()
+                      }
+                    }}
                   >
-                    {groupInitial}
+                    {uploadingAvatar ? (
+                      <div className="w-full h-full flex items-center justify-center bg-black/40">
+                        <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      </div>
+                    ) : groupDetail.avatar_url && !avatarError ? (
+                      <img
+                        src={groupDetail.avatar_url}
+                        alt={groupDetail.name}
+                        className="w-full h-full object-cover"
+                        onError={() => setAvatarError(true)}
+                      />
+                    ) : (
+                      groupInitial
+                    )}
                   </div>
+                  <input
+                    ref={avatarInputRef}
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={handleAvatarUpload}
+                  />
                   <div className="flex-1 min-w-0">
                     {editingName ? (
                       <input
                         ref={nameInputRef}
-                        value={nameValue}
-                        onChange={(e) => setNameValue(e.target.value)}
-                        onCompositionEnd={(e) => setNameValue(e.currentTarget.value)}
-                        onBlur={handleSaveName}
+                        value={nameIME.value}
+                        {...nameInputProps}
+                        onBlur={() => {
+                          // Use DOM ref value as fallback
+                          if (nameInputRef.current) {
+                            nameIME.setValue(nameInputRef.current.value)
+                          }
+                          handleSaveName()
+                        }}
                         onKeyDown={(e) => {
-                          if (e.key === 'Enter') handleSaveName()
+                          nameInputProps.onKeyDown(e)
                           if (e.key === 'Escape') setEditingName(false)
                         }}
-                        maxLength={50}
                         disabled={savingName}
-                        className="w-full bg-white/10 text-white text-lg font-semibold rounded-lg px-2 py-1 outline-none focus:ring-1 focus:ring-indigo-500 disabled:opacity-50"
+                        className="w-full bg-muted text-foreground text-lg font-semibold rounded-lg px-2 py-1 outline-none focus:ring-1 focus:ring-indigo-500 disabled:opacity-50"
                       />
                     ) : (
                       <button
                         onClick={() => {
                           if (isAdminOrOwner) {
-                            setNameValue(groupDetail.name)
+                            nameIME.setValue(groupDetail.name)
                             setEditingName(true)
                           }
                         }}
-                        className={`text-lg font-semibold text-white truncate block max-w-full text-left ${isAdminOrOwner ? 'hover:text-indigo-300 transition-colors' : ''}`}
+                        className={`text-lg font-semibold text-foreground truncate block max-w-full text-left ${isAdminOrOwner ? 'hover:text-indigo-300 transition-colors' : ''}`}
                       >
                         {groupDetail.name}
                       </button>
                     )}
-                    <div className="flex items-center gap-1 text-white/50 text-sm mt-0.5">
+                    <div className="flex items-center gap-1 text-muted-foreground text-sm mt-0.5">
                       <Users className="w-3.5 h-3.5" />
                       <span>{totalMembers} {t('group.members', locale)}</span>
                     </div>
                   </div>
                 </div>
 
-                {/* ── Announcement Section ── */}
+                {/* -- Announcement Section -- */}
                 <button
                   onClick={onOpenAnnouncement}
-                  className="w-full rounded-xl bg-white/5 p-3 text-left hover:bg-white/10 transition-colors"
+                  className="w-full rounded-xl bg-muted p-3 text-left hover:bg-muted transition-colors"
                 >
-                  <div className="text-xs text-white/50 mb-1">{t('group.announcement', locale)}</div>
+                  <div className="text-xs text-muted-foreground mb-1">{t('group.announcement', locale)}</div>
                   {groupDetail.announcement ? (
-                    <p className="text-sm text-white line-clamp-2">{groupDetail.announcement}</p>
+                    <p className="text-sm text-foreground line-clamp-2">{groupDetail.announcement}</p>
                   ) : (
-                    <p className="text-sm text-white/30">{t('group.noAnnouncement', locale)}</p>
+                    <p className="text-sm text-muted-foreground">{t('group.noAnnouncement', locale)}</p>
                   )}
                 </button>
 
-                {/* ── Member Grid ── */}
+                {/* -- Member Grid -- */}
                 <div className="space-y-2">
                   <div className="grid grid-cols-5 gap-3">
                     {displayMembers.map((addr) => (
@@ -395,7 +461,7 @@ export default function GroupInfoPanel({
                           <UserAvatar address={addr} size="md" />
                           {renderMemberRoleIcon(addr)}
                         </div>
-                        <span className="text-[10px] text-white/50 truncate w-full text-center">
+                        <span className="text-[10px] text-muted-foreground truncate w-full text-center">
                           {getDisplayName(addr)}
                         </span>
                       </div>
@@ -410,50 +476,64 @@ export default function GroupInfoPanel({
                   </button>
                 </div>
 
-                {/* ── Divider ── */}
-                <div className="border-t border-white/10" />
+                {/* -- Divider -- */}
+                <div className="border-t border-border" />
 
-                {/* ── My Nickname ── */}
-                <div className="rounded-xl bg-white/5 overflow-hidden">
+                {/* -- Invite Friends (visible to ALL members) -- */}
+                <div className="rounded-xl bg-muted overflow-hidden">
+                  {renderRow(
+                    <UserPlus className="w-4 h-4" />,
+                    t('group.inviteFriends', locale),
+                    onOpenInviteFriends,
+                  )}
+                </div>
+
+                {/* -- My Nickname -- */}
+                <div className="rounded-xl bg-muted overflow-hidden">
                   {editingNickname ? (
                     <div className="flex items-center gap-2 px-4 py-3">
-                      <span className="text-sm text-white/60 flex-shrink-0">{t('group.myNickname', locale)}</span>
+                      <span className="text-sm text-muted-foreground flex-shrink-0">{t('group.myNickname', locale)}</span>
                       <input
                         ref={nicknameInputRef}
-                        value={nicknameValue}
-                        onChange={(e) => setNicknameValue(e.target.value)}
-                        onCompositionEnd={(e) => setNicknameValue(e.currentTarget.value)}
-                        onBlur={handleSaveNickname}
+                        value={nicknameIME.value}
+                        {...nicknameInputProps}
+                        onBlur={() => {
+                          // Use DOM ref value as fallback
+                          if (nicknameInputRef.current) {
+                            nicknameIME.setValue(nicknameInputRef.current.value)
+                          }
+                          handleSaveNickname()
+                        }}
                         onKeyDown={(e) => {
-                          if (e.key === 'Enter') handleSaveNickname()
+                          nicknameInputProps.onKeyDown(e)
                           if (e.key === 'Escape') setEditingNickname(false)
                         }}
                         placeholder={t('group.nicknamePlaceholder', locale)}
                         disabled={savingNickname}
-                        className="flex-1 bg-transparent text-white text-sm outline-none text-right disabled:opacity-50"
+                        className="flex-1 bg-transparent text-foreground text-sm outline-none text-right disabled:opacity-50"
                       />
                     </div>
                   ) : (
                     <button
                       onClick={() => {
-                        setNicknameValue(myNickname || '')
+                        nicknameIME.setValue(myNickname || '')
                         setEditingNickname(true)
                       }}
-                      className="w-full flex items-center gap-3 px-4 py-3 hover:bg-white/5 transition-colors"
+                      className="w-full flex items-center gap-3 px-4 py-3 hover:bg-muted transition-colors"
                     >
-                      <span className="text-sm text-white flex-1 text-left">{t('group.myNickname', locale)}</span>
-                      <span className="text-sm text-white/40 truncate max-w-[140px]">
+                      <span className="text-sm text-foreground flex-1 text-left">{t('group.myNickname', locale)}</span>
+                      <span className="text-sm text-muted-foreground truncate max-w-[140px]">
                         {myNickname || t('group.nicknamePlaceholder', locale)}
                       </span>
-                      <ChevronRight className="w-4 h-4 text-white/30 flex-shrink-0" />
+                      <ChevronRight className="w-4 h-4 text-muted-foreground flex-shrink-0" />
                     </button>
                   )}
 
-                  {/* ── Pin Chat Toggle ── */}
-                  <div className="flex items-center justify-between px-4 py-3 border-t border-white/5">
+                  {/* -- Pin Chat Toggle -- */}
+                  <div className="flex items-center justify-between px-4 py-3 border-t border-border">
                     <div className="flex items-center gap-2">
-                      <Pin className="w-4 h-4 text-white/60" />
-                      <span className="text-sm text-white">{t('group.pinChat', locale)}</span>
+                      <Pin className="w-4 h-4 text-muted-foreground" />
+                      <span className="text-sm text-foreground">{t('group.pinChat', locale)}</span>
                     </div>
                     <Switch
                       checked={isPinned}
@@ -463,15 +543,15 @@ export default function GroupInfoPanel({
                     />
                   </div>
 
-                  {/* ── DND Toggle ── */}
-                  <div className="flex items-center justify-between px-4 py-3 border-t border-white/5">
+                  {/* -- DND Toggle -- */}
+                  <div className="flex items-center justify-between px-4 py-3 border-t border-border">
                     <div className="flex items-center gap-2">
                       {isDND ? (
-                        <BellOff className="w-4 h-4 text-white/60" />
+                        <BellOff className="w-4 h-4 text-muted-foreground" />
                       ) : (
-                        <Bell className="w-4 h-4 text-white/60" />
+                        <Bell className="w-4 h-4 text-muted-foreground" />
                       )}
-                      <span className="text-sm text-white">{t('group.dnd', locale)}</span>
+                      <span className="text-sm text-foreground">{t('group.dnd', locale)}</span>
                     </div>
                     <Switch
                       checked={isDND}
@@ -482,17 +562,12 @@ export default function GroupInfoPanel({
                   </div>
                 </div>
 
-                {/* ── Divider ── */}
-                <div className="border-t border-white/10" />
+                {/* -- Divider -- */}
+                <div className="border-t border-border" />
 
-                {/* ── Admin/Owner Section ── */}
+                {/* -- Admin/Owner Section -- */}
                 {isAdminOrOwner && (
-                  <div className="rounded-xl bg-white/5 overflow-hidden">
-                    {renderRow(
-                      <UserPlus className="w-4 h-4" />,
-                      t('group.inviteFriends', locale),
-                      onOpenInviteFriends,
-                    )}
+                  <div className="rounded-xl bg-muted overflow-hidden">
                     {renderRow(
                       <Link2 className="w-4 h-4" />,
                       t('group.inviteLink', locale),
@@ -516,9 +591,9 @@ export default function GroupInfoPanel({
                   </div>
                 )}
 
-                {/* ── Owner Only Section ── */}
+                {/* -- Owner Only Section -- */}
                 {isOwner && (
-                  <div className="rounded-xl bg-white/5 overflow-hidden">
+                  <div className="rounded-xl bg-muted overflow-hidden">
                     {renderRow(
                       <Crown className="w-4 h-4" />,
                       t('group.transferOwnership', locale),
@@ -527,25 +602,25 @@ export default function GroupInfoPanel({
                     <button
                       onClick={() => setShowDissolveConfirm(true)}
                       disabled={dissolvingGroup}
-                      className="w-full flex items-center gap-3 px-4 py-3 hover:bg-white/5 active:bg-white/10 transition-colors disabled:opacity-50"
+                      className="w-full flex items-center gap-3 px-4 py-3 hover:bg-muted active:bg-muted transition-colors disabled:opacity-50"
                     >
                       <Trash2 className="w-4 h-4 text-red-400" />
                       <span className="flex-1 text-left text-sm text-red-400">
                         {t('group.dissolveGroup', locale)}
                       </span>
-                      <ChevronRight className="w-4 h-4 text-white/30" />
+                      <ChevronRight className="w-4 h-4 text-muted-foreground" />
                     </button>
                   </div>
                 )}
 
-                {/* ── Divider ── */}
-                <div className="border-t border-white/10" />
+                {/* -- Divider -- */}
+                <div className="border-t border-border" />
 
-                {/* ── Leave Group ── */}
+                {/* -- Leave Group -- */}
                 {isOwner ? (
                   <button
                     disabled
-                    className="w-full py-3 rounded-xl bg-white/5 text-white/30 text-sm text-center cursor-not-allowed"
+                    className="w-full py-3 rounded-xl bg-muted text-muted-foreground text-sm text-center cursor-not-allowed"
                   >
                     {t('group.ownerCannotLeave', locale)}
                   </button>
@@ -563,7 +638,7 @@ export default function GroupInfoPanel({
                 )}
               </>
             ) : (
-              <div className="text-center text-white/40 py-8 text-sm">
+              <div className="text-center text-muted-foreground py-8 text-sm">
                 {t('group.error.operationFailed', locale)}
               </div>
             )}
@@ -571,21 +646,21 @@ export default function GroupInfoPanel({
         </DrawerContent>
       </Drawer>
 
-      {/* ── Leave Group Confirm Dialog ── */}
+      {/* -- Leave Group Confirm Dialog -- */}
       <AlertDialog open={showLeaveConfirm} onOpenChange={setShowLeaveConfirm}>
-        <AlertDialogContent className="bg-[#1a1a2e] border-white/10">
+        <AlertDialogContent className="bg-card border-border">
           <AlertDialogHeader>
-            <AlertDialogTitle className="text-white">
+            <AlertDialogTitle className="text-foreground">
               {t('group.leaveGroup', locale)}
             </AlertDialogTitle>
-            <AlertDialogDescription className="text-white/60">
+            <AlertDialogDescription className="text-muted-foreground">
               {t('group.leaveConfirm', locale)}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel
               disabled={leavingGroup}
-              className="bg-white/10 text-white border-white/10 hover:bg-white/20 hover:text-white"
+              className="bg-muted text-foreground border-border hover:bg-muted hover:text-foreground"
             >
               {t('common.cancel', locale)}
             </AlertDialogCancel>
@@ -600,21 +675,21 @@ export default function GroupInfoPanel({
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* ── Dissolve Group Confirm Dialog ── */}
+      {/* -- Dissolve Group Confirm Dialog -- */}
       <AlertDialog open={showDissolveConfirm} onOpenChange={setShowDissolveConfirm}>
-        <AlertDialogContent className="bg-[#1a1a2e] border-white/10">
+        <AlertDialogContent className="bg-card border-border">
           <AlertDialogHeader>
-            <AlertDialogTitle className="text-white">
+            <AlertDialogTitle className="text-foreground">
               {t('group.dissolveGroup', locale)}
             </AlertDialogTitle>
-            <AlertDialogDescription className="text-white/60">
+            <AlertDialogDescription className="text-muted-foreground">
               {t('group.dissolveConfirm', locale)}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel
               disabled={dissolvingGroup}
-              className="bg-white/10 text-white border-white/10 hover:bg-white/20 hover:text-white"
+              className="bg-muted text-foreground border-border hover:bg-muted hover:text-foreground"
             >
               {t('common.cancel', locale)}
             </AlertDialogCancel>

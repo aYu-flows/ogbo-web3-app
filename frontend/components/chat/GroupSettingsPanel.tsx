@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Loader2, AlertTriangle } from 'lucide-react'
 import { useStore } from '@/lib/store'
 import { t } from '@/lib/i18n'
@@ -15,7 +15,7 @@ import {
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Switch } from '@/components/ui/switch'
 import { Label } from '@/components/ui/label'
-import { updateGroupSettings, type GroupDetail, type JoinMode } from '@/lib/group-management'
+import { type GroupDetail, type JoinMode } from '@/lib/group-management'
 
 interface GroupSettingsPanelProps {
   open: boolean
@@ -31,14 +31,23 @@ export default function GroupSettingsPanel({
   groupDetail,
 }: GroupSettingsPanelProps) {
   const locale = useStore((s) => s.locale)
+  const toggleMuteAll = useStore((s) => s.toggleMuteAll)
+  const updateJoinMode = useStore((s) => s.updateJoinMode)
+  const toggleInviteApproval = useStore((s) => s.toggleInviteApproval)
 
   const [joinModeLoading, setJoinModeLoading] = useState(false)
   const [inviteApprovalLoading, setInviteApprovalLoading] = useState(false)
   const [muteAllLoading, setMuteAllLoading] = useState(false)
 
-  const currentJoinMode = groupDetail?.join_mode ?? 'free'
-  const currentInviteApproval = groupDetail?.invite_approval ?? false
-  const currentMuteAll = groupDetail?.mute_all ?? false
+  const [localJoinMode, setLocalJoinMode] = useState<JoinMode>(groupDetail?.join_mode ?? 'free')
+  const [localInviteApproval, setLocalInviteApproval] = useState(groupDetail?.invite_approval ?? false)
+  const [localMuteAll, setLocalMuteAll] = useState(groupDetail?.mute_all ?? false)
+
+  useEffect(() => {
+    setLocalMuteAll(groupDetail?.mute_all ?? false)
+    setLocalJoinMode(groupDetail?.join_mode ?? 'free')
+    setLocalInviteApproval(groupDetail?.invite_approval ?? false)
+  }, [groupDetail?.mute_all, groupDetail?.join_mode, groupDetail?.invite_approval])
 
   const joinModeOptions: { value: JoinMode; labelKey: string }[] = [
     { value: 'free', labelKey: 'group.joinMode.free' },
@@ -47,12 +56,15 @@ export default function GroupSettingsPanel({
   ]
 
   const handleJoinModeChange = async (value: string) => {
-    if (joinModeLoading || value === currentJoinMode) return
+    const newMode = value as JoinMode
+    if (joinModeLoading || newMode === localJoinMode) return
+    setLocalJoinMode(newMode)
     setJoinModeLoading(true)
     try {
-      await updateGroupSettings(groupId, { join_mode: value as JoinMode })
+      await updateJoinMode(groupId, newMode)
       toast({ title: t('common.updated', locale) })
     } catch {
+      setLocalJoinMode(groupDetail?.join_mode ?? 'free')
       toast({ title: t('group.error.operationFailed', locale), variant: 'destructive' })
     } finally {
       setJoinModeLoading(false)
@@ -63,7 +75,7 @@ export default function GroupSettingsPanel({
     if (inviteApprovalLoading) return
 
     // When toggling OFF (from approval to no-approval), warn about auto-approving pending requests
-    if (!checked && currentInviteApproval) {
+    if (!checked && localInviteApproval) {
       toast({
         title: locale === 'zh'
           ? '关闭后，待处理的邀请请求将被自动通过'
@@ -71,11 +83,13 @@ export default function GroupSettingsPanel({
       })
     }
 
+    setLocalInviteApproval(checked)
     setInviteApprovalLoading(true)
     try {
-      await updateGroupSettings(groupId, { invite_approval: checked })
+      await toggleInviteApproval(groupId)
       toast({ title: t('common.updated', locale) })
     } catch {
+      setLocalInviteApproval(groupDetail?.invite_approval ?? false)
       toast({ title: t('group.error.operationFailed', locale), variant: 'destructive' })
     } finally {
       setInviteApprovalLoading(false)
@@ -84,15 +98,17 @@ export default function GroupSettingsPanel({
 
   const handleMuteAllToggle = async (checked: boolean) => {
     if (muteAllLoading) return
+    setLocalMuteAll(checked)
     setMuteAllLoading(true)
     try {
-      await updateGroupSettings(groupId, { mute_all: checked })
+      await toggleMuteAll(groupId)
       toast({
         title: checked
           ? t('group.muteAll', locale)
           : t('group.unmuteAll', locale),
       })
     } catch {
+      setLocalMuteAll(groupDetail?.mute_all ?? false)
       toast({ title: t('group.error.operationFailed', locale), variant: 'destructive' })
     } finally {
       setMuteAllLoading(false)
@@ -116,7 +132,7 @@ export default function GroupSettingsPanel({
               {t('group.joinMode', locale)}
             </p>
             <RadioGroup
-              value={currentJoinMode}
+              value={localJoinMode}
               onValueChange={handleJoinModeChange}
               disabled={joinModeLoading}
               className="space-y-2"
@@ -154,7 +170,7 @@ export default function GroupSettingsPanel({
                 <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
               )}
               <Switch
-                checked={currentInviteApproval}
+                checked={localInviteApproval}
                 onCheckedChange={handleInviteApprovalToggle}
                 disabled={inviteApprovalLoading}
               />
@@ -166,7 +182,7 @@ export default function GroupSettingsPanel({
             <div className="flex items-center gap-2 flex-1 min-w-0">
               <AlertTriangle className="w-4 h-4 text-amber-500 flex-shrink-0" />
               <p className="text-sm font-medium">
-                {currentMuteAll
+                {localMuteAll
                   ? t('group.unmuteAll', locale)
                   : t('group.muteAll', locale)}
               </p>
@@ -176,7 +192,7 @@ export default function GroupSettingsPanel({
                 <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
               )}
               <Switch
-                checked={currentMuteAll}
+                checked={localMuteAll}
                 onCheckedChange={handleMuteAllToggle}
                 disabled={muteAllLoading}
               />

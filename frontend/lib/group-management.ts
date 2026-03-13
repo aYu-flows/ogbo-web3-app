@@ -18,6 +18,7 @@ export interface GroupDetail {
   join_mode: JoinMode
   invite_approval: boolean
   mute_all: boolean
+  avatar_url: string | null
   created_at: string
 }
 
@@ -546,7 +547,44 @@ export async function handleJoinRequest(
   }
 }
 
-/** 25. Update my personal group settings (upsert) */
+// ─── Group Avatar ────────────────────────────────────────────────────
+
+const GROUP_AVATAR_ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp']
+const GROUP_AVATAR_MAX_SIZE = 2 * 1024 * 1024 // 2MB
+
+/** 25. Upload group avatar to Storage and return public URL */
+export async function uploadGroupAvatar(groupId: string, file: File): Promise<string> {
+  if (!GROUP_AVATAR_ALLOWED_TYPES.includes(file.type)) {
+    throw new Error('Invalid file type. Only jpg, png, gif, webp are allowed.')
+  }
+  if (file.size > GROUP_AVATAR_MAX_SIZE) {
+    throw new Error('File too large. Maximum size is 2MB.')
+  }
+
+  const ext = file.name.split('.').pop()?.toLowerCase() || 'jpg'
+  const fileName = `${groupId}/${crypto.randomUUID()}.${ext}`
+
+  const { error: uploadError } = await supabase.storage
+    .from('group-avatars')
+    .upload(fileName, file, { upsert: true })
+
+  if (uploadError) throw new Error(`uploadGroupAvatar: ${uploadError.message}`)
+
+  const { data } = supabase.storage.from('group-avatars').getPublicUrl(fileName)
+  return data.publicUrl
+}
+
+/** 26. Update group avatar_url in the database */
+export async function updateGroupAvatar(groupId: string, avatarUrl: string): Promise<void> {
+  const { error } = await supabase
+    .from('groups')
+    .update({ avatar_url: avatarUrl })
+    .eq('id', groupId)
+
+  if (error) throw new Error(`updateGroupAvatar: ${error.message}`)
+}
+
+/** 27. Update my personal group settings (upsert) */
 export async function updateMyGroupSettings(
   groupId: string,
   wallet: string,

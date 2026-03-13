@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { X, Search, Users, Loader2, Check } from 'lucide-react'
 import { useState, useMemo, useRef } from 'react'
 import { useStore } from '@/lib/store'
+import { useIMEInput } from '@/hooks/use-ime-input'
 import { t } from '@/lib/i18n'
 import UserAvatar from '@/components/UserAvatar'
 import type { Chat } from '@/lib/store'
@@ -16,21 +17,21 @@ interface CreateGroupModalProps {
 
 export default function CreateGroupModal({ isOpen, onClose, friends }: CreateGroupModalProps) {
   const { createGroup, locale, getDisplayName } = useStore()
+  const { value: groupName, setValue: setGroupName, getInputProps: getNameInputProps } = useIMEInput('')
+  const { value: searchQuery, setValue: setSearchQuery, deferredValue: deferredSearch, getInputProps: getSearchInputProps } = useIMEInput('')
   const [selectedAddresses, setSelectedAddresses] = useState<string[]>([])
-  const [groupName, setGroupName] = useState('')
   const nameInputRef = useRef<HTMLInputElement>(null)
-  const [searchQuery, setSearchQuery] = useState('')
   const [isCreating, setIsCreating] = useState(false)
 
   const filteredFriends = useMemo(() => {
-    if (!searchQuery.trim()) return friends
-    const q = searchQuery.trim().toLowerCase()
+    if (!deferredSearch.trim()) return friends
+    const q = deferredSearch.trim().toLowerCase()
     return friends.filter(
       (f) =>
         f.name.toLowerCase().includes(q) ||
         f.walletAddress?.toLowerCase().includes(q)
     )
-  }, [friends, searchQuery])
+  }, [friends, deferredSearch])
 
   const toggleSelect = (address: string) => {
     setSelectedAddresses((prev) =>
@@ -108,9 +109,8 @@ export default function CreateGroupModal({ isOpen, onClose, friends }: CreateGro
                   ref={nameInputRef}
                   type="text"
                   value={groupName}
-                  onChange={(e) => setGroupName(e.target.value)}
+                  {...getNameInputProps({ maxLength: 50 })}
                   placeholder={t('chat.groupNamePlaceholder', locale)}
-                  maxLength={50}
                   className="w-full bg-muted rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--ogbo-blue)]/30"
                   disabled={isCreating}
                 />
@@ -135,7 +135,7 @@ export default function CreateGroupModal({ isOpen, onClose, friends }: CreateGro
                   <input
                     type="text"
                     value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
+                    {...getSearchInputProps()}
                     placeholder={locale === 'zh' ? '搜索好友' : 'Search friends'}
                     className="w-full bg-muted rounded-xl pl-9 pr-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--ogbo-blue)]/30"
                     disabled={isCreating}

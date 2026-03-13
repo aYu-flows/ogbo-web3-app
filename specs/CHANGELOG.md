@@ -4,6 +4,25 @@
 
 ---
 
+## Task80 — 群管理功能16项Bug修复与优化 (2026-03-13)
+- 新增 `useIMEInput` hook 系统性修复全项目中文输入法(IME)兼容问题
+- 修复群名/群昵称/群公告中文输入消失问题
+- 修复添加好友中文搜索不触发问题(Android Chrome事件竞态)
+- 普通成员可邀请好友入群(根据群设置走审批流程)
+- 群聊头部标题/头像可点击打开群信息面板
+- 群公告添加"确认"按钮,未读公告自动弹出一次
+- 群邀请链接有效期选择器UI优化(RadioGroup替换原生select)
+- 好友入群后可邀请列表实时刷新
+- GroupInfoPanel浅色主题适配
+- 去除群聊电话图标
+- 新增群头像设置功能(groups表avatar_url字段 + group-avatars Storage bucket)
+- 修复全员禁言开关状态不更新(本地state + store双向同步)
+- 新增activeGroupDetail store状态,统一群详情数据源
+- Realtime groups UPDATE handler扩展,同步所有字段
+- 全项目搜索输入框IME兼容(ChatPage/MarketPage/DiscoverPage等)
+
+---
+
 ## 2026-03-12 Task77: 聊天消息删除功能
 
 ### 新增

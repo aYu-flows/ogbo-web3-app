@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Search, Star, Heart, Clock, X, ChevronRight, ChevronLeft, Shield, Sparkles, Zap } from "lucide-react";
 import { useStore, type DApp } from "@/lib/store";
+import { useIMEInput } from "@/hooks/use-ime-input";
 import { t } from "@/lib/i18n";
 import toast from "react-hot-toast";
 
@@ -123,7 +124,7 @@ function DAppDetailSheet({ open, onClose, dapp, locale }: { open: boolean; onClo
 
 export default function DiscoverPage() {
   const { dapps, locale, toggleDAppFavorite } = useStore();
-  const [searchQuery, setSearchQuery] = useState("");
+  const { value: searchQuery, setValue: setSearchQuery, deferredValue: deferredSearch, getInputProps: getSearchInputProps } = useIMEInput("");
   const [selectedCategory, setSelectedCategory] = useState("all");
   const [selectedDApp, setSelectedDApp] = useState<DApp | null>(null);
   const [activeBanner, setActiveBanner] = useState(0);
@@ -137,7 +138,7 @@ export default function DiscoverPage() {
   }, []);
 
   const filteredDApps = dapps.filter((d) => {
-    const matchSearch = !searchQuery || d.name.toLowerCase().includes(searchQuery.toLowerCase()) || d.description.includes(searchQuery);
+    const matchSearch = !deferredSearch || d.name.toLowerCase().includes(deferredSearch.toLowerCase()) || d.description.includes(deferredSearch);
     const matchCategory = selectedCategory === "all" || d.category.includes(selectedCategory);
     return matchSearch && matchCategory;
   });
@@ -150,7 +151,7 @@ export default function DiscoverPage() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <input
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            {...getSearchInputProps()}
             placeholder={t("discover.searchDApp", locale)}
             className="w-full rounded-xl bg-muted pl-9 pr-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-[var(--ogbo-blue)]/20 transition-all"
           />
