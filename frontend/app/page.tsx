@@ -22,7 +22,7 @@ import { unlockAudio } from "@/lib/soundPlayer";
 import { useOtaUpdater } from "@/lib/use-ota-updater";
 export default function Page() {
   useOtaUpdater();
-  const { activeTab, isLoggedIn, checkAuthStatus, initChat, chatReady, isConnectingChat, destroyChat, walletAddress, login, chats, cleanupExternalWallet } = useStore();
+  const { activeTab, isLoggedIn, checkAuthStatus, initChat, chatReady, isConnectingChat, destroyChat, walletAddress, login, chats, cleanupExternalWallet, refreshChats } = useStore();
   const [isChecking, setIsChecking] = useState(true);
   const [chatSearchOpen, setChatSearchOpen] = useState(false);
   const [addFriendOpen, setAddFriendOpen] = useState(false);
@@ -70,6 +70,17 @@ export default function Page() {
     if (!isLoggedIn || !walletAddress || chatReady || isConnectingChat) return;
     initChat(walletAddress).catch(console.error);
   }, [isLoggedIn, walletAddress, chatReady, isConnectingChat]);
+
+  // Refresh chat data when app resumes from background (visibilitychange works in both web and Capacitor WebView)
+  useEffect(() => {
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible' && chatReady && isLoggedIn) {
+        refreshChats().catch(console.error);
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => document.removeEventListener('visibilitychange', handleVisibility);
+  }, [chatReady, isLoggedIn, refreshChats]);
 
   // Destroy chat only when wagmi wallet actually disconnects.
   // Local wallet users always have isConnected=false, so we must guard with the ref

@@ -75,6 +75,7 @@ export default function GroupInfoPanel({
   const leaveGroupAction = useStore((s) => s.leaveGroupAction)
   const dissolveGroupAction = useStore((s) => s.dissolveGroupAction)
   const updateGroupAvatarAction = useStore((s) => s.updateGroupAvatarAction)
+  const loadProfiles = useStore((s) => s.loadProfiles)
 
   // Read groupDetail from store instead of local state
   const groupDetail = useStore((s) => s.activeGroupDetail[groupId]) ?? null
@@ -126,6 +127,10 @@ export default function GroupInfoPanel({
       if (cancelled) return
       if (detail && walletAddress) {
         setRole(getGroupRole(detail, walletAddress))
+        // Load profiles for all group members to ensure nicknames are available
+        if (detail.members?.length) {
+          loadProfiles(detail.members)
+        }
       }
       setLoading(false)
     })
@@ -167,7 +172,7 @@ export default function GroupInfoPanel({
 
   const handleSaveName = useCallback(async () => {
     if (!groupDetail || savingName) return
-    const trimmed = (nameInputRef.current?.value ?? nameIME.value).trim()
+    const trimmed = (nameInputRef.current?.value ?? '').trim()
     if (!trimmed || trimmed === groupDetail.name) {
       setEditingName(false)
       return
@@ -181,11 +186,11 @@ export default function GroupInfoPanel({
     } finally {
       setSavingName(false)
     }
-  }, [groupDetail, nameIME.value, savingName, updateGroupNameAction, groupId])
+  }, [groupDetail, savingName, updateGroupNameAction, groupId])
 
   const handleSaveNickname = useCallback(async () => {
     if (savingNickname) return
-    const trimmed = (nicknameInputRef.current?.value ?? nicknameIME.value).trim()
+    const trimmed = (nicknameInputRef.current?.value ?? '').trim()
     if (trimmed === (myNickname || '')) {
       setEditingNickname(false)
       return
@@ -199,7 +204,7 @@ export default function GroupInfoPanel({
     } finally {
       setSavingNickname(false)
     }
-  }, [nicknameIME.value, myNickname, savingNickname, updateGroupNickname, groupId])
+  }, [myNickname, savingNickname, updateGroupNickname, groupId])
 
   const handleTogglePin = useCallback(async () => {
     if (togglingPin) return
@@ -242,16 +247,20 @@ export default function GroupInfoPanel({
   const handleDissolve = useCallback(async () => {
     if (dissolvingGroup) return
     setDissolvingGroup(true)
+    setShowDissolveConfirm(false)
     try {
-      await dissolveGroupAction(groupId)
-      setShowDissolveConfirm(false)
+      // Close panel first so dissolution alert appears on top of chat list, not blank popup
       onClose()
+      await dissolveGroupAction(groupId)
     } catch (err) {
       console.error('[GroupInfoPanel] dissolve group failed:', err)
+      import('react-hot-toast').then(({ default: toast }) => {
+        toast.error(locale === 'zh' ? '解散失败' : 'Dissolve failed')
+      })
     } finally {
       setDissolvingGroup(false)
     }
-  }, [dissolvingGroup, dissolveGroupAction, groupId, onClose])
+  }, [dissolvingGroup, dissolveGroupAction, groupId, onClose, locale])
 
   const handleAvatarUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -403,19 +412,15 @@ export default function GroupInfoPanel({
                     {editingName ? (
                       <input
                         ref={nameInputRef}
-                        value={nameIME.value}
-                        {...nameInputProps}
+                        defaultValue={groupDetail.name}
                         onBlur={() => {
-                          // Use DOM ref value as fallback
-                          if (nameInputRef.current) {
-                            nameIME.setValue(nameInputRef.current.value)
-                          }
                           handleSaveName()
                         }}
                         onKeyDown={(e) => {
-                          nameInputProps.onKeyDown(e)
+                          if (e.key === 'Enter') { e.preventDefault(); handleSaveName() }
                           if (e.key === 'Escape') setEditingName(false)
                         }}
+                        maxLength={50}
                         disabled={savingName}
                         className="w-full bg-muted text-foreground text-lg font-semibold rounded-lg px-2 py-1 outline-none focus:ring-1 focus:ring-indigo-500 disabled:opacity-50"
                       />
@@ -495,17 +500,12 @@ export default function GroupInfoPanel({
                       <span className="text-sm text-muted-foreground flex-shrink-0">{t('group.myNickname', locale)}</span>
                       <input
                         ref={nicknameInputRef}
-                        value={nicknameIME.value}
-                        {...nicknameInputProps}
+                        defaultValue={myNickname || ''}
                         onBlur={() => {
-                          // Use DOM ref value as fallback
-                          if (nicknameInputRef.current) {
-                            nicknameIME.setValue(nicknameInputRef.current.value)
-                          }
                           handleSaveNickname()
                         }}
                         onKeyDown={(e) => {
-                          nicknameInputProps.onKeyDown(e)
+                          if (e.key === 'Enter') { e.preventDefault(); handleSaveNickname() }
                           if (e.key === 'Escape') setEditingNickname(false)
                         }}
                         placeholder={t('group.nicknamePlaceholder', locale)}

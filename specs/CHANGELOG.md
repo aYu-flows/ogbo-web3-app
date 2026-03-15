@@ -4,6 +4,48 @@
 
 ---
 
+## Task84 — Chat & Group Management 18 Bug Fixes (2026-03-15)
+
+### Fixed
+- Duplicate announcement toast (removed duplicate from GroupAnnouncementModal)
+- Announcement popup showing twice on re-enter (ref now keyed by chat.id + announcement_at, so new announcements trigger popup)
+- Keyboard blocking Drawer inputs (added scrollIntoView on focus)
+- Group invite link copy failure on native (switched to copyToClipboard utility)
+- Chat state not reset on wallet switch (added missing state resets in login())
+- Group member nicknames not loading (added loadProfiles on GroupInfoPanel open)
+- Group nickname/name IME composition conflict (switched to uncontrolled inputs)
+- Join request badge not clearing after approval (added pendingRequestCounts decrement)
+- Dissolve group showing blank popup (close panels before dissolution)
+- Dissolved group persisting after reload (made system message non-blocking)
+- Full group mute not immediate (Realtime handler now creates activeGroupDetail if missing)
+- Individual mute delayed (added UPDATE handler for group_mutes)
+- Send button stuck on microphone (added onChange + onCompositionEnd handleInput call)
+- Unread badge persisting in active chat (skip increment for active chat)
+- Mute broken after ownership transfer (added creator field to Realtime handler)
+- mute_all not enforced server-side in sendGroupPushMessage
+- App resume from background showing stale data (added visibilitychange listener in page.tsx)
+- Pending request badge not syncing across multiple admins (added decrement in Realtime group_join_requests UPDATE handler)
+
+### New
+- Message copy option in context menu and batch copy in multi-select toolbar
+- Group preview card when pasting invite link in search box (fetchGroupPreviewByToken)
+- `chat.msg.copy` i18n key (zh/en)
+
+### Modified
+- `store.ts` — Realtime groups UPDATE handler now creates activeGroupDetail entry even when missing; added creator/announcement_by fields; added group_mutes UPDATE subscription; login() resets all group state; group_join_requests UPDATE handler now decrements pendingRequestCounts
+- `page.tsx` — added visibilitychange listener for app resume data refresh
+- `ChatPage.tsx` — invite link detection in search, copy handlers, announcement ref keyed by chatId
+- `MessageContextMenu.tsx` — added Copy option
+- `GroupInfoPanel.tsx` — uncontrolled inputs for name/nickname, loadProfiles on open
+- `GroupAnnouncementModal.tsx` — removed duplicate toast, added scrollIntoView
+- `GroupInviteModal.tsx` — switched to copyToClipboard utility
+- `GroupJoinRequestList.tsx` — passes groupId to handleJoinRequestAction
+- `JoinGroupModal.tsx` — added scrollIntoView on input focus
+- `group-management.ts` — added fetchGroupPreviewByToken function
+- `i18n.ts` — added chat.msg.copy key
+
+---
+
 ## Task80 — 群管理功能16项Bug修复与优化 (2026-03-13)
 - 新增 `useIMEInput` hook 系统性修复全项目中文输入法(IME)兼容问题
 - 修复群名/群昵称/群公告中文输入消失问题

@@ -443,7 +443,7 @@ interface AppState {
   joinGroupViaToken: (token: string) => Promise<{ status: string; groupId?: string }>
   inviteFriendsToGroupAction: (groupId: string, wallets: string[]) => Promise<void>
   fetchGroupJoinRequests: (groupId: string) => Promise<GroupJoinRequestRow[]>
-  handleJoinRequestAction: (requestId: number, action: 'approved' | 'rejected') => Promise<void>
+  handleJoinRequestAction: (requestId: number, action: 'approved' | 'rejected', groupId?: string) => Promise<void>
   refreshGroupDetail: (groupId: string) => Promise<void>
   patchActiveGroupDetail: (groupId: string, patch: Partial<GroupDetail>) => void
   updateGroupAvatarAction: (groupId: string, file: File) => Promise<void>
@@ -736,6 +736,13 @@ export const useStore = create<AppState>((set, get) => ({
       chats: [],
       chatRequests: [],
       unreadChatCount: 0,
+      myProfile: null,
+      profileCache: {},
+      groupJoinedAtMap: {},
+      myGroupSettings: {},
+      pendingRequestCounts: {},
+      myMuteStatus: {},
+      activeGroupDetail: {},
     } : {}
     set({
       isLoggedIn: true,
@@ -1008,11 +1015,13 @@ export const useStore = create<AppState>((set, get) => ({
                   }
                 }
 
+                // Don't increment unread if user is currently viewing this chat
+                const isActiveChat = getActiveChatId() === c.id
                 return {
                   ...c,
                   lastMessage: msgSummary,
                   timestamp: newMsg.timestamp,
-                  unread: c.unread + (isMe ? 0 : 1),
+                  unread: c.unread + (isMe || isActiveChat ? 0 : 1),
                   messages: [...c.messages, newMsg],
                 }
               })
@@ -1129,7 +1138,7 @@ export const useStore = create<AppState>((set, get) => ({
           'postgres_changes',
           { event: 'UPDATE', schema: 'public', table: 'groups' },
           (payload) => {
-            const updatedGroup = payload.new as GroupRow & { admins?: string[]; announcement?: string; announcement_at?: string; join_mode?: string; invite_approval?: boolean; mute_all?: boolean }
+            const updatedGroup = payload.new as GroupRow & { admins?: string[]; announcement?: string; announcement_at?: string; announcement_by?: string; join_mode?: string; invite_approval?: boolean; mute_all?: boolean; creator?: string }
             const currentState = get()
             const myAddr = currentState.walletAddress?.toLowerCase() || ''
             const isMember = updatedGroup.members?.map((m: string) => m.toLowerCase()).includes(myAddr)
@@ -1145,21 +1154,26 @@ export const useStore = create<AppState>((set, get) => ({
             set((s) => {
               const gid = updatedGroup.id
               const existingDetail = s.activeGroupDetail[gid]
-              const updatedActiveGroupDetail = existingDetail ? {
+              const updatedDetailData = {
+                ...existingDetail,
+                name: updatedGroup.name,
+                members: updatedGroup.members || existingDetail?.members || [],
+                admins: updatedGroup.admins || existingDetail?.admins || [],
+                creator: updatedGroup.creator ?? existingDetail?.creator ?? '',
+                announcement: updatedGroup.announcement ?? existingDetail?.announcement ?? null,
+                announcement_at: updatedGroup.announcement_at ?? existingDetail?.announcement_at ?? null,
+                announcement_by: updatedGroup.announcement_by ?? existingDetail?.announcement_by ?? null,
+                join_mode: (updatedGroup.join_mode as any) ?? existingDetail?.join_mode ?? 'free',
+                invite_approval: updatedGroup.invite_approval ?? existingDetail?.invite_approval ?? false,
+                mute_all: updatedGroup.mute_all ?? existingDetail?.mute_all ?? false,
+                avatar_url: (updatedGroup as any).avatar_url ?? existingDetail?.avatar_url ?? null,
+              }
+              const updatedActiveGroupDetail = {
                 ...s.activeGroupDetail,
-                [gid]: {
-                  ...existingDetail,
-                  name: updatedGroup.name,
-                  members: updatedGroup.members || existingDetail.members,
-                  admins: updatedGroup.admins || existingDetail.admins,
-                  announcement: updatedGroup.announcement ?? existingDetail.announcement,
-                  announcement_at: updatedGroup.announcement_at ?? existingDetail.announcement_at,
-                  join_mode: (updatedGroup.join_mode as any) ?? existingDetail.join_mode,
-                  invite_approval: updatedGroup.invite_approval ?? existingDetail.invite_approval,
-                  mute_all: updatedGroup.mute_all ?? existingDetail.mute_all,
-                  avatar_url: (updatedGroup as any).avatar_url ?? existingDetail.avatar_url,
-                },
-              } : s.activeGroupDetail
+                [gid]: existingDetail
+                  ? updatedDetailData
+                  : { ...updatedDetailData, id: gid } as any,
+              }
               return {
                 activeGroupDetail: updatedActiveGroupDetail,
                 chats: s.chats.map(c => {
@@ -1229,6 +1243,19 @@ export const useStore = create<AppState>((set, get) => ({
         )
         .on(
           'postgres_changes',
+          { event: 'UPDATE', schema: 'public', table: 'group_mutes' },
+          (payload) => {
+            const mute = payload.new as GroupMuteRow
+            const myAddr = get().walletAddress?.toLowerCase() || ''
+            if (mute.wallet_address.toLowerCase() === myAddr) {
+              set((s) => ({
+                myMuteStatus: { ...s.myMuteStatus, [mute.group_id]: mute },
+              }))
+            }
+          }
+        )
+        .on(
+          'postgres_changes',
           { event: 'UPDATE', schema: 'public', table: 'group_join_requests' },
           async (payload) => {
             const req = payload.new as GroupJoinRequestRow
@@ -1251,6 +1278,15 @@ export const useStore = create<AppState>((set, get) => ({
               const locale = get().locale
               const name = get().getDisplayName(req.requester)
               toast.error(t('group.inviteRejectedNotify', locale).replace('{name}', name))
+            }
+            // Decrement pending badge for other admins when a request is approved/rejected via Realtime
+            if (req.status === 'approved' || req.status === 'rejected') {
+              set((s) => ({
+                pendingRequestCounts: {
+                  ...s.pendingRequestCounts,
+                  [req.group_id]: Math.max(0, (s.pendingRequestCounts[req.group_id] || 0) - 1),
+                },
+              }))
             }
           }
         )
@@ -1537,8 +1573,14 @@ export const useStore = create<AppState>((set, get) => ({
     // Check group-wide mute (only allow owner/admin)
     const groupChat = state.chats.find(c => c.id === chatId)
     if (groupChat && groupChat.type === 'group') {
-      // We need to check mute_all from the group data — we'll do a lightweight check
-      // The UI layer should prevent sending, but this is a safety check
+      const gDetail = state.activeGroupDetail[chatId]
+      if (gDetail?.mute_all) {
+        const isOwner = gDetail.creator === me
+        const isAdmin = (gDetail.admins || []).map((a: string) => a.toLowerCase()).includes(me)
+        if (!isOwner && !isAdmin) {
+          throw new MutedError(null)
+        }
+      }
     }
 
     // Validate that the group chat exists for the current wallet session
@@ -1953,7 +1995,9 @@ export const useStore = create<AppState>((set, get) => ({
     if (!state.walletAddress) return
     const { dissolveGroup } = await import('@/lib/group-management')
     const { sendMessage: supabaseSend } = await import('@/lib/chat')
-    await supabaseSend(groupId, 'system', '群聊已解散', 'system')
+    // Send system message first (best-effort)
+    try { await supabaseSend(groupId, 'system', '群聊已解散', 'system') } catch { /* non-blocking */ }
+    // Actually dissolve the group — only update local state on success
     await dissolveGroup(groupId)
     set((s) => {
       const chats = s.chats.filter(c => c.id !== groupId)
@@ -2098,13 +2142,22 @@ export const useStore = create<AppState>((set, get) => ({
     return await fetchJoinRequests(groupId)
   },
 
-  handleJoinRequestAction: async (requestId, action) => {
+  handleJoinRequestAction: async (requestId, action, groupId?: string) => {
     const state = get()
     if (!state.walletAddress) return
     const { handleJoinRequest } = await import('@/lib/group-management')
     await handleJoinRequest(requestId, action, state.walletAddress)
     if (action === 'approved') {
       await get().refreshChats()
+    }
+    // Decrement pending request badge count
+    if (groupId) {
+      set((s) => ({
+        pendingRequestCounts: {
+          ...s.pendingRequestCounts,
+          [groupId]: Math.max(0, (s.pendingRequestCounts[groupId] || 0) - 1),
+        },
+      }))
     }
   },
 

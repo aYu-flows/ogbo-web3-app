@@ -48,7 +48,7 @@ export default function GroupJoinRequestList({ open, onClose, groupId }: GroupJo
     const loadingKey = action === 'approved' ? 'approve' : 'reject'
     setActionLoading((prev) => ({ ...prev, [requestId]: loadingKey }))
     try {
-      await handleJoinRequestAction(requestId, action)
+      await handleJoinRequestAction(requestId, action, groupId)
       setRequests((prev) => prev.filter((r) => r.id !== requestId))
       const toast = (await import('react-hot-toast')).default
       if (action === 'approved') {

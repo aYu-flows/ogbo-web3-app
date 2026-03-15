@@ -479,6 +479,36 @@ export async function joinViaInviteToken(
   return { groupId: group.id, status: 'joined' }
 }
 
+/** 21b. Preview group info by invite token (lightweight, no side effects) */
+export async function fetchGroupPreviewByToken(
+  token: string,
+): Promise<{ name: string; memberCount: number; avatarUrl?: string } | null> {
+  const { data: invite } = await supabase
+    .from('group_invites')
+    .select('group_id, expires_at')
+    .eq('token', token)
+    .maybeSingle()
+
+  if (!invite) return null
+  const inv = invite as { group_id: string; expires_at: string | null }
+
+  // Check expiry
+  if (inv.expires_at && new Date(inv.expires_at) < new Date()) return null
+
+  const { data: group } = await supabase
+    .from('groups')
+    .select('name, members, avatar_url')
+    .eq('id', inv.group_id)
+    .maybeSingle()
+
+  if (!group) return null
+  return {
+    name: (group as any).name,
+    memberCount: ((group as any).members || []).length,
+    avatarUrl: (group as any).avatar_url || undefined,
+  }
+}
+
 /** 22. Invite friends to a group */
 export async function inviteFriendsToGroup(
   groupId: string,

@@ -3,7 +3,7 @@
 import React from "react";
 import { useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Trash2, CheckSquare } from "lucide-react";
+import { Trash2, CheckSquare, Copy } from "lucide-react";
 import { t } from "@/lib/i18n";
 
 interface MessageContextMenuProps {
@@ -13,6 +13,7 @@ interface MessageContextMenuProps {
   locale: "zh" | "en";
   onDelete: () => void;
   onMultiSelect: () => void;
+  onCopy: () => void;
   onClose: () => void;
 }
 
@@ -23,6 +24,7 @@ export default function MessageContextMenu({
   locale,
   onDelete,
   onMultiSelect,
+  onCopy,
   onClose,
 }: MessageContextMenuProps) {
   const menuRef = useRef<HTMLDivElement>(null);
@@ -50,7 +52,7 @@ export default function MessageContextMenu({
   // Compute position (avoid going off-screen)
   const adjustedStyle = (): React.CSSProperties => {
     const menuWidth = 140;
-    const menuHeight = 96;
+    const menuHeight = 140;
     let left = x - menuWidth / 2;
     let top = y - menuHeight - 8;
 
@@ -78,6 +80,17 @@ export default function MessageContextMenu({
           style={adjustedStyle()}
           className="bg-card border border-border shadow-lg rounded-xl overflow-hidden min-w-[140px]"
         >
+          <button
+            className="flex items-center gap-2.5 w-full px-4 py-2.5 text-sm hover:bg-muted transition-colors text-left"
+            onClick={(e) => {
+              e.stopPropagation();
+              onCopy();
+            }}
+          >
+            <Copy className="w-4 h-4 text-muted-foreground" />
+            <span>{t("chat.msg.copy", locale)}</span>
+          </button>
+          <div className="h-px bg-border" />
           <button
             className="flex items-center gap-2.5 w-full px-4 py-2.5 text-sm hover:bg-muted transition-colors text-left"
             onClick={(e) => {

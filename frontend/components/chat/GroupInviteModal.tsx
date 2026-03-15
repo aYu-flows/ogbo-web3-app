@@ -7,6 +7,7 @@ import { useStore } from '@/lib/store'
 import { t } from '@/lib/i18n'
 import { generateInviteUrl } from '@/lib/group-qrcode'
 import { fetchInviteLinks } from '@/lib/group-management'
+import { copyToClipboard } from '@/lib/utils'
 import type { GroupInviteRow } from '@/lib/group-management'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import {
@@ -81,11 +82,12 @@ export default function GroupInviteModal({ open, onClose, groupId }: GroupInvite
   const handleCopy = async (link: GroupInviteRow) => {
     const url = generateInviteUrl(link.token)
     try {
-      await navigator.clipboard.writeText(url)
+      await copyToClipboard(url)
       const toast = (await import('react-hot-toast')).default
       toast.success(locale === 'zh' ? '链接已复制' : 'Link copied')
     } catch {
-      // clipboard failed
+      const toast = (await import('react-hot-toast')).default
+      toast.error(locale === 'zh' ? '复制失败' : 'Copy failed')
     }
   }
 

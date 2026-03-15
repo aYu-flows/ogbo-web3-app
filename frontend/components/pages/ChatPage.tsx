@@ -50,6 +50,7 @@ import GroupJoinRequestList from "@/components/chat/GroupJoinRequestList";
 import InviteFriendsToGroupModal from "@/components/chat/InviteFriendsToGroupModal";
 import MuteMemberModal from "@/components/chat/MuteMemberModal";
 import TransferOwnerModal from "@/components/chat/TransferOwnerModal";
+import { parseInviteToken } from "@/lib/group-qrcode";
 
 function formatTime(ts: number, locale: "zh" | "en") {
   const now = Date.now();
@@ -146,7 +147,7 @@ function ChatDetail({ chat, onBack, locale }: { chat: Chat; onBack: () => void; 
   const [muteMemberOpen, setMuteMemberOpen] = useState(false);
   const [muteMemberTarget, setMuteMemberTarget] = useState<string | null>(null);
   const [removedAlert, setRemovedAlert] = useState<'removed' | 'dissolved' | null>(null);
-  const announcementShownRef = useRef(false);
+  const announcementShownRef = useRef<Set<string>>(new Set());
   const [muteCountdown, setMuteCountdown] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -253,14 +254,15 @@ function ChatDetail({ chat, onBack, locale }: { chat: Chat; onBack: () => void; 
     }
   }, [chat.id, chat.type, groupDetail]);
 
-  // 4F.4: Check unread announcement on ChatDetail enter (once)
+  // 4F.4: Check unread announcement on ChatDetail enter (once per chat per session)
   useEffect(() => {
     if (chat.type !== 'group' || !groupDetail?.announcement || !groupDetail.announcement_at) return;
-    if (announcementShownRef.current) return;
+    const shownKey = `${chat.id}:${groupDetail.announcement_at}`;
+    if (announcementShownRef.current.has(shownKey)) return;
     const settings = myGroupSettings[chat.id];
     const lastRead = settings?.last_read_announcement_at;
     if (!lastRead || new Date(lastRead) < new Date(groupDetail.announcement_at)) {
-      announcementShownRef.current = true;
+      announcementShownRef.current.add(shownKey);
       setGroupAnnouncementOpen(true);
     }
   }, [chat.id, groupDetail?.announcement_at]);
@@ -501,6 +503,29 @@ function ChatDetail({ chat, onBack, locale }: { chat: Chat; onBack: () => void; 
     setContextMenu({ visible: false, x: 0, y: 0, msgId: '' });
   }, [contextMenu.msgId, chat.id, chat.messages, deleteMessages, fullscreenImage]);
 
+  const handleCopySingle = useCallback(async () => {
+    const msgId = contextMenu.msgId;
+    if (!msgId) return;
+    const msg = chat.messages.find(m => m.id === msgId);
+    const textToCopy = msg?.content || '';
+    if (textToCopy) {
+      const { copyToClipboard } = await import('@/lib/utils');
+      try {
+        await copyToClipboard(textToCopy);
+        const rht = await import('react-hot-toast');
+        rht.default.success(locale === 'zh' ? '已复制' : 'Copied');
+      } catch {
+        const rht = await import('react-hot-toast');
+        rht.default.error(locale === 'zh' ? '复制失败' : 'Copy failed');
+      }
+    } else {
+      // Media message with no text content
+      const rht = await import('react-hot-toast');
+      rht.default(locale === 'zh' ? '该消息无文字内容' : 'No text to copy');
+    }
+    setContextMenu({ visible: false, x: 0, y: 0, msgId: '' });
+  }, [contextMenu.msgId, chat.messages, locale]);
+
   const handleEnterMultiSelect = useCallback(() => {
     const msgId = contextMenu.msgId;
     setContextMenu({ visible: false, x: 0, y: 0, msgId: '' });
@@ -515,6 +540,25 @@ function ChatDetail({ chat, onBack, locale }: { chat: Chat; onBack: () => void; 
       return next;
     });
   }, []);
+
+  const handleBatchCopy = useCallback(async () => {
+    if (selectedMsgIds.size === 0) return;
+    const texts = chat.messages
+      .filter(m => selectedMsgIds.has(m.id) && m.content)
+      .map(m => m.content);
+    if (texts.length === 0) return;
+    const { copyToClipboard } = await import('@/lib/utils');
+    try {
+      await copyToClipboard(texts.join('\n'));
+      const rht = await import('react-hot-toast');
+      rht.default.success(locale === 'zh' ? '已复制' : 'Copied');
+    } catch {
+      const rht = await import('react-hot-toast');
+      rht.default.error(locale === 'zh' ? '复制失败' : 'Copy failed');
+    }
+    setIsSelectMode(false);
+    setSelectedMsgIds(new Set());
+  }, [selectedMsgIds, chat.messages, locale]);
 
   const handleBatchDelete = useCallback(() => {
     if (selectedMsgIds.size === 0) return;
@@ -759,6 +803,7 @@ function ChatDetail({ chat, onBack, locale }: { chat: Chat; onBack: () => void; 
         y={contextMenu.y}
         locale={locale}
         onDelete={handleDeleteSingle}
+        onCopy={handleCopySingle}
         onMultiSelect={handleEnterMultiSelect}
         onClose={() => setContextMenu(cm => ({ ...cm, visible: false }))}
       />
@@ -775,17 +820,30 @@ function ChatDetail({ chat, onBack, locale }: { chat: Chat; onBack: () => void; 
           <span className="text-sm text-muted-foreground">
             {t('chat.msg.selected', locale).replace('{n}', String(selectedMsgIds.size))}
           </span>
-          <button
-            className={`text-sm font-medium transition-colors ${
-              selectedMsgIds.size > 0
-                ? 'text-red-500 hover:text-red-600'
-                : 'text-muted-foreground/40 cursor-not-allowed'
-            }`}
-            onClick={handleBatchDelete}
-            disabled={selectedMsgIds.size === 0}
-          >
-            {t('chat.msg.delete', locale)}
-          </button>
+          <div className="flex items-center gap-3">
+            <button
+              className={`text-sm font-medium transition-colors ${
+                selectedMsgIds.size > 0
+                  ? 'text-[var(--ogbo-blue)] hover:text-[var(--ogbo-blue-hover)]'
+                  : 'text-muted-foreground/40 cursor-not-allowed'
+              }`}
+              onClick={handleBatchCopy}
+              disabled={selectedMsgIds.size === 0}
+            >
+              {t('chat.msg.copy', locale)}
+            </button>
+            <button
+              className={`text-sm font-medium transition-colors ${
+                selectedMsgIds.size > 0
+                  ? 'text-red-500 hover:text-red-600'
+                  : 'text-muted-foreground/40 cursor-not-allowed'
+              }`}
+              onClick={handleBatchDelete}
+              disabled={selectedMsgIds.size === 0}
+            >
+              {t('chat.msg.delete', locale)}
+            </button>
+          </div>
         </div>
       ) : (
       <div className="border-t border-border bg-card px-2 py-2 relative">
@@ -816,8 +874,12 @@ function ChatDetail({ chat, onBack, locale }: { chat: Chat; onBack: () => void; 
                 onInput={handleInput}
                 onCompositionStart={() => setIsComposing(true)}
                 onCompositionEnd={() => {
-                  setTimeout(() => setIsComposing(false), 0);
+                  setTimeout(() => {
+                    setIsComposing(false);
+                    handleInput();
+                  }, 0);
                 }}
+                onChange={handleInput}
                 onKeyDown={handleKeyDown}
                 onFocus={() => {
                   setTimeout(() => {
@@ -984,6 +1046,9 @@ export default function ChatPage({ searchOpen: searchOpenProp, onCloseSearch }: 
   const [showRequests, setShowRequests] = useState(false);
   const [swipedId, setSwipedId] = useState<string | null>(null);
   const [previewAddress, setPreviewAddress] = useState<string | null>(null);
+  const [invitePreview, setInvitePreview] = useState<{ name: string; memberCount: number; avatarUrl?: string; token: string } | null>(null);
+  const [loadingPreview, setLoadingPreview] = useState(false);
+  const [inviteLinkInvalid, setInviteLinkInvalid] = useState(false);
 
   // Reset selected chat when wallet switches (walletAddress changes)
   const prevWalletRef = useRef<string | null>(null);
@@ -994,6 +1059,40 @@ export default function ChatPage({ searchOpen: searchOpenProp, onCloseSearch }: 
       setActiveChatId(null);
     }
   }, [walletAddress]);
+
+  // Detect invite link in search input and show group preview
+  useEffect(() => {
+    if (!deferredSearchQuery) {
+      setInvitePreview(null);
+      setInviteLinkInvalid(false);
+      return;
+    }
+    const token = parseInviteToken(deferredSearchQuery);
+    if (!token) {
+      setInvitePreview(null);
+      setInviteLinkInvalid(false);
+      return;
+    }
+    let cancelled = false;
+    setLoadingPreview(true);
+    setInviteLinkInvalid(false);
+    import('@/lib/group-management').then(({ fetchGroupPreviewByToken }) =>
+      fetchGroupPreviewByToken(token)
+    ).then((preview) => {
+      if (cancelled) return;
+      setLoadingPreview(false);
+      if (preview) {
+        setInvitePreview({ ...preview, token });
+        setInviteLinkInvalid(false);
+      } else {
+        setInvitePreview(null);
+        setInviteLinkInvalid(true);
+      }
+    }).catch(() => {
+      if (!cancelled) { setLoadingPreview(false); setInvitePreview(null); setInviteLinkInvalid(true); }
+    });
+    return () => { cancelled = true; };
+  }, [deferredSearchQuery]);
 
   const searchOpen = searchOpenProp ?? false;
 
@@ -1073,6 +1172,58 @@ export default function ChatPage({ searchOpen: searchOpenProp, onCloseSearch }: 
               </p>
             </div>
           </motion.button>
+        )}
+
+        {/* Invite link preview card */}
+        {searchOpen && invitePreview && (
+          <div className="mx-4 mt-2 mb-1 p-3 bg-muted/50 rounded-xl border border-border">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-[var(--ogbo-blue)]/10 flex items-center justify-center flex-shrink-0">
+                <Users className="w-5 h-5 text-[var(--ogbo-blue)]" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium truncate">{invitePreview.name}</p>
+                <p className="text-xs text-muted-foreground">
+                  {invitePreview.memberCount} {locale === 'zh' ? '成员' : 'members'}
+                </p>
+              </div>
+              <button
+                onClick={async () => {
+                  try {
+                    const result = await useStore.getState().joinGroupViaToken(invitePreview.token);
+                    if (result.status === 'joined') {
+                      toast.success(locale === 'zh' ? '已加入群聊' : 'Joined group');
+                      searchIME.setValue('');
+                      setInvitePreview(null);
+                    } else if (result.status === 'pending') {
+                      toast(locale === 'zh' ? '申请已提交' : 'Request submitted');
+                    } else if (result.status === 'already_member') {
+                      toast(locale === 'zh' ? '你已是群成员' : 'Already a member');
+                    } else {
+                      toast.error(locale === 'zh' ? '加入失败' : 'Failed to join');
+                    }
+                  } catch {
+                    toast.error(locale === 'zh' ? '加入失败' : 'Failed to join');
+                  }
+                }}
+                className="px-3 py-1.5 rounded-lg bg-[var(--ogbo-blue)] text-white text-xs font-medium hover:bg-[var(--ogbo-blue-hover)] transition-colors flex-shrink-0"
+              >
+                {locale === 'zh' ? '加入' : 'Join'}
+              </button>
+            </div>
+          </div>
+        )}
+        {searchOpen && loadingPreview && parseInviteToken(deferredSearchQuery) && (
+          <div className="mx-4 mt-2 mb-1 flex justify-center py-3">
+            <div className="w-5 h-5 border-2 border-[var(--ogbo-blue)] border-t-transparent rounded-full animate-spin" />
+          </div>
+        )}
+        {searchOpen && inviteLinkInvalid && !loadingPreview && (
+          <div className="mx-4 mt-2 mb-1 p-3 bg-muted/50 rounded-xl border border-border text-center">
+            <p className="text-sm text-muted-foreground">
+              {locale === 'zh' ? '邀请链接无效或已过期' : 'Invite link is invalid or expired'}
+            </p>
+          </div>
         )}
 
         {/* Chat list */}

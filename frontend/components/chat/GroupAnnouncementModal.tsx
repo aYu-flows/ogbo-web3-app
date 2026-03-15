@@ -80,7 +80,7 @@ export default function GroupAnnouncementModal({
     setSaving(true)
     try {
       await setAnnouncementAction(groupId, trimmed)
-      toast({ title: t('group.announcementUpdated', locale) })
+      // Toast is already shown by setAnnouncementAction in store — no duplicate here
       setIsEditing(false)
     } catch {
       toast({ title: t('group.error.operationFailed', locale), variant: 'destructive' })
@@ -129,6 +129,11 @@ export default function GroupAnnouncementModal({
                     locale === 'zh' ? '输入群公告内容...' : 'Enter announcement...'
                   }
                   rows={5}
+                  onFocus={(e) => {
+                    setTimeout(() => {
+                      e.target.scrollIntoView({ behavior: 'smooth', block: 'center' })
+                    }, 300)
+                  }}
                   className="w-full bg-muted rounded-xl px-4 py-3 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-[var(--ogbo-blue)]/30"
                   disabled={saving}
                 />

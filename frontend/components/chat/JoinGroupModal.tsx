@@ -129,6 +129,11 @@ export default function JoinGroupModal({ open, onClose }: JoinGroupModalProps) {
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleJoin()}
+              onFocus={(e) => {
+                setTimeout(() => {
+                  e.target.scrollIntoView({ behavior: 'smooth', block: 'center' })
+                }, 300)
+              }}
               placeholder={locale === 'zh' ? '输入邀请码或链接' : 'Enter invite code or link'}
               className="w-full bg-muted rounded-xl px-4 pr-10 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--ogbo-blue)]/30"
               disabled={loading}
