@@ -391,6 +391,18 @@ function ChatDetail({ chat, onBack, locale }: { chat: Chat; onBack: () => void; 
     setHasText(val.trim().length > 0);
   }, []);
 
+  // Native DOM input listener — reliable on all platforms including Android WebView
+  // Bypasses React's synthetic event system to catch IME composition changes
+  useEffect(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    const handler = () => {
+      setHasText(el.value.trim().length > 0);
+    };
+    el.addEventListener('input', handler);
+    return () => el.removeEventListener('input', handler);
+  }, []);
+
   const handleSend = async () => {
     const rawValue = inputRef.current?.value ?? '';
     if (!rawValue.trim()) {
@@ -874,10 +886,10 @@ function ChatDetail({ chat, onBack, locale }: { chat: Chat; onBack: () => void; 
                 onInput={handleInput}
                 onCompositionStart={() => setIsComposing(true)}
                 onCompositionEnd={() => {
-                  setTimeout(() => {
-                    setIsComposing(false);
+                  setIsComposing(false);
+                  requestAnimationFrame(() => {
                     handleInput();
-                  }, 0);
+                  });
                 }}
                 onChange={handleInput}
                 onKeyDown={handleKeyDown}
@@ -1059,6 +1071,14 @@ export default function ChatPage({ searchOpen: searchOpenProp, onCloseSearch }: 
       setActiveChatId(null);
     }
   }, [walletAddress]);
+
+  // Auto-deselect when the selected chat no longer exists (e.g. dissolved/left/kicked)
+  useEffect(() => {
+    if (selectedChat && !chats.some(c => c.id === selectedChat)) {
+      setSelectedChat(null);
+      setActiveChatId(null);
+    }
+  }, [chats, selectedChat]);
 
   // Detect invite link in search input and show group preview
   useEffect(() => {

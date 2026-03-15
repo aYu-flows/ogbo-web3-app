@@ -21,13 +21,19 @@ export function useIMEInput(initialValue = '') {
   }, [])
 
   const onCompositionEnd = useCallback((e: React.CompositionEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    // MUST be synchronous — on Android, onChange fires before compositionEnd.
+    // If deferred, handleChange would still see isComposing=true and skip deferredValue update.
     isComposingRef.current = false
-    // Read the final value from the DOM element to handle Android Chrome event ordering
-    const finalValue = e.currentTarget.value
-    setValue(finalValue)
-    setDeferredValue(finalValue)
-    // Force increment to trigger downstream effects even if value is the same
-    setCompositionEndCount(c => c + 1)
+    const el = e.currentTarget
+    // Use rAF to ensure DOM value is finalized (Android WebView timing issue).
+    // If onChange already ran (Android order), this is a harmless redundant update.
+    requestAnimationFrame(() => {
+      const finalValue = el.value
+      setValue(finalValue)
+      setDeferredValue(finalValue)
+      // Force increment to trigger downstream effects even if value is the same
+      setCompositionEndCount(c => c + 1)
+    })
   }, [])
 
   const handleChange = useCallback((e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {

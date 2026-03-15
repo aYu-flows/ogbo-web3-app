@@ -4,6 +4,18 @@
 
 ---
 
+## Task85 — Dissolve Group Blank Page + IME Input Detection Fix (2026-03-15)
+
+### Fixed
+- Dissolve/leave/kick group causing blank chat list page on mobile (auto-deselect `selectedChat` when chat no longer exists)
+- Chinese IME input not detected across all input fields — microphone icon not switching to send, search not triggering, nickname/group name not updating after composition (replaced `setTimeout(0)` with `requestAnimationFrame` + added native DOM `input` listener)
+
+### Modified
+- `components/pages/ChatPage.tsx` — added auto-deselect useEffect for stale selectedChat; added native DOM input listener for IME reliability; changed compositionEnd from setTimeout to requestAnimationFrame
+- `hooks/use-ime-input.ts` — onCompositionEnd now uses requestAnimationFrame for DOM value reading (synchronous isComposingRef reset preserved for Android onChange ordering)
+
+---
+
 ## Task84 — Chat & Group Management 18 Bug Fixes (2026-03-15)
 
 ### Fixed
