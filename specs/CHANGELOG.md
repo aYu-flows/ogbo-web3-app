@@ -4,6 +4,24 @@
 
 ---
 
+## Task89 — 10 Chat & Group Management Bug Fixes (2026-03-16)
+
+### Fixed
+- Duplicate announcement popup on edit/Realtime re-trigger — module-level dedup Set + cooldown guard + `useStore.getState()` to avoid stale closure (`ChatPage.tsx`)
+- Announcement edit cancel only exiting edit mode, not closing modal — cancel button now calls `handleClose()` (`GroupAnnouncementModal.tsx`)
+- Drawer card position jump on input focus — switched from `translateY` to `paddingBottom` to avoid vaul transform conflict (`drawer.tsx`)
+- Paste invite link not triggering search — added `onPaste` handler with `setTimeout(0)` for DOM sync (`JoinGroupModal.tsx`)
+- Toast messages stacking up and never auto-dismissing — migrated 3 components from non-functional shadcn toast to react-hot-toast, unified global duration to 1000ms (`GroupSettingsPanel.tsx`, `TransferOwnerModal.tsx`, `GroupAnnouncementModal.tsx`, `page.tsx`, `LoginApp.tsx`, `TopBar.tsx`, `SidebarNav.tsx`)
+- Wallet switch state inconsistency after app restart — wagmi sync guard checks wallet type before overriding (`page.tsx`), removed "Connected" label (`AssetsPage.tsx`)
+- Chat page showing previous wallet data after switch — `switchWallet` now resets all group-related state (`store.ts`)
+
+### Changed
+- `setAnnouncementAction` no longer patches `announcement_at` locally to prevent dedup key mismatch (`store.ts`)
+- `JoinGroupModal` uses delayed programmatic focus instead of `autoFocus` to prevent drawer snap point jump
+- All toast calls across the app now use react-hot-toast with 1000ms global duration
+
+---
+
 ## Task87 — Group Management & IME Debug Fixes (2026-03-16)
 
 ### Fixed

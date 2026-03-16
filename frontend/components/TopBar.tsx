@@ -44,7 +44,7 @@ export default function TopBar({
 
   const handleLogout = () => {
     setLoggingOut(true);
-    toast(t("common.loggingOut", locale), { duration: 1200 });
+    toast(t("common.loggingOut", locale));
     setTimeout(() => {
       // Disconnect wagmi wallet first to clear connection state
       disconnect();

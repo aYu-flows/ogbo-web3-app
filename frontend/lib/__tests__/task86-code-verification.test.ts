@@ -15,8 +15,8 @@ describe('E1: Data Link Consistency — Code verification', () => {
 
     // setAnnouncementAction should call setGroupAnnouncement (DB write)
     expect(content).toContain('setGroupAnnouncement')
-    // And patchActiveGroupDetail for local state
-    expect(content).toContain('patchActiveGroupDetail(groupId, { announcement: text, announcement_at:')
+    // And patchActiveGroupDetail for local state (announcement_at omitted intentionally — Task89 fix)
+    expect(content).toContain('patchActiveGroupDetail(groupId, { announcement: text, announcement_by:')
   })
 
   test('E1.2: markAnnouncementRead updates last_read_announcement_at', () => {
@@ -115,7 +115,8 @@ describe('F2: Operation Feedback — Code verification', () => {
     const modalPath = path.join(FRONTEND_ROOT, 'components', 'chat', 'GroupAnnouncementModal.tsx')
     const content = fs.readFileSync(modalPath, 'utf-8')
 
-    expect(content).toContain("variant: 'destructive'")
+    // Task89: migrated from shadcn toast to react-hot-toast
+    expect(content).toContain("hotToast.error")
     expect(content).toContain("t('group.error.operationFailed'")
   })
 
@@ -167,6 +168,7 @@ describe('F4: Visual Consistency — Code verification', () => {
     const drawerPath = path.join(FRONTEND_ROOT, 'components', 'ui', 'drawer.tsx')
     const content = fs.readFileSync(drawerPath, 'utf-8')
 
-    expect(content).toContain('transition-transform duration-200')
+    // Task89: changed from transition-transform to transition-[padding] to avoid vaul conflict
+    expect(content).toContain('transition-[padding] duration-200')
   })
 })

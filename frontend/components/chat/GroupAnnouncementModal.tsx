@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { Loader2, Megaphone } from 'lucide-react'
 import { useStore } from '@/lib/store'
 import { t } from '@/lib/i18n'
-import { toast } from '@/hooks/use-toast'
+import hotToast from 'react-hot-toast'
 import { useIMEInput } from '@/hooks/use-ime-input'
 import {
   Drawer,
@@ -83,7 +83,7 @@ export default function GroupAnnouncementModal({
       // Toast is already shown by setAnnouncementAction in store — no duplicate here
       setIsEditing(false)
     } catch {
-      toast({ title: t('group.error.operationFailed', locale), variant: 'destructive' })
+      hotToast.error(t('group.error.operationFailed', locale))
     } finally {
       setSaving(false)
     }
@@ -139,7 +139,7 @@ export default function GroupAnnouncementModal({
 
               <div className="flex gap-2">
                 <button
-                  onClick={() => setIsEditing(false)}
+                  onClick={() => { setIsEditing(false); handleClose(); }}
                   disabled={saving}
                   className="flex-1 rounded-xl px-4 py-2.5 text-sm font-medium bg-muted hover:bg-muted/80 transition-colors disabled:opacity-50"
                 >

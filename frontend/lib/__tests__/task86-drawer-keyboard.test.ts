@@ -63,13 +63,13 @@ describe('Drawer keyboard avoidance — Code structure verification', () => {
     expect(content).toContain('useDrawerKeyboard()')
   })
 
-  test('DrawerContent applies translateY transform when keyboard is open', () => {
+  test('DrawerContent applies paddingBottom when keyboard is open', () => {
     const drawerPath = path.join(FRONTEND_ROOT, 'components', 'ui', 'drawer.tsx')
     const content = fs.readFileSync(drawerPath, 'utf-8')
 
-    expect(content).toContain('translateY')
+    expect(content).toContain('paddingBottom')
     expect(content).toContain('keyboardHeight')
-    expect(content).toContain('transition-transform')
+    expect(content).toContain('transition-[padding]')
   })
 
   test('DrawerContent does NOT apply transform when keyboardHeight is 0', () => {

@@ -3,6 +3,10 @@
 import React from "react";
 import { MessageCircle } from "lucide-react"; // Import MessageCircle
 
+// Module-level dedup: persists across ChatDetail mounts/unmounts within same session
+const announcementShownKeys = new Set<string>();
+const announcementCooldownMap = new Map<string, number>(); // chatId -> timestamp
+
 import { useState, useRef, useEffect, useCallback, useDeferredValue } from "react";
 import { Capacitor } from "@capacitor/core";
 import { Keyboard } from "@capacitor/keyboard";
@@ -147,7 +151,7 @@ function ChatDetail({ chat, onBack, locale }: { chat: Chat; onBack: () => void; 
   const [muteMemberOpen, setMuteMemberOpen] = useState(false);
   const [muteMemberTarget, setMuteMemberTarget] = useState<string | null>(null);
   const [removedAlert, setRemovedAlert] = useState<'removed' | 'dissolved' | null>(null);
-  const announcementShownRef = useRef<Map<string, string>>(new Map());
+  // announcementShownRef is module-level (see top of file) to persist across mounts
   const [muteCountdown, setMuteCountdown] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -255,18 +259,24 @@ function ChatDetail({ chat, onBack, locale }: { chat: Chat; onBack: () => void; 
   }, [chat.id, chat.type, groupDetail]);
 
   // 4F.4: Check unread announcement on ChatDetail enter (once per chat per session)
+  // Uses module-level Set + cooldown to prevent duplicates across mounts/remounts
   useEffect(() => {
     if (chat.type !== 'group' || !groupDetail?.announcement || !groupDetail.announcement_at) return;
     // Skip popup for the author who just published the announcement
     if (groupDetail.announcement_by && walletAddress && groupDetail.announcement_by === walletAddress.toLowerCase()) return;
     const currentAt = groupDetail.announcement_at;
-    const previouslyShownAt = announcementShownRef.current.get(chat.id);
-    // Only show if this announcement_at is genuinely newer than what we already showed
-    if (previouslyShownAt && new Date(previouslyShownAt) >= new Date(currentAt)) return;
-    const settings = myGroupSettings[chat.id];
-    const lastRead = settings?.last_read_announcement_at;
+    const dedupKey = `${chat.id}|${currentAt}`;
+    // Already shown this exact announcement this session
+    if (announcementShownKeys.has(dedupKey)) return;
+    // Cooldown: prevent rapid re-triggers for same chat (3 seconds)
+    const lastShown = announcementCooldownMap.get(chat.id) ?? 0;
+    if (Date.now() - lastShown < 3000) return;
+    // Read latest myGroupSettings from store (avoid stale closure)
+    const latestSettings = useStore.getState().myGroupSettings[chat.id];
+    const lastRead = latestSettings?.last_read_announcement_at;
     if (!lastRead || new Date(lastRead) < new Date(currentAt)) {
-      announcementShownRef.current.set(chat.id, currentAt);
+      announcementShownKeys.add(dedupKey);
+      announcementCooldownMap.set(chat.id, Date.now());
       setGroupAnnouncementOpen(true);
     }
   }, [chat.id, groupDetail?.announcement_at]);

@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { Loader2, AlertTriangle } from 'lucide-react'
 import { useStore } from '@/lib/store'
 import { t } from '@/lib/i18n'
-import { toast } from '@/hooks/use-toast'
+import hotToast from 'react-hot-toast'
 import {
   Drawer,
   DrawerContent,
@@ -62,10 +62,10 @@ export default function GroupSettingsPanel({
     setJoinModeLoading(true)
     try {
       await updateJoinMode(groupId, newMode)
-      toast({ title: t('common.updated', locale) })
+      hotToast.success(t('common.updated', locale))
     } catch {
       setLocalJoinMode(groupDetail?.join_mode ?? 'free')
-      toast({ title: t('group.error.operationFailed', locale), variant: 'destructive' })
+      hotToast.error(t('group.error.operationFailed', locale))
     } finally {
       setJoinModeLoading(false)
     }
@@ -76,21 +76,21 @@ export default function GroupSettingsPanel({
 
     // When toggling OFF (from approval to no-approval), warn about auto-approving pending requests
     if (!checked && localInviteApproval) {
-      toast({
-        title: locale === 'zh'
-          ? '关闭后，待处理的邀请请求将被自动通过'
-          : 'Pending invite requests will be auto-approved when disabled',
-      })
+      hotToast(locale === 'zh'
+        ? '关闭后，待处理的邀请请求将被自动通过'
+        : 'Pending invite requests will be auto-approved when disabled',
+        { icon: '\u2139\uFE0F' }
+      )
     }
 
     setLocalInviteApproval(checked)
     setInviteApprovalLoading(true)
     try {
       await toggleInviteApproval(groupId)
-      toast({ title: t('common.updated', locale) })
+      hotToast.success(t('common.updated', locale))
     } catch {
       setLocalInviteApproval(groupDetail?.invite_approval ?? false)
-      toast({ title: t('group.error.operationFailed', locale), variant: 'destructive' })
+      hotToast.error(t('group.error.operationFailed', locale))
     } finally {
       setInviteApprovalLoading(false)
     }
@@ -102,14 +102,12 @@ export default function GroupSettingsPanel({
     setMuteAllLoading(true)
     try {
       await toggleMuteAll(groupId)
-      toast({
-        title: checked
-          ? t('group.muteAll', locale)
-          : t('group.unmuteAll', locale),
-      })
+      hotToast.success(checked
+        ? t('group.muteAll', locale)
+        : t('group.unmuteAll', locale))
     } catch {
       setLocalMuteAll(groupDetail?.mute_all ?? false)
-      toast({ title: t('group.error.operationFailed', locale), variant: 'destructive' })
+      hotToast.error(t('group.error.operationFailed', locale))
     } finally {
       setMuteAllLoading(false)
     }

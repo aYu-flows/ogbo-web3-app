@@ -537,6 +537,11 @@ export const useStore = create<AppState>((set, get) => ({
       unreadChatCount: 0,
       myProfile: null,
       profileCache: {},
+      groupJoinedAtMap: {},
+      myGroupSettings: {},
+      pendingRequestCounts: {},
+      myMuteStatus: {},
+      activeGroupDetail: {},
     })
   },
   toggleCoinFavorite: (coinId) =>
@@ -2061,8 +2066,9 @@ export const useStore = create<AppState>((set, get) => ({
     const { setGroupAnnouncement } = await import('@/lib/group-management')
     const { sendMessage: supabaseSend } = await import('@/lib/chat')
     await setGroupAnnouncement(groupId, text, state.walletAddress)
-    const now = new Date().toISOString()
-    get().patchActiveGroupDetail(groupId, { announcement: text, announcement_at: now, announcement_by: state.walletAddress.toLowerCase() })
+    // Only patch announcement text and author locally; let Realtime deliver the authoritative announcement_at
+    // to prevent local-vs-DB timestamp mismatch that causes duplicate popups for members
+    get().patchActiveGroupDetail(groupId, { announcement: text, announcement_by: state.walletAddress.toLowerCase() })
     const name = state.getDisplayName(state.walletAddress)
     await supabaseSend(groupId, 'system', `${name} 更新了群公告`, 'system')
     const { default: toast } = await import('react-hot-toast')

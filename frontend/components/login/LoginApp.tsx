@@ -908,12 +908,12 @@ function NetworkSelectionView({ goTo, nextView, backView, descKey, onSelectNetwo
       const msg = network.id === "solana"
         ? (locale === "zh" ? "Solana 支持即将推出 🔜" : "Solana support coming soon 🔜")
         : (locale === "zh" ? "Bitcoin 支持即将推出 🔜" : "Bitcoin support coming soon 🔜");
-      toast(msg, { duration: 2500 });
+      toast(msg);
       return;
     }
     setSelectedId(network.id);
     onSelectNetwork(network);
-    toast.success(`${t("network.selected", locale)} ${network.name}`, { duration: 1500 });
+    toast.success(`${t("network.selected", locale)} ${network.name}`);
     setTimeout(() => goTo(nextView), 400);
   };
 
@@ -2206,7 +2206,7 @@ export default function LoginApp({
       {/* Toaster - only render when standalone (modal mode reuses parent page's Toaster) */}
       {!isModal && (
         <Toaster position="top-center" containerStyle={{ top: "20vh" }} toastOptions={{
-          duration: 2500,
+          duration: 1000,
           style: { background: "hsl(var(--card))", color: "hsl(var(--card-foreground))", border: "1px solid hsl(var(--border))", borderRadius: "12px", fontSize: "13px", fontWeight: 500, boxShadow: "0 4px 12px rgba(0,0,0,0.1)" },
         }} />
       )}

@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { Loader2, Crown } from 'lucide-react'
 import { useStore } from '@/lib/store'
 import { t } from '@/lib/i18n'
-import { toast } from '@/hooks/use-toast'
+import hotToast from 'react-hot-toast'
 import {
   Drawer,
   DrawerContent,
@@ -65,12 +65,12 @@ export default function TransferOwnerModal({
       // Fetch latest group detail for current admins
       const group = await fetchGroupDetail(groupId)
       await transferOwnership(groupId, selectedWallet, group.admins)
-      toast({ title: t('group.transferSuccess', locale) })
+      hotToast.success(t('group.transferSuccess', locale))
       setConfirmOpen(false)
       setSelectedWallet(null)
       onClose()
     } catch {
-      toast({ title: t('group.error.operationFailed', locale), variant: 'destructive' })
+      hotToast.error(t('group.error.operationFailed', locale))
     } finally {
       setTransferring(false)
     }

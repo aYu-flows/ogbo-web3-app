@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { Loader2, LogIn, ClipboardPaste, Users } from 'lucide-react'
 import { useStore } from '@/lib/store'
 import { t } from '@/lib/i18n'
@@ -26,6 +26,16 @@ export default function JoinGroupModal({ open, onClose }: JoinGroupModalProps) {
   const [loadingPreview, setLoadingPreview] = useState(false)
   const [inviteLinkInvalid, setInviteLinkInvalid] = useState(false)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  // Focus input after drawer open animation completes (avoid snap point jump from autoFocus)
+  useEffect(() => {
+    if (!open) return
+    const timer = setTimeout(() => {
+      inputRef.current?.focus()
+    }, 300)
+    return () => clearTimeout(timer)
+  }, [open])
 
   // Detect invite link and load preview
   useEffect(() => {
@@ -190,14 +200,23 @@ export default function JoinGroupModal({ open, onClose }: JoinGroupModalProps) {
           {/* Input field with paste button */}
           <div className="relative">
             <input
+              ref={inputRef}
               type="text"
               value={input}
               onChange={(e) => setInput(e.target.value)}
+              onPaste={(e) => {
+                // Ensure native paste triggers state update on all platforms (Android WebView fix)
+                const pasted = e.clipboardData?.getData('text')
+                if (pasted) {
+                  setTimeout(() => {
+                    if (inputRef.current) setInput(inputRef.current.value)
+                  }, 0)
+                }
+              }}
               onKeyDown={(e) => e.key === 'Enter' && handleJoin()}
               placeholder={locale === 'zh' ? '输入邀请码或链接' : 'Enter invite code or link'}
               className="w-full bg-muted rounded-xl px-4 pr-10 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--ogbo-blue)]/30"
               disabled={loading}
-              autoFocus
             />
             {!input && (
               <button

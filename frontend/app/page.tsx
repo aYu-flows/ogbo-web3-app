@@ -22,7 +22,7 @@ import { unlockAudio } from "@/lib/soundPlayer";
 import { useOtaUpdater } from "@/lib/use-ota-updater";
 export default function Page() {
   useOtaUpdater();
-  const { activeTab, isLoggedIn, checkAuthStatus, initChat, chatReady, isConnectingChat, destroyChat, walletAddress, login, chats, cleanupExternalWallet, refreshChats } = useStore();
+  const { activeTab, isLoggedIn, checkAuthStatus, initChat, chatReady, isConnectingChat, destroyChat, walletAddress, login, chats, cleanupExternalWallet, refreshChats, wallets, currentWalletId } = useStore();
   const [isChecking, setIsChecking] = useState(true);
   const [chatSearchOpen, setChatSearchOpen] = useState(false);
   const [addFriendOpen, setAddFriendOpen] = useState(false);
@@ -57,13 +57,19 @@ export default function Page() {
   }, [isLoggedIn, isChecking]);
 
   // Sync wagmi wallet address to store when connected
+  // Only sync if the currently selected wallet is an external (wagmi) type,
+  // to prevent wagmi auto-reconnect from overriding manual wallet selection
   useEffect(() => {
     if (isConnected && wagmiAddress && isLoggedIn) {
-      if (!walletAddress || walletAddress.toLowerCase() !== wagmiAddress.toLowerCase()) {
-        login(wagmiAddress);
+      const currentWallet = wallets.find(w => w.id === currentWalletId);
+      // Only sync if current wallet is external type (wagmi-managed)
+      if (!currentWallet || currentWallet.type === 'external') {
+        if (!walletAddress || walletAddress.toLowerCase() !== wagmiAddress.toLowerCase()) {
+          login(wagmiAddress);
+        }
       }
     }
-  }, [isConnected, wagmiAddress, isLoggedIn]);
+  }, [isConnected, wagmiAddress, isLoggedIn, currentWalletId]);
 
   // Initialize Supabase chat when user is logged in and wallet address is available
   useEffect(() => {
@@ -156,7 +162,7 @@ export default function Page() {
           top: "20vh",
         }}
         toastOptions={{
-          duration: 2000,
+          duration: 1000,
           style: {
             background: "hsl(var(--card))",
             color: "hsl(var(--card-foreground))",
