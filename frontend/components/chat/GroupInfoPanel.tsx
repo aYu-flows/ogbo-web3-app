@@ -123,15 +123,16 @@ export default function GroupInfoPanel({
     let cancelled = false
 
     setLoading(true)
-    openGroupManagement(groupId).then((detail) => {
+    openGroupManagement(groupId).then(async (detail) => {
       if (cancelled) return
       if (detail && walletAddress) {
         setRole(getGroupRole(detail, walletAddress))
         // Load profiles for all group members to ensure nicknames are available
         if (detail.members?.length) {
-          loadProfiles(detail.members)
+          await loadProfiles(detail.members)
         }
       }
+      if (cancelled) return
       setLoading(false)
     })
 
@@ -412,15 +413,21 @@ export default function GroupInfoPanel({
                     {editingName ? (
                       <input
                         ref={nameInputRef}
-                        defaultValue={groupDetail.name}
+                        value={nameIME.value}
+                        onCompositionStart={nameInputProps.onCompositionStart}
+                        onCompositionEnd={nameInputProps.onCompositionEnd}
+                        onChange={nameInputProps.onChange}
                         onBlur={() => {
-                          handleSaveName()
+                          requestAnimationFrame(() => {
+                            if (!nameIME.isComposingRef.current) {
+                              handleSaveName()
+                            }
+                          })
                         }}
                         onKeyDown={(e) => {
-                          if (e.key === 'Enter') { e.preventDefault(); handleSaveName() }
+                          nameInputProps.onKeyDown(e)
                           if (e.key === 'Escape') setEditingName(false)
                         }}
-                        maxLength={50}
                         disabled={savingName}
                         className="w-full bg-muted text-foreground text-lg font-semibold rounded-lg px-2 py-1 outline-none focus:ring-1 focus:ring-indigo-500 disabled:opacity-50"
                       />
@@ -500,12 +507,19 @@ export default function GroupInfoPanel({
                       <span className="text-sm text-muted-foreground flex-shrink-0">{t('group.myNickname', locale)}</span>
                       <input
                         ref={nicknameInputRef}
-                        defaultValue={myNickname || ''}
+                        value={nicknameIME.value}
+                        onCompositionStart={nicknameInputProps.onCompositionStart}
+                        onCompositionEnd={nicknameInputProps.onCompositionEnd}
+                        onChange={nicknameInputProps.onChange}
                         onBlur={() => {
-                          handleSaveNickname()
+                          requestAnimationFrame(() => {
+                            if (!nicknameIME.isComposingRef.current) {
+                              handleSaveNickname()
+                            }
+                          })
                         }}
                         onKeyDown={(e) => {
-                          if (e.key === 'Enter') { e.preventDefault(); handleSaveNickname() }
+                          nicknameInputProps.onKeyDown(e)
                           if (e.key === 'Escape') setEditingNickname(false)
                         }}
                         placeholder={t('group.nicknamePlaceholder', locale)}

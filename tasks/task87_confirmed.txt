@@ -1,0 +1,35 @@
+Task 87 - Group Management & IME Debug Fixes (3 confirmed bugs)
+
+Original task: 13 reported issues about chat and group management features.
+After verification against the current codebase, 10 of 13 issues were already fixed in previous tasks (Task80/84/85/86).
+Only 3 issues remain active and need fixing.
+
+=== Confirmed Active Bugs ===
+
+Bug 1 (Original Issue #10): Group name and group nickname Chinese input disappears / not saved
+- Location: GroupInfoPanel.tsx
+- Symptom: When user types Chinese in group name or group nickname input, the text disappears or is not saved correctly
+- Root cause: useIMEInput hooks are created (nameIME, nicknameIME) and getInputProps() is called, but the returned props are NEVER applied to the actual <input> elements. The inputs use raw defaultValue + onBlur/onKeyDown without any IME composition handling. On Android/mobile, blur during active IME composition causes the save handler to read partial pinyin or empty string from the DOM.
+
+Bug 2 (Original Issue #13): After inviting friend to group (auto-join), the friend still appears in the invitable list
+- Location: store.ts inviteFriendsToGroupAction, InviteFriendsToGroupModal.tsx
+- Symptom: After inviting a friend who auto-joins the group, reopening the invite modal still shows them as invitable
+- Root cause: In inviteFriendsToGroupAction, refreshGroupDetail(groupId) is called without await (fire-and-forget). The modal closes before the store's activeGroupDetail.members is updated. Next time the modal opens, existingMembers prop may still be stale.
+
+Bug 3 (Original Issue #4): Group detail page member list does not load member nicknames in real-time
+- Location: GroupInfoPanel.tsx, store.ts loadProfiles
+- Symptom: Group member nicknames show as truncated wallet addresses (0x1234...5678) instead of actual nicknames. Only loads correctly after switching wallet address.
+- Root cause: loadProfiles(detail.members) in GroupInfoPanel's useEffect is called but not awaited. The panel sets loading=false and renders before profile data arrives. After wallet switch, initChat() pre-loads all member profiles into profileCache, making the cache warm.
+
+=== Already Fixed Issues (no action needed) ===
+
+Issue #1 (nickname/search Chinese extra char): Fixed by useIMEInput deferredValue + rAF
+Issue #2 (chat state not reset on wallet switch): Fixed by atomic switchWallet reset
+Issue #3 (need AssetsPage wallet switch): Fixed by atomic switchWallet + checkAuthStatus
+Issue #5 (join request badge not clearing): Fixed by optimistic decrement + Realtime handler
+Issue #6 (mic/send icon not switching): Fixed by native DOM input listener + rAF
+Issue #7 (Chinese needs extra char): Fixed by rAF in onCompositionEnd
+Issue #8 (nickname save deletes then saves): Fixed by DOM-first read
+Issue #9 (add friend Chinese search): Fixed by compositionEndCount + deferredValue
+Issue #11 (announcement Chinese input reverts): Fixed by getInputProps correctly applied
+Issue #12 (announcement shows "no announcement" after save): Fixed by patchActiveGroupDetail

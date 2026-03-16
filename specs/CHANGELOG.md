@@ -4,6 +4,18 @@
 
 ---
 
+## Task87 — Group Management & IME Debug Fixes (2026-03-16)
+
+### Fixed
+- Group name/nickname Chinese IME input disappearing on save (`GroupInfoPanel.tsx` — applied `useIMEInput` props to inputs, added `rAF` + `isComposingRef` guard on `onBlur`, switched to controlled `value`)
+- Invited friend still appearing in invitable list after auto-join (`store.ts` — `await` added to `refreshGroupDetail` in `inviteFriendsToGroupAction`)
+- Group member nicknames showing truncated addresses instead of real names (`GroupInfoPanel.tsx` — `await loadProfiles` before `setLoading(false)`, added second `cancelled` check)
+
+### Verified (no fix needed — already resolved in Task80/84/85/86)
+- 10 of 13 originally reported issues confirmed fixed by previous tasks
+
+---
+
 ## Task86 — Group Announcement & Join Group UI Bugs (2026-03-16)
 
 ### Fixed

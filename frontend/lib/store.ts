@@ -2130,7 +2130,7 @@ export const useStore = create<AppState>((set, get) => ({
     await inviteFriendsToGroup(groupId, wallets, state.walletAddress, needApproval)
     if (!needApproval) {
       await get().refreshChats()
-      get().refreshGroupDetail(groupId).catch(() => {})
+      await get().refreshGroupDetail(groupId).catch(() => {})
     }
     const { default: toast } = await import('react-hot-toast')
     const { t } = await import('@/lib/i18n')
