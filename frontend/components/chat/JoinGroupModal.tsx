@@ -1,7 +1,7 @@
 'use client'
 
-import { useState } from 'react'
-import { Loader2, LogIn, ClipboardPaste } from 'lucide-react'
+import { useState, useEffect, useRef } from 'react'
+import { Loader2, LogIn, ClipboardPaste, Users } from 'lucide-react'
 import { useStore } from '@/lib/store'
 import { t } from '@/lib/i18n'
 import { parseInviteToken } from '@/lib/group-qrcode'
@@ -22,6 +22,71 @@ export default function JoinGroupModal({ open, onClose }: JoinGroupModalProps) {
   const { joinGroupViaToken, locale } = useStore()
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
+  const [invitePreview, setInvitePreview] = useState<{ name: string; memberCount: number; avatarUrl?: string; token: string } | null>(null)
+  const [loadingPreview, setLoadingPreview] = useState(false)
+  const [inviteLinkInvalid, setInviteLinkInvalid] = useState(false)
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Detect invite link and load preview
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current)
+
+    const trimmed = input.trim()
+    if (!trimmed) {
+      setInvitePreview(null)
+      setInviteLinkInvalid(false)
+      setLoadingPreview(false)
+      return
+    }
+
+    const token = parseInviteToken(trimmed)
+    if (!token) {
+      setInvitePreview(null)
+      setInviteLinkInvalid(false)
+      setLoadingPreview(false)
+      return
+    }
+
+    let cancelled = false
+    setLoadingPreview(true)
+    setInviteLinkInvalid(false)
+
+    debounceRef.current = setTimeout(() => {
+      import('@/lib/group-management')
+        .then(({ fetchGroupPreviewByToken }) => fetchGroupPreviewByToken(token))
+        .then((preview) => {
+          if (cancelled) return
+          setLoadingPreview(false)
+          if (preview) {
+            setInvitePreview({ ...preview, token })
+            setInviteLinkInvalid(false)
+          } else {
+            setInvitePreview(null)
+            setInviteLinkInvalid(true)
+          }
+        })
+        .catch(() => {
+          if (cancelled) return
+          setLoadingPreview(false)
+          setInvitePreview(null)
+          setInviteLinkInvalid(true)
+        })
+    }, 500)
+
+    return () => {
+      cancelled = true
+      if (debounceRef.current) clearTimeout(debounceRef.current)
+    }
+  }, [input])
+
+  // Reset state when modal closes
+  useEffect(() => {
+    if (!open) {
+      setInvitePreview(null)
+      setLoadingPreview(false)
+      setInviteLinkInvalid(false)
+    }
+  }, [open])
 
   const handleClose = () => {
     if (loading) return
@@ -56,7 +121,7 @@ export default function JoinGroupModal({ open, onClose }: JoinGroupModalProps) {
 
   const handleJoin = async () => {
     if (loading || !input.trim()) return
-    const token = parseInviteToken(input.trim())
+    const token = invitePreview?.token ?? parseInviteToken(input.trim())
     if (!token) {
       const toast = (await import('react-hot-toast')).default
       toast.error(locale === 'zh' ? '无效的邀请链接' : 'Invalid invite link')
@@ -129,11 +194,6 @@ export default function JoinGroupModal({ open, onClose }: JoinGroupModalProps) {
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleJoin()}
-              onFocus={(e) => {
-                setTimeout(() => {
-                  e.target.scrollIntoView({ behavior: 'smooth', block: 'center' })
-                }, 300)
-              }}
               placeholder={locale === 'zh' ? '输入邀请码或链接' : 'Enter invite code or link'}
               className="w-full bg-muted rounded-xl px-4 pr-10 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--ogbo-blue)]/30"
               disabled={loading}
@@ -150,6 +210,39 @@ export default function JoinGroupModal({ open, onClose }: JoinGroupModalProps) {
               </button>
             )}
           </div>
+
+          {/* Invite preview card */}
+          {invitePreview && (
+            <div className="p-3 bg-muted/50 rounded-xl border border-border">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-[var(--ogbo-blue)]/10 flex items-center justify-center flex-shrink-0">
+                  <Users className="w-5 h-5 text-[var(--ogbo-blue)]" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium truncate">{invitePreview.name}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {invitePreview.memberCount} {locale === 'zh' ? '成员' : 'members'}
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Loading preview spinner */}
+          {loadingPreview && (
+            <div className="flex justify-center py-3">
+              <div className="w-5 h-5 border-2 border-[var(--ogbo-blue)] border-t-transparent rounded-full animate-spin" />
+            </div>
+          )}
+
+          {/* Invalid link message */}
+          {inviteLinkInvalid && !loadingPreview && (
+            <div className="p-3 bg-muted/50 rounded-xl border border-border text-center">
+              <p className="text-sm text-muted-foreground">
+                {locale === 'zh' ? '邀请链接无效或已过期' : 'Invite link is invalid or expired'}
+              </p>
+            </div>
+          )}
 
           {/* Join button */}
           <button

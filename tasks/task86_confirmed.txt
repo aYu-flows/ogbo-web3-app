@@ -1,0 +1,8 @@
+Task 86 — Group Announcement & Join Group UI Bugs
+
+Bug List:
+1. After editing group announcement, the announcement confirmation dialog pops up again (appears like a duplicate).
+2. When typing in the "Join Group" input box, the keyboard covers the input field. The UI should scroll up to keep the input visible.
+3. New group members see the announcement popup twice.
+4. Group announcement edit textarea and Join Group input are blocked by the keyboard — they should scroll up just like the chat input does.
+5. When pasting a group invite link into the "Join Group" search box, it should show a real-time group info preview card so the user can verify before joining.

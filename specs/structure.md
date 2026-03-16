@@ -95,6 +95,7 @@ OGBO-Project-quick-test/
 │   ├── hooks/                         # 自定义 React Hooks
 │   │   ├── use-ime-composition.ts     # IME 中文输入法兼容 Hook
 │   │   ├── use-ime-input.ts           # 增强版 IME 输入 Hook（CJK 输入法全兼容）
+│   │   ├── use-drawer-keyboard.ts    # Drawer 键盘避让 Hook（Capacitor + Web）
 │   │   ├── use-mobile.tsx             # 移动端检测
 │   │   └── use-toast.ts              # Toast 通知
 │   │
@@ -187,7 +188,7 @@ $(printf '```')
 | $(printf '`')lib/utils.ts$(printf '`') | §3 编码规范 | 通用工具 |
 | $(printf '`')hooks/use-ime-composition.ts$(printf '`') | §3 编码规范 | IME 中文输入法兼容 Hook |
 | $(printf '`')hooks/use-ime-input.ts$(printf '`') | §3 编码规范 | 增强版 IME 输入 Hook（CJK 输入法全兼容） |
-|  | §3 编码规范 | 增强版 IME 输入 Hook（CJK 输入法全兼容） |
+| $(printf '`')hooks/use-drawer-keyboard.ts$(printf '`') | §3 编码规范 | Drawer 键盘避让 Hook（Capacitor + Web） |
 | $(printf '`')hooks/use-mobile.tsx$(printf '`') | §3 编码规范 | 移动端检测 Hook |
 | $(printf '`')hooks/use-toast.ts$(printf '`') | §3 编码规范 | Toast Hook |
 

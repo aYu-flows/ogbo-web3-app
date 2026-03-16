@@ -147,7 +147,7 @@ function ChatDetail({ chat, onBack, locale }: { chat: Chat; onBack: () => void; 
   const [muteMemberOpen, setMuteMemberOpen] = useState(false);
   const [muteMemberTarget, setMuteMemberTarget] = useState<string | null>(null);
   const [removedAlert, setRemovedAlert] = useState<'removed' | 'dissolved' | null>(null);
-  const announcementShownRef = useRef<Set<string>>(new Set());
+  const announcementShownRef = useRef<Map<string, string>>(new Map());
   const [muteCountdown, setMuteCountdown] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -257,12 +257,16 @@ function ChatDetail({ chat, onBack, locale }: { chat: Chat; onBack: () => void; 
   // 4F.4: Check unread announcement on ChatDetail enter (once per chat per session)
   useEffect(() => {
     if (chat.type !== 'group' || !groupDetail?.announcement || !groupDetail.announcement_at) return;
-    const shownKey = `${chat.id}:${groupDetail.announcement_at}`;
-    if (announcementShownRef.current.has(shownKey)) return;
+    // Skip popup for the author who just published the announcement
+    if (groupDetail.announcement_by && walletAddress && groupDetail.announcement_by === walletAddress.toLowerCase()) return;
+    const currentAt = groupDetail.announcement_at;
+    const previouslyShownAt = announcementShownRef.current.get(chat.id);
+    // Only show if this announcement_at is genuinely newer than what we already showed
+    if (previouslyShownAt && new Date(previouslyShownAt) >= new Date(currentAt)) return;
     const settings = myGroupSettings[chat.id];
     const lastRead = settings?.last_read_announcement_at;
-    if (!lastRead || new Date(lastRead) < new Date(groupDetail.announcement_at)) {
-      announcementShownRef.current.add(shownKey);
+    if (!lastRead || new Date(lastRead) < new Date(currentAt)) {
+      announcementShownRef.current.set(chat.id, currentAt);
       setGroupAnnouncementOpen(true);
     }
   }, [chat.id, groupDetail?.announcement_at]);

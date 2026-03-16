@@ -4,6 +4,29 @@
 
 ---
 
+## Task86 — Group Announcement & Join Group UI Bugs (2026-03-16)
+
+### Fixed
+- Duplicate announcement popup after editing (Realtime re-trigger with different timestamp caused popup to re-open)
+- New group member seeing announcement popup twice (same Realtime re-trigger root cause)
+- Double `markAnnouncementRead` DB write when clicking "Confirm" in announcement modal
+- Keyboard blocking inputs in Drawer components (JoinGroupModal, GroupAnnouncementModal) on Capacitor
+
+### New
+- `hooks/use-drawer-keyboard.ts` — reusable hook for Drawer keyboard avoidance (Capacitor + visualViewport)
+- Invite link preview card in JoinGroupModal (group name, member count, avatar shown when pasting invite link)
+- System-wide keyboard avoidance in DrawerContent component (all Drawers benefit)
+
+### Modified
+- `components/ui/drawer.tsx` — DrawerContent now auto-adjusts with `translateY` when keyboard opens
+- `components/pages/ChatPage.tsx` — `announcementShownRef` changed from Set to Map for de-duplication; added author-skip guard
+- `components/chat/GroupAnnouncementModal.tsx` — "Confirm" button uses `handleClose()` to prevent double markAnnouncementRead; removed scrollIntoView workaround
+- `components/chat/JoinGroupModal.tsx` — added invite preview logic with debounce + preview card UI; removed scrollIntoView workaround
+- `specs/structure.md` — added `use-drawer-keyboard.ts` to file tree and mapping table
+- `frontend/CLAUDE.md` — added `use-drawer-keyboard.ts` to code-spec mapping table
+
+---
+
 ## Task85 — Dissolve Group Blank Page + IME Input Detection Fix (2026-03-15)
 
 ### Fixed
