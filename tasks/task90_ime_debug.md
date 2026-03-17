@@ -94,4 +94,11 @@ This pattern should be applied to all affected inputs across the app.
 | Date | Change | Result |
 |------|--------|--------|
 | 2026-03-17 | Fix #1: Switch from deferredValue to live searchInput with 500ms debounce (OTA 1.0.20) | FAILED — React onChange doesn't fire at all for IME candidates |
-| 2026-03-17 | Fix #2: Uncontrolled input + native DOM input event listener (OTA 1.0.21) | Pending test |
+| 2026-03-17 | Fix #2: Uncontrolled input + native DOM input event listener via useEffect (OTA 1.0.21) | FAILED — useEffect([]) runs on mount when input is not rendered yet (inside `{isOpen && ...}`), so ref is null and no listener is attached. Even worse: removed React onChange so regular characters also stopped working |
+| 2026-03-17 | Fix #3: Callback ref instead of useEffect for event listener attachment (OTA 1.0.22) | Pending test |
+
+## Fix #3: Callback ref for event listener (OTA 1.0.22)
+
+**Bug in Fix #2**: The `useEffect(() => { ... }, [])` runs once on component mount. But the `<input>` element is inside `{isOpen && (...)}` — it doesn't exist in the DOM when the effect runs. So `searchInputRef.current` is `null` and no event listener is attached.
+
+**Fix**: Use a **callback ref** (`ref={callbackFn}`) instead of `useRef` + `useEffect`. React calls the callback ref with the DOM element exactly when it enters/leaves the DOM. This guarantees the native `input` event listener is attached at the right time.

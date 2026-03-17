@@ -683,7 +683,7 @@ export default function HomePage() {
             </button>
           </div>
         </div>
-        <span className="absolute bottom-2 right-3 text-[10px] text-blue-300/50 dark:text-blue-700/40 select-none">1.21</span>
+        <span className="absolute bottom-2 right-3 text-[10px] text-blue-300/50 dark:text-blue-700/40 select-none">1.22</span>
       </motion.div>
 
       {/* Modals */}

@@ -67,16 +67,27 @@ export default function AddFriendModal({ isOpen, onClose, onOpenChat }: AddFrien
   // React's synthetic onChange does NOT fire when user taps an IME candidate
   // on Android WebView (Capacitor). We bypass React entirely and use a native
   // DOM 'input' event listener which fires reliably for all input methods.
-  const searchInputRef = useRef<HTMLInputElement>(null)
+  //
+  // IMPORTANT: Must use a callback ref (not useRef + useEffect) because the
+  // input element is conditionally rendered inside {isOpen && ...}. A useEffect
+  // with [] deps runs on mount when the input doesn't exist yet (ref is null).
+  // A callback ref fires exactly when the element enters/leaves the DOM.
+  const searchInputRef = useRef<HTMLInputElement | null>(null)
+  const inputListenerRef = useRef<(() => void) | null>(null)
   const [searchText, setSearchText] = useState('')
 
-  // Attach native 'input' event listener — fires for IME candidates, paste, keyboard, etc.
-  useEffect(() => {
-    const el = searchInputRef.current
-    if (!el) return
-    const handler = () => setSearchText(el.value)
-    el.addEventListener('input', handler)
-    return () => el.removeEventListener('input', handler)
+  const searchInputCallbackRef = useCallback((el: HTMLInputElement | null) => {
+    // Cleanup previous listener
+    if (inputListenerRef.current && searchInputRef.current) {
+      searchInputRef.current.removeEventListener('input', inputListenerRef.current)
+      inputListenerRef.current = null
+    }
+    searchInputRef.current = el
+    if (el) {
+      const handler = () => setSearchText(el.value)
+      el.addEventListener('input', handler)
+      inputListenerRef.current = handler
+    }
   }, [])
 
   // Helper to programmatically set input value + sync React state
@@ -400,7 +411,7 @@ export default function AddFriendModal({ isOpen, onClose, onOpenChat }: AddFrien
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <input
-                  ref={searchInputRef}
+                  ref={searchInputCallbackRef}
                   type="text"
                   onPaste={(e) => {
                     // Explicit paste handler for Android IME compatibility:
