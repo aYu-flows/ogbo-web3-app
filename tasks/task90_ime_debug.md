@@ -95,10 +95,15 @@ This pattern should be applied to all affected inputs across the app.
 |------|--------|--------|
 | 2026-03-17 | Fix #1: Switch from deferredValue to live searchInput with 500ms debounce (OTA 1.0.20) | FAILED — React onChange doesn't fire at all for IME candidates |
 | 2026-03-17 | Fix #2: Uncontrolled input + native DOM input event listener via useEffect (OTA 1.0.21) | FAILED — useEffect([]) runs on mount when input is not rendered yet (inside `{isOpen && ...}`), so ref is null and no listener is attached. Even worse: removed React onChange so regular characters also stopped working |
-| 2026-03-17 | Fix #3: Callback ref instead of useEffect for event listener attachment (OTA 1.0.22) | Pending test |
+| 2026-03-17 | Fix #3: Callback ref instead of useEffect for event listener attachment (OTA 1.0.22) | PARTIAL — regular char input works (listener IS attached), but IME candidate tap still not detected. Native `input` event also doesn't fire for IME on this WebView |
+| 2026-03-17 | Fix #4: Add 300ms polling fallback alongside native input event (OTA 1.0.23) | Pending test |
 
-## Fix #3: Callback ref for event listener (OTA 1.0.22)
+## Key Discovery After Fix #3
 
-**Bug in Fix #2**: The `useEffect(() => { ... }, [])` runs once on component mount. But the `<input>` element is inside `{isOpen && (...)}` — it doesn't exist in the DOM when the effect runs. So `searchInputRef.current` is `null` and no event listener is attached.
+Fix #3 confirmed the callback ref works (regular characters detect again). But revealed a deeper truth:
 
-**Fix**: Use a **callback ref** (`ref={callbackFn}`) instead of `useRef` + `useEffect`. React calls the callback ref with the DOM element exactly when it enters/leaves the DOM. This guarantees the native `input` event listener is attached at the right time.
+**On this Android WebView, tapping an IME candidate inserts text into the DOM but fires NO events at all** — not React `onChange`, not native `input`, not `compositionend`. The text is visible on screen and in `el.value`, but no event notifies JavaScript.
+
+## Fix #4: Polling fallback (OTA 1.0.23)
+
+Since no events fire for IME candidates, poll `el.value` every 300ms. When value changes, sync to React state. Native `input` event kept for instant regular keyboard detection. 300ms poll is within the 500ms search debounce.

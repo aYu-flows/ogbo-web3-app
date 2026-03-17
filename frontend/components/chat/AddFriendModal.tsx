@@ -63,30 +63,45 @@ export default function AddFriendModal({ isOpen, onClose, onOpenChat }: AddFrien
   const autoFillSessionRef = useRef(0)
   const requestMsgRef = useRef<HTMLTextAreaElement>(null)
 
-  // --- Uncontrolled input pattern for Android WebView IME compatibility ---
-  // React's synthetic onChange does NOT fire when user taps an IME candidate
-  // on Android WebView (Capacitor). We bypass React entirely and use a native
-  // DOM 'input' event listener which fires reliably for all input methods.
+  // --- Uncontrolled input + polling for Android WebView IME compatibility ---
+  // On Android WebView (Capacitor), NEITHER React's synthetic onChange NOR the
+  // native DOM 'input' event fires when the user taps an IME candidate.
+  // The text IS inserted into the DOM (visible on screen, in el.value), but
+  // no event is dispatched.
   //
-  // IMPORTANT: Must use a callback ref (not useRef + useEffect) because the
-  // input element is conditionally rendered inside {isOpen && ...}. A useEffect
-  // with [] deps runs on mount when the input doesn't exist yet (ref is null).
-  // A callback ref fires exactly when the element enters/leaves the DOM.
+  // Solution: native 'input' event for instant detection of regular keystrokes,
+  // plus a 300ms polling interval as fallback to catch IME candidate insertions.
+  // The poll overhead is negligible and 300ms is well within the 500ms search debounce.
+  //
+  // Uses a callback ref because the input is conditionally rendered ({isOpen && ...}).
   const searchInputRef = useRef<HTMLInputElement | null>(null)
-  const inputListenerRef = useRef<(() => void) | null>(null)
+  const cleanupRef = useRef<(() => void) | null>(null)
   const [searchText, setSearchText] = useState('')
 
   const searchInputCallbackRef = useCallback((el: HTMLInputElement | null) => {
-    // Cleanup previous listener
-    if (inputListenerRef.current && searchInputRef.current) {
-      searchInputRef.current.removeEventListener('input', inputListenerRef.current)
-      inputListenerRef.current = null
+    // Cleanup previous listeners + poll
+    if (cleanupRef.current) {
+      cleanupRef.current()
+      cleanupRef.current = null
     }
     searchInputRef.current = el
     if (el) {
-      const handler = () => setSearchText(el.value)
-      el.addEventListener('input', handler)
-      inputListenerRef.current = handler
+      let lastSynced = el.value
+      const sync = () => {
+        const v = el.value
+        if (v !== lastSynced) {
+          lastSynced = v
+          setSearchText(v)
+        }
+      }
+      // Primary: native input event (instant for regular keyboard input)
+      el.addEventListener('input', sync)
+      // Fallback: polling to catch IME candidate taps that fire no events
+      const pollId = setInterval(sync, 300)
+      cleanupRef.current = () => {
+        el.removeEventListener('input', sync)
+        clearInterval(pollId)
+      }
     }
   }, [])
 
