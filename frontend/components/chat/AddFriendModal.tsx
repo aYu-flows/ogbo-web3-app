@@ -95,9 +95,12 @@ export default function AddFriendModal({ isOpen, onClose, onOpenChat }: AddFrien
   }, [isOpen])
 
   // Debounced search: auto-detect address vs nickname
+  // Uses live searchInput (not deferredValue) to avoid Android IME bug where
+  // compositionEnd never fires and deferredValue never updates.
+  // A 500ms debounce prevents searching on intermediate pinyin keystrokes.
   useEffect(() => {
     if (!isOpen) return
-    const raw = deferredSearchInput.trim()
+    const raw = searchInput.trim()
     if (debounceRef.current) clearTimeout(debounceRef.current)
     setSearchResults([])
     setSelectedUser(null)
@@ -147,8 +150,6 @@ export default function AddFriendModal({ isOpen, onClose, onOpenChat }: AddFrien
       if (raw.length < 1) return
 
       debounceRef.current = setTimeout(async () => {
-        // Skip search while IME is composing (e.g. typing pinyin for Chinese)
-        if (isComposingRef.current) return
         setSearching(true)
         try {
           const results = await searchUserByNickname(raw)
@@ -174,9 +175,9 @@ export default function AddFriendModal({ isOpen, onClose, onOpenChat }: AddFrien
         } finally {
           setSearching(false)
         }
-      }, 300)
+      }, 500)
     }
-  }, [deferredSearchInput, compositionEndCount])
+  }, [searchInput])
 
   // Plan A: paste button handler — reads clipboard directly on user gesture
   const handlePasteButton = async () => {

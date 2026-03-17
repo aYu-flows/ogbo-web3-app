@@ -4,6 +4,20 @@
 
 ---
 
+## Task90 — IME Chinese Input Fix: Add Friend Search (2026-03-17)
+
+### Fixed
+- Chinese (CJK) input in Add Friend search not triggering nickname search on Android/Capacitor — switched from `deferredValue` (composition-gated) to live `searchInput` value with 500ms debounce (`AddFriendModal.tsx`)
+
+### Root Cause
+- `useIMEInput` hook's deferred value pattern relies on `compositionEnd` event, which some Android IMEs never fire when selecting a candidate by tapping
+- Without `compositionEnd`, `deferredValue` never updates and search effect never triggers
+
+### New
+- `tasks/task90_ime_debug.md` — IME input debugging document for tracking this systemic issue
+
+---
+
 ## Task89 — 10 Chat & Group Management Bug Fixes (2026-03-16)
 
 ### Fixed
