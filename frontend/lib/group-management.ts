@@ -548,6 +548,23 @@ export async function fetchJoinRequests(groupId: string): Promise<GroupJoinReque
   return (data ?? []) as GroupJoinRequestRow[]
 }
 
+/** 23b. Batch-fetch pending join request counts for multiple groups */
+export async function fetchAllPendingRequestCounts(groupIds: string[]): Promise<Record<string, number>> {
+  if (groupIds.length === 0) return {}
+  const { data, error } = await supabase
+    .from('group_join_requests')
+    .select('group_id')
+    .in('group_id', groupIds)
+    .eq('status', 'pending')
+
+  if (error) throw new Error(`fetchAllPendingRequestCounts: ${error.message}`)
+  const counts: Record<string, number> = {}
+  for (const row of data ?? []) {
+    counts[row.group_id] = (counts[row.group_id] || 0) + 1
+  }
+  return counts
+}
+
 /** 24. Handle a join request (approve or reject) */
 export async function handleJoinRequest(
   requestId: number,

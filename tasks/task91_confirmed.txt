@@ -1,0 +1,15 @@
+Task 91 Requirements (Confirmed)
+
+Issue 1: Dissolved group members can still send messages
+- When a group is dissolved by the owner, other members who have the chat open can still type and send messages
+- Need to disable the chat input and show "This group has been dissolved" (该群已解散) message
+- Same treatment for removed members: disable input and show "You have been removed from the group"
+
+Issue 2: Join request approval red dot notifications
+- Group admins and owners need to see pending join request notifications (red dots) in 3 locations:
+  1. Chat list page: on group cards, show a red dot/badge when there are pending join requests (only for admin/owner)
+  2. Group chat header: on the avatar/title bar area, show a red dot for pending management tasks (only for admin/owner)
+  3. Group management page: "Join Requests" row should show red badge count (ALREADY IMPLEMENTED)
+- Red dots should be real-time: appear when new requests come in, disappear when all requests are handled
+- "Handled" means approved OR rejected — as long as any request is still pending (not approved/rejected), the red dot stays
+- Red dots should load correctly on app startup (not just via Realtime events)

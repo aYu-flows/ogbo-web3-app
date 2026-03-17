@@ -119,7 +119,7 @@ function EmojiPicker({ onSelect, onClose }: { onSelect: (emoji: string) => void;
 
 // Chat Detail View
 function ChatDetail({ chat, onBack, locale }: { chat: Chat; onBack: () => void; locale: "zh" | "en" }) {
-  const { sendMessage, sendPushMessage, sendGroupPushMessage, loadChatHistory, chatReady, walletAddress, getDisplayName, getGroupDisplayName, getAvatarUrl, sendMediaMessage, retryMediaMessage, myMuteStatus, myGroupSettings, chats: allChats, deleteMessages } = useStore();
+  const { sendMessage, sendPushMessage, sendGroupPushMessage, loadChatHistory, chatReady, walletAddress, getDisplayName, getGroupDisplayName, getAvatarUrl, sendMediaMessage, retryMediaMessage, myMuteStatus, myGroupSettings, chats: allChats, deleteMessages, pendingRequestCounts: chatDetailPendingCounts } = useStore();
   const [hasText, setHasText] = useState(false);
   const [showEmoji, setShowEmoji] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
@@ -667,6 +667,10 @@ function ChatDetail({ chat, onBack, locale }: { chat: Chat; onBack: () => void; 
               </div>
             )}
             {chat.online && <div className="absolute bottom-0 right-0 w-2.5 h-2.5 rounded-full bg-[var(--ogbo-green)] ring-2 ring-card" />}
+            {chat.type === 'group' && (chatDetailPendingCounts[chat.id] ?? 0) > 0 && walletAddress && groupDetail &&
+              (groupDetail.creator === walletAddress.toLowerCase() || (groupDetail.admins || []).some(a => a.toLowerCase() === walletAddress.toLowerCase())) && (
+              <div className="absolute top-0 right-0 w-2.5 h-2.5 rounded-full bg-red-500 ring-2 ring-card" />
+            )}
           </div>
           <div className="min-w-0">
             <p className="text-sm font-semibold truncate">{chat.walletAddress ? getDisplayName(chat.walletAddress) : chat.name}</p>
@@ -873,7 +877,13 @@ function ChatDetail({ chat, onBack, locale }: { chat: Chat; onBack: () => void; 
         </div>
       ) : (
       <div className="border-t border-border bg-card px-2 py-2 relative">
-        {(myMute || isMuteAll) ? (
+        {removedAlert ? (
+          <div className="flex items-center justify-center py-2.5 text-sm text-muted-foreground">
+            {removedAlert === 'dissolved'
+              ? t('group.groupDissolved', locale)
+              : t('group.removedFromGroup', locale)}
+          </div>
+        ) : (myMute || isMuteAll) ? (
           <div className="flex items-center justify-center py-2.5 text-sm text-muted-foreground">
             {isMuteAll
               ? t('group.muteAll', locale)
@@ -1062,7 +1072,7 @@ function ChatDetail({ chat, onBack, locale }: { chat: Chat; onBack: () => void; 
 }
 
 export default function ChatPage({ searchOpen: searchOpenProp, onCloseSearch }: { searchOpen?: boolean; onCloseSearch?: () => void }) {
-  const { chats, locale, markChatRead, pinChat, deleteChat, chatRequests, getDisplayName, getAvatarUrl, toggleGroupPin, leaveGroupAction, myGroupSettings } = useStore();
+  const { chats, locale, markChatRead, pinChat, deleteChat, chatRequests, getDisplayName, getAvatarUrl, toggleGroupPin, leaveGroupAction, myGroupSettings, pendingRequestCounts, myAdminGroupIds } = useStore();
   const walletAddress = useStore((s) => s.walletAddress);
   const isConnectingChat = useStore((s) => s.isConnectingChat);
   const searchIME = useIMEInput("");
@@ -1395,6 +1405,9 @@ export default function ChatPage({ searchOpen: searchOpenProp, onCloseSearch }: 
                       </div>
                     )}
                     {chat.online && <div className="absolute bottom-0 right-0 w-3 h-3 rounded-full bg-[var(--ogbo-green)] ring-2 ring-background" />}
+                    {chat.type === 'group' && myAdminGroupIds.includes(chat.id) && (pendingRequestCounts[chat.id] ?? 0) > 0 && (
+                      <div className="absolute top-0 right-0 w-2.5 h-2.5 rounded-full bg-red-500 ring-2 ring-background" />
+                    )}
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between">

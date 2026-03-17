@@ -4,6 +4,27 @@
 
 ---
 
+## Task91 — Dissolved Group Input Disable + Join Request Red Dot Notifications (2026-03-17)
+
+### Fixed
+- Members in dissolved groups could still type and send messages — input bar now shows "This group has been dissolved" notice when `removedAlert` is triggered (`ChatPage.tsx`)
+- Same disabled notice applied for removed members ("You have been removed from the group")
+
+### New
+- **Join request approval red dot notifications** (admin/owner only):
+  - Red dot on group avatar in chat list when pending join requests exist
+  - Red dot on group chat header avatar when pending requests exist
+  - Existing red badge on "Join Requests" row in group management panel (already implemented, no change)
+- `fetchAllPendingRequestCounts()` batch-loads pending counts during `initChat()` (`group-management.ts`)
+- `myAdminGroupIds` store field tracks groups where user is admin/owner, updated via Realtime
+- `admins` field added to `GroupRow` interface for proper typing (`chat.ts`)
+
+### Steering Doc Updates
+- product.md §3.2.16: Added dissolved group input disabled behavior
+- product.md §3.2.9: Added join request notification red dot feature description
+
+---
+
 ## Task90 — IME Chinese Input Fix: Add Friend Search (2026-03-17)
 
 ### Fixed

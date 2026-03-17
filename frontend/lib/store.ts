@@ -379,6 +379,7 @@ interface AppState {
   groupJoinedAtMap: Record<string, string>
   myGroupSettings: Record<string, GroupMemberRow>
   pendingRequestCounts: Record<string, number>
+  myAdminGroupIds: string[]
   myMuteStatus: Record<string, GroupMuteRow | null>
   activeGroupDetail: Record<string, GroupDetail>
 
@@ -499,6 +500,7 @@ export const useStore = create<AppState>((set, get) => ({
   groupJoinedAtMap: {},
   myGroupSettings: {},
   pendingRequestCounts: {},
+  myAdminGroupIds: [],
   myMuteStatus: {},
   activeGroupDetail: {},
 
@@ -540,6 +542,7 @@ export const useStore = create<AppState>((set, get) => ({
       groupJoinedAtMap: {},
       myGroupSettings: {},
       pendingRequestCounts: {},
+      myAdminGroupIds: [],
       myMuteStatus: {},
       activeGroupDetail: {},
     })
@@ -746,6 +749,7 @@ export const useStore = create<AppState>((set, get) => ({
       groupJoinedAtMap: {},
       myGroupSettings: {},
       pendingRequestCounts: {},
+      myAdminGroupIds: [],
       myMuteStatus: {},
       activeGroupDetail: {},
     } : {}
@@ -785,6 +789,7 @@ export const useStore = create<AppState>((set, get) => ({
       groupJoinedAtMap: {},
       myGroupSettings: {},
       pendingRequestCounts: {},
+      myAdminGroupIds: [],
       myMuteStatus: {},
       activeGroupDetail: {},
     })
@@ -939,7 +944,21 @@ export const useStore = create<AppState>((set, get) => ({
       // Stale-check: if walletAddress changed while we were fetching, discard results
       if (get().walletAddress?.toLowerCase() !== me) return
 
-      set({ chats, chatRequests, chatReady: true, groupJoinedAtMap, myGroupSettings, myMuteStatus })
+      // Compute admin/owner group IDs and load pending request counts
+      const adminGroupIds = groups
+        .filter(g => g.creator.toLowerCase() === me || (g.admins || []).some(a => a.toLowerCase() === me))
+        .map(g => g.id)
+      let pendingRequestCounts: Record<string, number> = {}
+      if (adminGroupIds.length > 0) {
+        try {
+          const { fetchAllPendingRequestCounts } = await import('@/lib/group-management')
+          pendingRequestCounts = await fetchAllPendingRequestCounts(adminGroupIds)
+        } catch (e) {
+          console.error('[initChat] fetchAllPendingRequestCounts failed:', e)
+        }
+      }
+
+      set({ chats, chatRequests, chatReady: true, groupJoinedAtMap, myGroupSettings, myMuteStatus, myAdminGroupIds: adminGroupIds, pendingRequestCounts })
 
       // Load profiles for current user and all contacts
       get().loadMyProfile(me)
@@ -1179,8 +1198,21 @@ export const useStore = create<AppState>((set, get) => ({
                   ? updatedDetailData
                   : { ...updatedDetailData, id: gid } as any,
               }
+              // Update myAdminGroupIds when admins change
+              const admins = updatedGroup.admins || existingDetail?.admins || []
+              const creator = updatedGroup.creator ?? existingDetail?.creator ?? ''
+              const isAdmin = creator.toLowerCase() === me || admins.some((a: string) => a.toLowerCase() === me)
+              const wasAdmin = s.myAdminGroupIds.includes(gid)
+              let newAdminGroupIds = s.myAdminGroupIds
+              if (isAdmin && !wasAdmin) {
+                newAdminGroupIds = [...s.myAdminGroupIds, gid]
+              } else if (!isAdmin && wasAdmin) {
+                newAdminGroupIds = s.myAdminGroupIds.filter(id => id !== gid)
+              }
+
               return {
                 activeGroupDetail: updatedActiveGroupDetail,
+                myAdminGroupIds: newAdminGroupIds,
                 chats: s.chats.map(c => {
                   if (c.id !== gid) return c
                   return { ...c, name: updatedGroup.name, members: updatedGroup.members?.length, groupAvatarUrl: (updatedGroup as any).avatar_url || c.groupAvatarUrl }
@@ -1332,6 +1364,7 @@ export const useStore = create<AppState>((set, get) => ({
       groupJoinedAtMap: {},
       myGroupSettings: {},
       pendingRequestCounts: {},
+      myAdminGroupIds: [],
       myMuteStatus: {},
       activeGroupDetail: {},
     })

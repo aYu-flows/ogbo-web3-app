@@ -52,6 +52,7 @@ export interface GroupRow {
   name: string
   creator: string
   members: string[]
+  admins?: string[]
 }
 
 // ======== Friend Requests ========
