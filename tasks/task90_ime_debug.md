@@ -4,6 +4,8 @@
 
 Chinese (CJK) input via IME does not trigger actions in multiple input fields across the app on Android/Capacitor. The web version works normally.
 
+**Key symptom**: Any text entered by tapping an IME candidate (Chinese characters, emoji, etc.) is NOT detected by React. Only direct keyboard input (ASCII characters, numbers) triggers React state updates.
+
 Affected areas:
 1. **Add Friend** — Chinese nickname search not triggered
 2. Chat input — mic icon doesn't switch to send icon after Chinese input
@@ -12,65 +14,78 @@ Affected areas:
 5. Group announcement — Chinese text reverts
 6. Group member search — Chinese input not detected
 
-## Root Cause Analysis
+## Root Cause Analysis (Updated after Fix #1 test)
 
-### Architecture: `useIMEInput` hook
+### Level 1 (Initial hypothesis — WRONG)
 
-The project uses a custom `useIMEInput` hook (`frontend/hooks/use-ime-input.ts`) that implements a **deferred value pattern**:
+Initially believed `useIMEInput` hook's deferred value pattern was the problem (compositionEnd not firing → deferredValue stuck). Fix #1 switched to live `searchInput` value.
 
-- `value` — updates on every `onChange` (including during IME composition)
-- `deferredValue` — only updates when `isComposingRef.current === false`
-- `compositionEndCount` — counter incremented in `onCompositionEnd` to force effect re-triggers
+**Test result**: FAILED. The paste icon still didn't change, meaning `searchInput` (React state) was never updated at all.
 
-### Why it fails on Android/Capacitor
+### Level 2 (True root cause — CONFIRMED)
 
-1. **Event ordering**: Android Chrome fires `onChange` BEFORE `compositionEnd` (reversed from desktop). The hook handles this via `requestAnimationFrame` in `onCompositionEnd`.
+**React's synthetic `onChange` event does NOT fire when the user taps an IME candidate on this Android WebView (Capacitor).**
 
-2. **Critical bug**: Some Chinese IMEs on Android WebView **do not fire `compositionEnd`** when the user selects a candidate by tapping. This means:
-   - `isComposingRef.current` stays `true` forever
-   - `deferredValue` never updates
-   - `compositionEndCount` never increments
-   - Effects depending on these values never re-trigger
+On Android WebView, when a user selects a Chinese character from the IME candidate bar:
+1. The IME inserts text into the DOM input element directly
+2. The browser fires a native DOM `input` event
+3. BUT React's synthetic `onChange` event is **NOT** triggered
+4. Therefore React state (`setValue()`) is never called
+5. The controlled input's `value` prop stays at the old value
 
-3. **Redundant guard**: Inside debounce callbacks, there's often an additional `if (isComposingRef.current) return` check, which creates a double-gate problem.
+This is a known React issue with Android WebView IME integration. It affects ALL React controlled inputs on this platform, not just our `useIMEInput` hook.
+
+**Evidence**:
+- Paste icon visibility depends on `!searchInput` (React state)
+- After Chinese input via IME, paste icon remains visible → React state is empty string
+- Direct character input (no IME) → paste icon hides → React state updates correctly
 
 ### Why web works
 
-Desktop browsers correctly fire `compositionEnd` when a candidate is selected, so the deferred value pattern works as designed.
+Desktop browsers fire React's synthetic onChange correctly for both direct input and IME candidate selection.
 
-## Fix Strategy
+## Fix Strategy (Updated)
 
-**For search-type inputs**: Don't use `deferredValue`. Use the live `value` directly with a longer debounce (500ms). Search doesn't need the deferred pattern — the debounce alone prevents unnecessary API calls during IME input.
+**The solution is to bypass React's synthetic event system entirely on inputs that need IME support.**
 
-**For save/submit inputs**: Keep the deferred pattern but add a fallback timeout (if `compositionEnd` doesn't fire within N ms after the last `onChange`, force-sync).
+Use **uncontrolled inputs** (no `value` prop) with:
+1. A `ref` to the DOM element
+2. A native DOM `input` event listener (fires reliably for ALL input methods)
+3. React state updated from the native event (for triggering effects/re-renders)
+4. Programmatic value setting via `ref.current.value = ...` when needed
 
-## Fix #1: Add Friend Chinese Search (this task)
+This pattern should be applied to all affected inputs across the app.
+
+## Fix #1: Switch from deferredValue to live value (OTA 1.0.20)
+
+**Approach**: Changed search effect dependency from `deferredSearchInput` to `searchInput` (live value from useIMEInput hook).
+
+**Result**: FAILED. React's `onChange` itself doesn't fire for IME candidates, so `searchInput` never updates either. The hook is irrelevant — the problem is at React's event layer.
+
+## Fix #2: Uncontrolled input with native DOM event (OTA 1.0.21)
 
 ### File: `frontend/components/chat/AddFriendModal.tsx`
 
-**Before** (lines 98-179):
-- Search effect depends on `deferredSearchInput` and `compositionEndCount`
-- Line 151: `if (isComposingRef.current) return` inside debounce callback
-- 300ms debounce
+**Changes**:
+1. Removed `useIMEInput` hook entirely
+2. Added `searchInputRef` (ref to DOM element) + `searchText` (React state)
+3. Attached native `input` event listener via `addEventListener('input', handler)`
+4. Input element is now **uncontrolled** — no `value` prop, DOM manages its own value
+5. `setSearchInput()` helper sets both DOM value and React state for programmatic updates
+6. All UI references use `searchText` (state from native event)
 
-**After**:
-- Search effect depends on `searchInput` (live value, updates during composition)
-- Removed `isComposingRef.current` guard
-- 500ms debounce (to compensate for IME intermediate values like pinyin "zhong")
-- Removed `compositionEndCount` dependency
-
-**Why this works**:
-- Every keystroke/candidate selection fires `onChange`, updating `searchInput`
-- Debounce resets on each change, so intermediate pinyin values don't trigger search
-- After user stops typing for 500ms, search runs regardless of composition state
-- Address search is unaffected because `ADDRESS_REGEX` only matches complete 42-char addresses
+**Why this should work**:
+- Native DOM `input` event fires for ALL input methods: keyboard, IME candidate tap, paste, autofill
+- React's synthetic event system is completely bypassed
+- The uncontrolled input never fights with React over the input value
+- 500ms debounce still prevents searching on intermediate pinyin keystrokes
 
 ## Test Plan
 
 - [ ] Type Chinese nickname in Add Friend search → search should trigger
 - [ ] Type English text → search should still work
 - [ ] Paste wallet address → search should still work
-- [ ] Type pinyin but don't select candidate → should not trigger premature search
+- [ ] Paste icon should hide when text is in the input
 - [ ] Test on Android Capacitor app
 - [ ] Test on web browser (regression check)
 
@@ -78,4 +93,5 @@ Desktop browsers correctly fire `compositionEnd` when a candidate is selected, s
 
 | Date | Change | Result |
 |------|--------|--------|
-| 2026-03-17 | Fix #1: Switch AddFriendModal search from deferredValue to live value with 500ms debounce | Pending test |
+| 2026-03-17 | Fix #1: Switch from deferredValue to live searchInput with 500ms debounce (OTA 1.0.20) | FAILED — React onChange doesn't fire at all for IME candidates |
+| 2026-03-17 | Fix #2: Uncontrolled input + native DOM input event listener (OTA 1.0.21) | Pending test |

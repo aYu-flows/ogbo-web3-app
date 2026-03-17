@@ -2,11 +2,10 @@
 
 import { motion, AnimatePresence } from 'framer-motion'
 import { X, Search, Send, MessageCircle, Loader2, ChevronDown, ChevronUp, ClipboardPaste } from 'lucide-react'
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { utils as ethersUtils } from 'ethers'
 import { useStore } from '@/lib/store'
 import { t } from '@/lib/i18n'
-import { useIMEInput } from '@/hooks/use-ime-input'
 import WalletAddress from '@/components/chat/WalletAddress'
 
 interface AddFriendModalProps {
@@ -63,7 +62,28 @@ export default function AddFriendModal({ isOpen, onClose, onOpenChat }: AddFrien
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const autoFillSessionRef = useRef(0)
   const requestMsgRef = useRef<HTMLTextAreaElement>(null)
-  const { value: searchInput, setValue: setSearchInput, deferredValue: deferredSearchInput, compositionEndCount, getInputProps: getSearchInputProps, isComposingRef } = useIMEInput('')
+
+  // --- Uncontrolled input pattern for Android WebView IME compatibility ---
+  // React's synthetic onChange does NOT fire when user taps an IME candidate
+  // on Android WebView (Capacitor). We bypass React entirely and use a native
+  // DOM 'input' event listener which fires reliably for all input methods.
+  const searchInputRef = useRef<HTMLInputElement>(null)
+  const [searchText, setSearchText] = useState('')
+
+  // Attach native 'input' event listener — fires for IME candidates, paste, keyboard, etc.
+  useEffect(() => {
+    const el = searchInputRef.current
+    if (!el) return
+    const handler = () => setSearchText(el.value)
+    el.addEventListener('input', handler)
+    return () => el.removeEventListener('input', handler)
+  }, [])
+
+  // Helper to programmatically set input value + sync React state
+  const setSearchInput = useCallback((val: string) => {
+    if (searchInputRef.current) searchInputRef.current.value = val
+    setSearchText(val)
+  }, [])
 
   // Helper: check friend/request status for a given address
   const isAlreadyFriend = (addr: string) =>
@@ -85,8 +105,9 @@ export default function AddFriendModal({ isOpen, onClose, onOpenChat }: AddFrien
         if (autoFillSessionRef.current !== session) return // stale callback — discard
         const trimmed = text.trim()
         if (ADDRESS_REGEX.test(trimmed)) {
-          // Functional update: only fill if user hasn't typed anything yet
-          setSearchInput((prev) => (prev === '' ? trimmed : prev))
+          // Only fill if user hasn't typed anything yet
+          const current = searchInputRef.current?.value || ''
+          if (!current && trimmed) setSearchInput(trimmed)
         }
       })
       .catch(() => {
@@ -95,12 +116,11 @@ export default function AddFriendModal({ isOpen, onClose, onOpenChat }: AddFrien
   }, [isOpen])
 
   // Debounced search: auto-detect address vs nickname
-  // Uses live searchInput (not deferredValue) to avoid Android IME bug where
-  // compositionEnd never fires and deferredValue never updates.
-  // A 500ms debounce prevents searching on intermediate pinyin keystrokes.
+  // Uses searchText from native DOM 'input' event — works reliably on Android
+  // WebView where React's onChange misses IME candidate selections.
   useEffect(() => {
     if (!isOpen) return
-    const raw = searchInput.trim()
+    const raw = searchText.trim()
     if (debounceRef.current) clearTimeout(debounceRef.current)
     setSearchResults([])
     setSelectedUser(null)
@@ -177,7 +197,7 @@ export default function AddFriendModal({ isOpen, onClose, onOpenChat }: AddFrien
         }
       }, 500)
     }
-  }, [searchInput])
+  }, [searchText])
 
   // Plan A: paste button handler — reads clipboard directly on user gesture
   const handlePasteButton = async () => {
@@ -341,7 +361,7 @@ export default function AddFriendModal({ isOpen, onClose, onOpenChat }: AddFrien
   }
 
   // Is this a nickname search (multi-result mode)?
-  const isNicknameSearch = searchResults.length > 0 && !ADDRESS_REGEX.test(searchInput.trim())
+  const isNicknameSearch = searchResults.length > 0 && !ADDRESS_REGEX.test(searchText.trim())
 
   return (
     <AnimatePresence>
@@ -380,12 +400,11 @@ export default function AddFriendModal({ isOpen, onClose, onOpenChat }: AddFrien
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <input
+                  ref={searchInputRef}
                   type="text"
-                  value={searchInput}
-                  {...getSearchInputProps()}
                   onPaste={(e) => {
                     // Explicit paste handler for Android IME compatibility:
-                    // some IME implementations bypass onChange on paste.
+                    // some IME implementations bypass the native input event on paste.
                     const text = e.clipboardData?.getData('text') || ''
                     if (text.trim()) setTimeout(() => setSearchInput(text.trim()), 0)
                   }}
@@ -396,7 +415,7 @@ export default function AddFriendModal({ isOpen, onClose, onOpenChat }: AddFrien
                 {searching && (
                   <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground animate-spin" />
                 )}
-                {!searching && !searchInput && (
+                {!searching && !searchText && (
                   <motion.button
                     whileTap={{ scale: 0.85 }}
                     onClick={handlePasteButton}
