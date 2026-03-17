@@ -17,10 +17,9 @@ interface CreateGroupModalProps {
 
 export default function CreateGroupModal({ isOpen, onClose, friends }: CreateGroupModalProps) {
   const { createGroup, locale, getDisplayName } = useStore()
-  const { value: groupName, setValue: setGroupName, getInputProps: getNameInputProps } = useIMEInput('')
+  const { value: groupName, setValue: setGroupName, getInputProps: getNameInputProps, elRef: nameElRef } = useIMEInput('')
   const { value: searchQuery, setValue: setSearchQuery, deferredValue: deferredSearch, getInputProps: getSearchInputProps } = useIMEInput('')
   const [selectedAddresses, setSelectedAddresses] = useState<string[]>([])
-  const nameInputRef = useRef<HTMLInputElement>(null)
   const [isCreating, setIsCreating] = useState(false)
 
   const filteredFriends = useMemo(() => {
@@ -50,7 +49,7 @@ export default function CreateGroupModal({ isOpen, onClose, friends }: CreateGro
   const handleCreate = async () => {
     if (selectedAddresses.length === 0 || isCreating) return
     // Read DOM value directly to avoid stale React state on Android/Capacitor WebView
-    const actualGroupName = nameInputRef.current?.value ?? groupName
+    const actualGroupName = nameElRef.current?.value ?? groupName
     setIsCreating(true)
     try {
       await createGroup(actualGroupName, selectedAddresses)
@@ -106,7 +105,6 @@ export default function CreateGroupModal({ isOpen, onClose, friends }: CreateGro
               {/* Group name input */}
               <div>
                 <input
-                  ref={nameInputRef}
                   type="text"
                   value={groupName}
                   {...getNameInputProps({ maxLength: 50 })}

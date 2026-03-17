@@ -86,11 +86,8 @@ export default function GroupInfoPanel({
   // Inline edit states
   const [editingName, setEditingName] = useState(false)
   const [savingName, setSavingName] = useState(false)
-  const nameInputRef = useRef<HTMLInputElement>(null)
-
   const [editingNickname, setEditingNickname] = useState(false)
   const [savingNickname, setSavingNickname] = useState(false)
-  const nicknameInputRef = useRef<HTMLInputElement>(null)
 
   // IME input hooks for group name and nickname
   const nameIME = useIMEInput('')
@@ -159,11 +156,11 @@ export default function GroupInfoPanel({
 
   // Focus input when entering edit mode
   useEffect(() => {
-    if (editingName) nameInputRef.current?.focus()
+    if (editingName) nameIME.elRef.current?.focus()
   }, [editingName])
 
   useEffect(() => {
-    if (editingNickname) nicknameInputRef.current?.focus()
+    if (editingNickname) nicknameIME.elRef.current?.focus()
   }, [editingNickname])
 
   const isAdminOrOwner = role === 'owner' || role === 'admin'
@@ -173,7 +170,7 @@ export default function GroupInfoPanel({
 
   const handleSaveName = useCallback(async () => {
     if (!groupDetail || savingName) return
-    const trimmed = (nameInputRef.current?.value ?? '').trim()
+    const trimmed = (nameIME.elRef.current?.value ?? '').trim()
     if (!trimmed || trimmed === groupDetail.name) {
       setEditingName(false)
       return
@@ -191,7 +188,7 @@ export default function GroupInfoPanel({
 
   const handleSaveNickname = useCallback(async () => {
     if (savingNickname) return
-    const trimmed = (nicknameInputRef.current?.value ?? '').trim()
+    const trimmed = (nicknameIME.elRef.current?.value ?? '').trim()
     if (trimmed === (myNickname || '')) {
       setEditingNickname(false)
       return
@@ -412,7 +409,7 @@ export default function GroupInfoPanel({
                   <div className="flex-1 min-w-0">
                     {editingName ? (
                       <input
-                        ref={nameInputRef}
+                        ref={nameIME.inputCallbackRef}
                         value={nameIME.value}
                         onCompositionStart={nameInputProps.onCompositionStart}
                         onCompositionEnd={nameInputProps.onCompositionEnd}
@@ -506,7 +503,7 @@ export default function GroupInfoPanel({
                     <div className="flex items-center gap-2 px-4 py-3">
                       <span className="text-sm text-muted-foreground flex-shrink-0">{t('group.myNickname', locale)}</span>
                       <input
-                        ref={nicknameInputRef}
+                        ref={nicknameIME.inputCallbackRef}
                         value={nicknameIME.value}
                         onCompositionStart={nicknameInputProps.onCompositionStart}
                         onCompositionEnd={nicknameInputProps.onCompositionEnd}

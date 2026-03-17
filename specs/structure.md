@@ -250,10 +250,17 @@ ${BT3}
 - **components/ui/ 新文件**：仅通过 ${BT}npx shadcn@latest add <component>${BT} 添加
 - **测试文件**：放在对应模块的 ${BT}__tests__/${BT} 目录下
 
+### §3.6 IME 输入规则
+
+- 所有用户可见的文本输入框必须使用 `useIMEInput` hook 的 `getInputProps()` spread，以保证 Android WebView IME 兼容性
+- 非受控输入（ref-based）使用 `setupInputPolling()` 工具函数
+- 禁止仅依赖 React `onChange` 或 native `input` 事件检测用户输入
+
 ### 变更记录
 
 | 日期 | 变更内容 | 关联代码文件 |
 |------|---------|-------------|
+| 2026-03-17 | 新增 §3.6 IME 输入规则 | hooks/use-ime-input.ts |
 | 2026-03-08 | 初始化创建 | - |
 
 ---

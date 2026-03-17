@@ -96,7 +96,8 @@ This pattern should be applied to all affected inputs across the app.
 | 2026-03-17 | Fix #1: Switch from deferredValue to live searchInput with 500ms debounce (OTA 1.0.20) | FAILED — React onChange doesn't fire at all for IME candidates |
 | 2026-03-17 | Fix #2: Uncontrolled input + native DOM input event listener via useEffect (OTA 1.0.21) | FAILED — useEffect([]) runs on mount when input is not rendered yet (inside `{isOpen && ...}`), so ref is null and no listener is attached. Even worse: removed React onChange so regular characters also stopped working |
 | 2026-03-17 | Fix #3: Callback ref instead of useEffect for event listener attachment (OTA 1.0.22) | PARTIAL — regular char input works (listener IS attached), but IME candidate tap still not detected. Native `input` event also doesn't fire for IME on this WebView |
-| 2026-03-17 | Fix #4: Add 300ms polling fallback alongside native input event (OTA 1.0.23) | Pending test |
+| 2026-03-17 | Fix #4: Add 300ms polling fallback alongside native input event (OTA 1.0.23) | SUCCESS — Chinese input detected via polling |
+| 2026-03-17 | Task92: Apply polling fix to ALL inputs — useIMEInput hook upgraded with built-in polling, all 10+ inputs fixed | Pending test |
 
 ## Key Discovery After Fix #3
 

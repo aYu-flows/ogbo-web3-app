@@ -575,6 +575,15 @@ interface StoredWallet {
 
 - **实现**：监听左边缘触摸（x <= 30px）实现滑动返回导航
 
+#### IME 输入（Android WebView）
+
+- **问题**：Android WebView 中，用户点击 IME 候选词时，文本被插入 DOM，但不触发任何 JavaScript 事件（React onChange、native input、compositionEnd 均不触发）
+- **根因**：Capacitor WebView 的 IME 实现直接操作 DOM 而不经过标准事件分发
+- **方案**：`useIMEInput` hook（`hooks/use-ime-input.ts`）内置 300ms 轮询 + native input 事件双保险
+  - 所有用户输入框必须使用 `useIMEInput` 的 `getInputProps()` spread
+  - 非受控输入使用 `setupInputPolling()` 工具函数
+- **参考**：`tasks/task90_ime_debug.md` 记录了完整的排查过程
+
 ### §6.4 APK 构建
 
 - 构建规范参见 `prompts/specs/apk_compilation_spec.md`

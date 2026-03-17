@@ -7,7 +7,7 @@ import { useStore } from '@/lib/store'
 import { t } from '@/lib/i18n'
 import { validateAvatarFile } from '@/lib/profile'
 import type { FriendPermission } from '@/lib/profile'
-import { useIMEComposition } from '@/hooks/use-ime-composition'
+import { useIMEInput } from '@/hooks/use-ime-input'
 import UserAvatar from '@/components/UserAvatar'
 import WalletAddress from '@/components/chat/WalletAddress'
 import toast from 'react-hot-toast'
@@ -25,19 +25,19 @@ interface ProfileEditModalProps {
 
 export default function ProfileEditModal({ isOpen, onClose }: ProfileEditModalProps) {
   const { walletAddress, myProfile, locale, updateNickname, updateAvatar, updateFriendPermission } = useStore()
-  const [nickname, setNickname] = useState(myProfile?.nickname || '')
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [uploadingAvatar, setUploadingAvatar] = useState(false)
   const [savingPermission, setSavingPermission] = useState<FriendPermission | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
-  const nicknameInputRef = useRef<HTMLInputElement>(null)
-  const { onCompositionStart, onCompositionEnd } = useIMEComposition()
+  const imeNickname = useIMEInput(myProfile?.nickname || '')
 
   // Sync nickname when modal opens
   const [lastOpen, setLastOpen] = useState(false)
   if (isOpen && !lastOpen) {
-    setNickname(myProfile?.nickname || '')
+    imeNickname.setValue(myProfile?.nickname || '')
+    // Also sync the DOM element if it exists
+    if (imeNickname.elRef.current) imeNickname.elRef.current.value = myProfile?.nickname || ''
     setSaved(false)
     setLastOpen(true)
   } else if (!isOpen && lastOpen) {
@@ -47,7 +47,7 @@ export default function ProfileEditModal({ isOpen, onClose }: ProfileEditModalPr
   if (!walletAddress) return null
 
   const handleSaveNickname = async () => {
-    const trimmed = (nicknameInputRef.current?.value ?? nickname).trim()
+    const trimmed = (imeNickname.elRef.current?.value ?? imeNickname.value).trim()
     // No change — skip silently
     if (trimmed === (myProfile?.nickname || '')) return
     if (trimmed.length > 20) {
@@ -177,17 +177,13 @@ export default function ProfileEditModal({ isOpen, onClose }: ProfileEditModalPr
               </label>
               <div className="relative">
                 <input
-                  ref={nicknameInputRef}
-                  value={nickname}
-                  onChange={(e) => setNickname(e.target.value)}
-                  onCompositionStart={onCompositionStart}
-                  onCompositionEnd={(e) => { onCompositionEnd(); setNickname(e.currentTarget.value) }}
-                  maxLength={20}
+                  {...imeNickname.getInputProps({ maxLength: 20 })}
+                  defaultValue={imeNickname.value}
                   placeholder={t('profile.nicknamePlaceholder', locale)}
                   className="w-full rounded-xl bg-muted px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-[var(--ogbo-blue)]/20 transition-all pr-12"
                 />
                 <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground">
-                  {nickname.length}/20
+                  {imeNickname.value.length}/20
                 </span>
               </div>
               <button

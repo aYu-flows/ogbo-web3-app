@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef, useCallback } from 'react'
+import { setupInputPolling } from '@/hooks/use-ime-input'
 import { Loader2, LogIn, ClipboardPaste, Users } from 'lucide-react'
 import { useStore } from '@/lib/store'
 import { t } from '@/lib/i18n'
@@ -26,7 +27,26 @@ export default function JoinGroupModal({ open, onClose }: JoinGroupModalProps) {
   const [loadingPreview, setLoadingPreview] = useState(false)
   const [inviteLinkInvalid, setInviteLinkInvalid] = useState(false)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const inputRef = useRef<HTMLInputElement>(null)
+  const inputRef = useRef<HTMLInputElement | null>(null)
+  const pollingCleanupRef = useRef<(() => void) | null>(null)
+
+  // Helper to set both DOM value and React state
+  const setInputValue = useCallback((val: string) => {
+    if (inputRef.current) inputRef.current.value = val
+    setInput(val)
+  }, [])
+
+  // Callback ref with polling for Android IME compatibility
+  const inputCallbackRef = useCallback((el: HTMLInputElement | null) => {
+    if (pollingCleanupRef.current) {
+      pollingCleanupRef.current()
+      pollingCleanupRef.current = null
+    }
+    inputRef.current = el
+    if (el) {
+      pollingCleanupRef.current = setupInputPolling(el, (v) => setInput(v))
+    }
+  }, [])
 
   // Focus input after drawer open animation completes (avoid snap point jump from autoFocus)
   useEffect(() => {
@@ -100,7 +120,7 @@ export default function JoinGroupModal({ open, onClose }: JoinGroupModalProps) {
 
   const handleClose = () => {
     if (loading) return
-    setInput('')
+    setInputValue('')
     onClose()
   }
 
@@ -113,7 +133,7 @@ export default function JoinGroupModal({ open, onClose }: JoinGroupModalProps) {
           const { Clipboard } = await import('@capacitor/clipboard')
           const { value } = await Clipboard.read()
           if (value) {
-            setInput(value.trim())
+            setInputValue(value.trim())
             return
           }
         }
@@ -122,7 +142,7 @@ export default function JoinGroupModal({ open, onClose }: JoinGroupModalProps) {
       }
       if (typeof navigator !== 'undefined' && navigator.clipboard?.readText) {
         const text = await navigator.clipboard.readText()
-        if (text.trim()) setInput(text.trim())
+        if (text.trim()) setInputValue(text.trim())
       }
     } catch {
       // silently fail
@@ -146,14 +166,14 @@ export default function JoinGroupModal({ open, onClose }: JoinGroupModalProps) {
       switch (result.status) {
         case 'joined':
           toast.success(locale === 'zh' ? '已加入群聊' : 'Joined group')
-          setInput('')
+          setInputValue('')
           onClose()
           break
         case 'pending':
           toast(locale === 'zh' ? '申请已提交，等待审批' : 'Request submitted, pending approval', {
             icon: '\u2139\uFE0F',
           })
-          setInput('')
+          setInputValue('')
           onClose()
           break
         case 'expired':
@@ -172,7 +192,7 @@ export default function JoinGroupModal({ open, onClose }: JoinGroupModalProps) {
           toast(locale === 'zh' ? '你已是群成员' : 'You are already a member', {
             icon: '\u2139\uFE0F',
           })
-          setInput('')
+          setInputValue('')
           onClose()
           break
         default:
@@ -200,19 +220,8 @@ export default function JoinGroupModal({ open, onClose }: JoinGroupModalProps) {
           {/* Input field with paste button */}
           <div className="relative">
             <input
-              ref={inputRef}
+              ref={inputCallbackRef}
               type="text"
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onPaste={(e) => {
-                // Ensure native paste triggers state update on all platforms (Android WebView fix)
-                const pasted = e.clipboardData?.getData('text')
-                if (pasted) {
-                  setTimeout(() => {
-                    if (inputRef.current) setInput(inputRef.current.value)
-                  }, 0)
-                }
-              }}
               onKeyDown={(e) => e.key === 'Enter' && handleJoin()}
               placeholder={locale === 'zh' ? '输入邀请码或链接' : 'Enter invite code or link'}
               className="w-full bg-muted rounded-xl px-4 pr-10 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--ogbo-blue)]/30"

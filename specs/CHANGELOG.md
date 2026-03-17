@@ -4,6 +4,36 @@
 
 ---
 
+## Task92 — Fix All IME Chinese Input Issues (2026-03-17)
+
+### Fixed
+- All user-facing text inputs now detect IME candidate taps on Android WebView via 300ms polling fallback
+- Chat message input: mic/send icon now toggles correctly after Chinese input
+- Profile nickname: Chinese text no longer disappears on save
+- Group name/nickname inline edit: Chinese text persists correctly
+- Group announcement: Chinese text no longer reverts
+- Group member search: Chinese input now detected
+- Join group modal: input now uses polling for consistency
+
+### New
+- `setupInputPolling()` exported utility in `hooks/use-ime-input.ts` — reusable native input + polling for any DOM element
+- `useIMEInput` hook now includes `inputCallbackRef` and `elRef` — auto-attaches polling when spread via `getInputProps()`
+
+### Steering Doc Updates
+- tech.md §6.3: Added "IME Input (Android WebView)" subsection
+- structure.md §3.6: Added IME input coding rule
+
+### Files Modified
+- `hooks/use-ime-input.ts` — Added `setupInputPolling` + callback ref with polling
+- `components/pages/ChatPage.tsx` — Message input uses polling callback ref
+- `components/ProfileEditModal.tsx` — Switched to `useIMEInput` from `useIMEComposition`
+- `components/chat/AddFriendModal.tsx` — Refactored inline polling to shared utility
+- `components/chat/JoinGroupModal.tsx` — Switched to uncontrolled + polling
+- `components/chat/GroupInfoPanel.tsx` — Uses hook's callback ref + elRef
+- `components/chat/CreateGroupModal.tsx` — Uses hook's elRef instead of separate ref
+
+---
+
 ## Task91 — Dissolved Group Input Disable + Join Request Red Dot Notifications (2026-03-17)
 
 ### Fixed

@@ -44,7 +44,7 @@ import VoiceMessagePlayer from "@/components/chat/VoiceMessagePlayer";
 import VoiceRecordButton from "@/components/chat/VoiceRecordButton";
 import { validateImageFile, validateFile, compressImage } from "@/lib/chat-media";
 import { MutedError } from "@/lib/group-management";
-import { useIMEInput } from "@/hooks/use-ime-input";
+import { useIMEInput, setupInputPolling } from "@/hooks/use-ime-input";
 import GroupInfoPanel from "@/components/chat/GroupInfoPanel";
 import GroupMemberList from "@/components/chat/GroupMemberList";
 import GroupSettingsPanel from "@/components/chat/GroupSettingsPanel";
@@ -405,16 +405,21 @@ function ChatDetail({ chat, onBack, locale }: { chat: Chat; onBack: () => void; 
     setHasText(val.trim().length > 0);
   }, []);
 
-  // Native DOM input listener — reliable on all platforms including Android WebView
-  // Bypasses React's synthetic event system to catch IME composition changes
-  useEffect(() => {
-    const el = inputRef.current;
-    if (!el) return;
-    const handler = () => {
-      setHasText(el.value.trim().length > 0);
-    };
-    el.addEventListener('input', handler);
-    return () => el.removeEventListener('input', handler);
+  // Polling + native input event for Android WebView IME compatibility.
+  // Callback ref that sets up polling when the input mounts, merged with inputRef.
+  const pollingCleanupRef = useRef<(() => void) | null>(null);
+  const messageInputCallbackRef = useCallback((el: HTMLInputElement | null) => {
+    if (pollingCleanupRef.current) {
+      pollingCleanupRef.current();
+      pollingCleanupRef.current = null;
+    }
+    // Store in inputRef for imperative access (read value, clear, scroll)
+    (inputRef as React.MutableRefObject<HTMLInputElement | null>).current = el;
+    if (el) {
+      pollingCleanupRef.current = setupInputPolling(el, (v) => {
+        setHasText(v.trim().length > 0);
+      });
+    }
   }, []);
 
   const handleSend = async () => {
@@ -906,7 +911,7 @@ function ChatDetail({ chat, onBack, locale }: { chat: Chat; onBack: () => void; 
                 <Smile className="w-5 h-5 text-muted-foreground" />
               </motion.button>
               <input
-                ref={inputRef}
+                ref={messageInputCallbackRef}
                 onInput={handleInput}
                 onCompositionStart={() => setIsComposing(true)}
                 onCompositionEnd={() => {
