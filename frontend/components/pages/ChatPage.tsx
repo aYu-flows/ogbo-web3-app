@@ -45,8 +45,6 @@ import VoiceRecordButton from "@/components/chat/VoiceRecordButton";
 import { validateImageFile, validateFile, compressImage } from "@/lib/chat-media";
 import { MutedError } from "@/lib/group-management";
 import { useIMEInput, setupInputPolling } from "@/hooks/use-ime-input";
-import { supabase } from "@/lib/supabaseClient";
-import { BUNDLE_VERSION } from "@/lib/ota-version";
 import GroupInfoPanel from "@/components/chat/GroupInfoPanel";
 import GroupMemberList from "@/components/chat/GroupMemberList";
 import GroupSettingsPanel from "@/components/chat/GroupSettingsPanel";
@@ -117,25 +115,6 @@ function EmojiPicker({ onSelect, onClose }: { onSelect: (emoji: string) => void;
       </div>
     </motion.div>
   );
-}
-
-// ── Task95 IME Diagnostic Logger ──
-let _imeLogSeq = 0;
-function imeLog(event: string, el: HTMLInputElement | null, extra?: Record<string, unknown>) {
-  _imeLogSeq++;
-  const data = {
-    seq: _imeLogSeq,
-    event,
-    selStart: el?.selectionStart,
-    selEnd: el?.selectionEnd,
-    valLen: el?.value?.length,
-    val: el?.value?.slice(0, 80),
-    ...extra,
-    v: BUNDLE_VERSION,
-    t: Date.now(),
-  };
-  console.log('[IME-DIAG]', JSON.stringify(data));
-  supabase.from('ota_debug_log').insert({ step: `IME_${event}`, bundle_version: BUNDLE_VERSION, data }).then(() => {});
 }
 
 // Chat Detail View
@@ -439,8 +418,7 @@ function ChatDetail({ chat, onBack, locale }: { chat: Chat; onBack: () => void; 
   }, []);
 
   // Polling + native input event for Android WebView IME compatibility.
-  // Callback ref that sets up polling when the input mounts, merged with inputRef.
-  // DIAGNOSTIC Round6: polling DISABLED + native event logging added
+  // Round6: setupInputPolling restored with cursor tracking + fix for silent IME insertions
   const pollingCleanupRef = useRef<(() => void) | null>(null);
   const messageInputCallbackRef = useCallback((el: HTMLInputElement | null) => {
     if (pollingCleanupRef.current) {
@@ -450,39 +428,9 @@ function ChatDetail({ chat, onBack, locale }: { chat: Chat; onBack: () => void; 
     // Store in inputRef for imperative access (read value, clear, scroll)
     (inputRef as React.MutableRefObject<HTMLInputElement | null>).current = el;
     if (el) {
-      // Native event listeners for diagnostic logging
-      const onNativeInput = (e: Event) => {
-        const ie = e as InputEvent;
-        imeLog('NATIVE_INPUT', el, {
-          inputType: ie.inputType, data: ie.data,
-          isComposing: ie.isComposing, composingRef: isComposingRef.current,
-        });
-      };
-      const onNativeCompStart = (e: Event) => {
-        const ce = e as CompositionEvent;
-        imeLog('NATIVE_COMP_START', el, { data: ce.data });
-      };
-      const onNativeCompUpdate = (e: Event) => {
-        const ce = e as CompositionEvent;
-        imeLog('NATIVE_COMP_UPDATE', el, { data: ce.data });
-      };
-      const onNativeCompEnd = (e: Event) => {
-        const ce = e as CompositionEvent;
-        imeLog('NATIVE_COMP_END', el, { data: ce.data });
-        // Log cursor position again after a short delay
-        setTimeout(() => imeLog('NATIVE_COMP_END+50ms', el), 50);
-        setTimeout(() => imeLog('NATIVE_COMP_END+200ms', el), 200);
-      };
-      el.addEventListener('input', onNativeInput);
-      el.addEventListener('compositionstart', onNativeCompStart);
-      el.addEventListener('compositionupdate', onNativeCompUpdate);
-      el.addEventListener('compositionend', onNativeCompEnd);
-      pollingCleanupRef.current = () => {
-        el.removeEventListener('input', onNativeInput);
-        el.removeEventListener('compositionstart', onNativeCompStart);
-        el.removeEventListener('compositionupdate', onNativeCompUpdate);
-        el.removeEventListener('compositionend', onNativeCompEnd);
-      };
+      pollingCleanupRef.current = setupInputPolling(el, (v) => {
+        setHasText(v.trim().length > 0);
+      });
     }
   }, []);
 
@@ -989,27 +937,16 @@ function ChatDetail({ chat, onBack, locale }: { chat: Chat; onBack: () => void; 
               </motion.button>
               <input
                 ref={messageInputCallbackRef}
-                onInput={() => {
-                  imeLog('REACT_onInput', inputRef.current, { composingRef: isComposingRef.current });
-                  handleInput();
-                }}
-                onCompositionStart={() => {
-                  imeLog('REACT_compStart', inputRef.current);
-                  isComposingRef.current = true; setIsComposing(true);
-                }}
-                onCompositionEnd={(e) => {
-                  imeLog('REACT_compEnd', inputRef.current, { data: e.data });
+                onInput={handleInput}
+                onCompositionStart={() => { isComposingRef.current = true; setIsComposing(true); }}
+                onCompositionEnd={() => {
                   setTimeout(() => {
-                    imeLog('REACT_compEnd+60ms', inputRef.current);
                     isComposingRef.current = false;
                     setIsComposing(false);
                     handleInput();
                   }, 60);
                 }}
-                onChange={() => {
-                  imeLog('REACT_onChange', inputRef.current, { composingRef: isComposingRef.current });
-                  handleInput();
-                }}
+                onChange={handleInput}
                 onKeyDown={handleKeyDown}
                 onFocus={() => {
                   setTimeout(() => {

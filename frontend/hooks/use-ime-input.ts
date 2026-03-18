@@ -1,8 +1,24 @@
 import { useCallback, useLayoutEffect, useRef, useState } from 'react'
+import { supabase } from '@/lib/supabaseClient'
+import { BUNDLE_VERSION } from '@/lib/ota-version'
+
+// ── Task95 diagnostic logger ──
+let _imeSeq = 0
+function imePollingLog(step: string, data?: Record<string, unknown>) {
+  _imeSeq++
+  const payload = { ...data, seq: _imeSeq, v: BUNDLE_VERSION, t: Date.now() }
+  console.log(`[IME-POLL #${_imeSeq}]`, step, payload)
+  supabase.from('ota_debug_log').insert({ step: `POLL_${step}`, bundle_version: BUNDLE_VERSION, data: payload }).then(() => {})
+}
 
 /**
  * Sets up polling + native input event on a DOM element to detect ALL input
  * methods, including Android WebView IME candidate taps that fire no events.
+ *
+ * NEW in Round6: Tracks cursor position and restores it when a "silent"
+ * value change is detected (IME candidate selection with no events).
+ * On Android WebView, IME candidate taps fire ZERO JS events but move
+ * cursor to end. Polling detects the change and fixes cursor position.
  *
  * Returns a cleanup function.
  */
@@ -12,16 +28,16 @@ export function setupInputPolling(
   interval = 300,
 ): () => void {
   let lastSynced = el.value
-  // Track composition state to SKIP synchronous onSync during IME operations.
-  // On Android WebView, calling onSync (which triggers React state updates)
-  // during the native input event of an IME candidate selection interferes
-  // with the WebView's cursor management, causing cursor to jump to end.
   let isComposing = false
+
+  // ── Cursor tracking for silent IME insertions ──
+  // Updated on every poll tick where value is unchanged (= stable cursor)
+  let lastStableCursor: number | null = el.selectionStart
+  let lastStableValue = el.value
 
   const onCompStart = () => { isComposing = true }
   const onCompEnd = () => {
     isComposing = false
-    // Deferred sync after composition ends — let WebView finalize cursor first
     setTimeout(() => {
       const v = el.value
       if (v !== lastSynced) {
@@ -34,12 +50,56 @@ export function setupInputPolling(
   const sync = () => {
     const v = el.value
     if (v !== lastSynced) {
+      // Value changed — detect if this is a silent IME insertion
+      const oldCursor = lastStableCursor
+      const oldVal = lastStableValue
+      const currentCursor = el.selectionStart
+
+      imePollingLog('VALUE_CHANGE', {
+        oldVal: oldVal?.slice(0, 40), newVal: v.slice(0, 40),
+        oldCursor, currentCursor, oldLen: oldVal?.length, newLen: v.length,
+      })
+
+      // Calculate correct cursor position:
+      // If text was inserted at oldCursor, the suffix after cursor should be unchanged
+      if (oldCursor !== null && oldVal !== null) {
+        const suffix = oldVal.slice(oldCursor)
+        // Verify suffix matches end of new value (insertion happened at cursor)
+        if (v.endsWith(suffix)) {
+          const correctCursor = v.length - suffix.length
+          imePollingLog('CURSOR_FIX', {
+            oldCursor, currentCursor, correctCursor, suffix: suffix.slice(0, 20),
+          })
+          // Only fix if cursor is wrong (at end instead of insertion point)
+          if (currentCursor !== correctCursor && correctCursor >= 0) {
+            try {
+              el.setSelectionRange(correctCursor, correctCursor)
+              imePollingLog('CURSOR_SET_OK', { correctCursor })
+            } catch (_) { /* ignore */ }
+            // Retry after short delay in case WebView overrides
+            setTimeout(() => {
+              try {
+                if (el.selectionStart !== correctCursor) {
+                  el.setSelectionRange(correctCursor, correctCursor)
+                  imePollingLog('CURSOR_RETRY_OK', { correctCursor, was: el.selectionStart })
+                }
+              } catch (_) { /* ignore */ }
+            }, 50)
+          }
+        }
+      }
+
       lastSynced = v
+      lastStableValue = v
+      lastStableCursor = el.selectionStart
       onSync(v)
+    } else {
+      // Value unchanged — update stable cursor position
+      lastStableCursor = el.selectionStart
+      lastStableValue = v
     }
   }
 
-  // Native input event: SKIP during composition to avoid interfering with IME cursor
   const onNativeInput = () => {
     if (!isComposing) sync()
   }
@@ -47,8 +107,6 @@ export function setupInputPolling(
   el.addEventListener('compositionstart', onCompStart)
   el.addEventListener('compositionend', onCompEnd)
   el.addEventListener('input', onNativeInput)
-  // Polling fallback: catches IME candidate taps that fire no events,
-  // and also handles composition changes (since native input is skipped during composition)
   const pollId = setInterval(sync, interval)
   return () => {
     el.removeEventListener('compositionstart', onCompStart)
