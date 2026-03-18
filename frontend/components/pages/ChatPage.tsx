@@ -425,6 +425,14 @@ function ChatDetail({ chat, onBack, locale }: { chat: Chat; onBack: () => void; 
   const handleSend = async () => {
     // Guard: prevent sending in dissolved/removed groups
     if (removedAlert) return;
+    // Real-time guard: check store directly to cover race between allChats update and useEffect
+    if (chat.type === 'group') {
+      const currentChats = useStore.getState().chats;
+      if (!currentChats.some(c => c.id === chat.id)) {
+        setRemovedAlert('dissolved');
+        return;
+      }
+    }
     const rawValue = inputRef.current?.value ?? '';
     if (!rawValue.trim()) {
       toast(locale === 'zh' ? '请先输入消息内容' : 'Please enter a message first')
@@ -705,7 +713,7 @@ function ChatDetail({ chat, onBack, locale }: { chat: Chat; onBack: () => void; 
 
       {/* Messages */}
       <div ref={msgListRef} className="flex-1 overflow-y-auto p-4 space-y-3" onScroll={() => { if (contextMenu.visible) setContextMenu(cm => ({ ...cm, visible: false })); }}>
-        <AnimatePresence>
+        <AnimatePresence initial={false}>
         {chat.messages.map((msg, msgIndex) => {
           const isMe = msg.sender === "me";
           const timeStr = `${new Date(msg.timestamp).getHours().toString().padStart(2, "0")}:${new Date(msg.timestamp).getMinutes().toString().padStart(2, "0")}`;
@@ -775,10 +783,9 @@ function ChatDetail({ chat, onBack, locale }: { chat: Chat; onBack: () => void; 
             <motion.div
               key={msg.id}
               data-msg-index={msgIndex}
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, height: 0, marginBottom: 0 }}
-              transition={{ duration: 0.2 }}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: 0.15 }}
               className={`flex items-center ${isMe ? "justify-end" : "justify-start"}`}
               onTouchStart={!isUploading ? (e) => {
                 if (isSelectMode) { handleDragSelectStart(e, msgIndex); }

@@ -4,6 +4,17 @@
 
 ---
 
+## Task94 — Fix Dissolved Group Send Guard & Message Shake (2026-03-18)
+
+### Fixed
+- Dissolved group send guard had race condition — `removedAlert` state was set async via `useEffect`, allowing sends in the gap. Added real-time `useStore.getState().chats` check in `handleSend` to block sends immediately.
+- Message shake/jitter persisted after Task93 fix — root cause was `y: 10` initial offset conflicting with smooth scroll, plus `exit` height-collapse animation. Removed all `y` transforms and `exit` animation, added `AnimatePresence initial={false}`, reduced transition to 0.15s.
+
+### Files Modified
+- `components/pages/ChatPage.tsx` — handleSend real-time guard, AnimatePresence initial={false}, motion.div simplified animation
+
+---
+
 ## Task93 — Fix Dissolved Group Send, Message Shake, Friend Chat Navigation (2026-03-17)
 
 ### Fixed
