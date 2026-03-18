@@ -2019,6 +2019,19 @@ export const useStore = create<AppState>((set, get) => ({
   leaveGroupAction: async (groupId) => {
     const state = get()
     if (!state.walletAddress) return
+    const me = state.walletAddress.toLowerCase()
+    // Block group owner from leaving — must dissolve instead
+    let creator = state.activeGroupDetail[groupId]?.creator
+    if (!creator) {
+      const { fetchGroupDetail } = await import('@/lib/group-management')
+      try { creator = (await fetchGroupDetail(groupId)).creator } catch { /* group may not exist */ }
+    }
+    if (creator && creator.toLowerCase() === me) {
+      const { default: toast } = await import('react-hot-toast')
+      const { t } = await import('@/lib/i18n')
+      toast.error(t('group.ownerCannotLeave', get().locale))
+      return
+    }
     const { leaveGroup } = await import('@/lib/group-management')
     const { sendMessage: supabaseSend } = await import('@/lib/chat')
     const name = state.getDisplayName(state.walletAddress)

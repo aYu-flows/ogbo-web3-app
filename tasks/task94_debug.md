@@ -89,10 +89,36 @@ Three changes to the message `motion.div`:
 
 ---
 
+## Bug 3: Group Owner Can Leave Their Own Group
+
+### Symptoms
+- Group owner can swipe-left on a group chat in the list and tap delete to leave
+- Owner leaving a group they created should be blocked
+
+### Root Cause
+- `leaveGroupAction` in store had no owner check — it just called `leaveGroup()` directly
+- The swipe-to-delete action in ChatPage called `leaveGroupAction` without any guard
+- GroupInfoPanel had a UI guard (disabled button for owners) but no store-level protection
+
+### Fix (Task94 iteration 2)
+- Added owner check in `leaveGroupAction` (store.ts): checks `activeGroupDetail[groupId]?.creator`, falls back to `fetchGroupDetail()` from Supabase if not cached. If user is owner, shows toast error and returns.
+- Updated i18n text: "群主无法退出群聊，如需退出，请通过解散群聊来退出。"
+- This protects ALL callers (swipe action, GroupInfoPanel, any future caller)
+
+### Verification Steps
+1. Open a group you own
+2. Try swipe-left on the group in chat list → should show error toast
+3. Open GroupInfoPanel → Leave button should be disabled with owner text
+
+---
+
 ## Files Modified
-- `frontend/components/pages/ChatPage.tsx` — Both fixes applied
+- `frontend/components/pages/ChatPage.tsx` — Dissolution detection + message animation fixes
+- `frontend/lib/store.ts` — Owner guard in leaveGroupAction
+- `frontend/lib/i18n.ts` — Updated ownerCannotLeave text (zh + en)
 
 ## Iteration Log
 | # | Date | Action | Result |
 |---|------|--------|--------|
-| 1 | 2026-03-18 | Applied both fixes | Pending user test |
+| 1 | 2026-03-18 | Applied initial fixes (store guard + animation) | User reports dissolved send still broken |
+| 2 | 2026-03-18 | Added system message detection for dissolution (RLS fallback) + owner leave guard | Pending user test |

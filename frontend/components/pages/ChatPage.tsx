@@ -287,8 +287,17 @@ function ChatDetail({ chat, onBack, locale }: { chat: Chat; onBack: () => void; 
     const currentChat = allChats.find(c => c.id === chat.id);
     if (!currentChat) {
       setRemovedAlert('dissolved');
+      return;
     }
-  }, [allChats, chat.id, chat.type, walletAddress]);
+    // Fallback: detect dissolution via system message (covers case where
+    // Supabase Realtime DELETE event on `groups` table is blocked by RLS)
+    const hasDissolved = chat.messages.some(
+      m => m.sender === 'system' && m.content === '群聊已解散'
+    );
+    if (hasDissolved) {
+      setRemovedAlert('dissolved');
+    }
+  }, [allChats, chat.id, chat.type, walletAddress, chat.messages.length]);
 
   // Mount: slide in from right (mobile only)
   useEffect(() => {
@@ -429,6 +438,11 @@ function ChatDetail({ chat, onBack, locale }: { chat: Chat; onBack: () => void; 
     if (chat.type === 'group') {
       const currentChats = useStore.getState().chats;
       if (!currentChats.some(c => c.id === chat.id)) {
+        setRemovedAlert('dissolved');
+        return;
+      }
+      // Also check dissolution system message (DELETE event may not arrive due to RLS)
+      if (chat.messages.some(m => m.sender === 'system' && m.content === '群聊已解散')) {
         setRemovedAlert('dissolved');
         return;
       }

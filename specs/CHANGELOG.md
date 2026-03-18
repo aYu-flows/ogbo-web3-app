@@ -4,14 +4,18 @@
 
 ---
 
-## Task94 — Fix Dissolved Group Send Guard & Message Shake (2026-03-18)
+## Task94 — Fix Dissolved Group Send Guard, Message Shake, Owner Leave (2026-03-18)
 
 ### Fixed
 - Dissolved group send guard had race condition — `removedAlert` state was set async via `useEffect`, allowing sends in the gap. Added real-time `useStore.getState().chats` check in `handleSend` to block sends immediately.
+- Dissolved group detection failed when Supabase Realtime DELETE event was blocked by RLS — added fallback detection via system message "群聊已解散" content in `chat.messages`.
 - Message shake/jitter persisted after Task93 fix — root cause was `y: 10` initial offset conflicting with smooth scroll, plus `exit` height-collapse animation. Removed all `y` transforms and `exit` animation, added `AnimatePresence initial={false}`, reduced transition to 0.15s.
+- Group owner could leave their own group via swipe-to-delete — added owner check in `leaveGroupAction` (checks `activeGroupDetail` cache, falls back to `fetchGroupDetail`). Shows toast: "群主无法退出群聊，如需退出，请通过解散群聊来退出。"
 
 ### Files Modified
-- `components/pages/ChatPage.tsx` — handleSend real-time guard, AnimatePresence initial={false}, motion.div simplified animation
+- `components/pages/ChatPage.tsx` — handleSend real-time guard, dissolution system message detection, AnimatePresence initial={false}, motion.div simplified animation
+- `lib/store.ts` — Owner guard in leaveGroupAction
+- `lib/i18n.ts` — Updated ownerCannotLeave text (zh + en)
 
 ---
 
