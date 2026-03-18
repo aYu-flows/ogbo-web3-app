@@ -155,8 +155,6 @@ function ChatDetail({ chat, onBack, locale }: { chat: Chat; onBack: () => void; 
   const [muteCountdown, setMuteCountdown] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-  // Track IME composition start position for cursor fix
-  const compStartPosRef = useRef<number | null>(null);
   // File cache for retry functionality
   const fileCacheRef = useRef<Map<string, File>>(new Map());
   // Ref to the ChatDetail container — used to compute how much of keyboardHeight
@@ -936,30 +934,16 @@ function ChatDetail({ chat, onBack, locale }: { chat: Chat; onBack: () => void; 
               </motion.button>
               <input
                 ref={messageInputCallbackRef}
-                onInput={handleInput}
-                onCompositionStart={(e) => {
-                  setIsComposing(true);
-                  compStartPosRef.current = e.currentTarget.selectionStart;
-                }}
-                onCompositionEnd={(e) => {
-                  const el = e.currentTarget;
-                  const candidateLen = (e.data || '').length;
-                  const compStart = compStartPosRef.current;
-                  const correctPos = compStart !== null ? compStart + candidateLen : null;
-                  compStartPosRef.current = null;
-                  requestAnimationFrame(() => {
+                onInput={() => { if (!isComposing) handleInput(); }}
+                onCompositionStart={() => setIsComposing(true)}
+                onCompositionEnd={() => {
+                  // Defer ALL state updates to avoid interfering with IME cursor
+                  setTimeout(() => {
                     setIsComposing(false);
                     handleInput();
-                    if (correctPos !== null) {
-                      setTimeout(() => {
-                        if (document.activeElement === el) {
-                          try { el.setSelectionRange(correctPos, correctPos); } catch (_) {}
-                        }
-                      }, 50);
-                    }
-                  });
+                  }, 60);
                 }}
-                onChange={handleInput}
+                onChange={() => { if (!isComposing) handleInput(); }}
                 onKeyDown={handleKeyDown}
                 onFocus={() => {
                   setTimeout(() => {
