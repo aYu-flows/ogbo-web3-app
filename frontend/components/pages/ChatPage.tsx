@@ -124,6 +124,7 @@ function ChatDetail({ chat, onBack, locale }: { chat: Chat; onBack: () => void; 
   const [showEmoji, setShowEmoji] = useState(false);
   const [isTyping, setIsTyping] = useState(false);
   const [isComposing, setIsComposing] = useState(false);
+  const isComposingRef = useRef(false); // Synchronous ref for IME guard (useState is batched)
   const [previewAddress, setPreviewAddress] = useState<string | null>(null);
   const [previewImage, setPreviewImage] = useState<File | null>(null);
   const [fullscreenImage, setFullscreenImage] = useState<string | null>(null);
@@ -410,12 +411,15 @@ function ChatDetail({ chat, onBack, locale }: { chat: Chat; onBack: () => void; 
   }, [chat.id, retryMediaMessage, locale]);
 
   const handleInput = useCallback(() => {
+    // Skip React state updates during IME composition to prevent cursor jump on Android WebView
+    if (isComposingRef.current) return;
     const val = inputRef.current?.value ?? '';
     setHasText(val.trim().length > 0);
   }, []);
 
   // Polling + native input event for Android WebView IME compatibility.
   // Callback ref that sets up polling when the input mounts, merged with inputRef.
+  // DIAGNOSTIC: polling DISABLED to test if it causes IME cursor jump (Task95 Round5)
   const pollingCleanupRef = useRef<(() => void) | null>(null);
   const messageInputCallbackRef = useCallback((el: HTMLInputElement | null) => {
     if (pollingCleanupRef.current) {
@@ -424,11 +428,7 @@ function ChatDetail({ chat, onBack, locale }: { chat: Chat; onBack: () => void; 
     }
     // Store in inputRef for imperative access (read value, clear, scroll)
     (inputRef as React.MutableRefObject<HTMLInputElement | null>).current = el;
-    if (el) {
-      pollingCleanupRef.current = setupInputPolling(el, (v) => {
-        setHasText(v.trim().length > 0);
-      });
-    }
+    // NO setupInputPolling — diagnostic test for cursor jump
   }, []);
 
   const handleSend = async () => {
@@ -934,16 +934,17 @@ function ChatDetail({ chat, onBack, locale }: { chat: Chat; onBack: () => void; 
               </motion.button>
               <input
                 ref={messageInputCallbackRef}
-                onInput={() => { if (!isComposing) handleInput(); }}
-                onCompositionStart={() => setIsComposing(true)}
+                onInput={handleInput}
+                onCompositionStart={() => { isComposingRef.current = true; setIsComposing(true); }}
                 onCompositionEnd={() => {
-                  // Defer ALL state updates to avoid interfering with IME cursor
+                  // Defer ALL state updates — let Android WebView finalize cursor first
                   setTimeout(() => {
+                    isComposingRef.current = false;
                     setIsComposing(false);
                     handleInput();
                   }, 60);
                 }}
-                onChange={() => { if (!isComposing) handleInput(); }}
+                onChange={handleInput}
                 onKeyDown={handleKeyDown}
                 onFocus={() => {
                   setTimeout(() => {
