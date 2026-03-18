@@ -50,7 +50,7 @@ async function readClipboardText(): Promise<string> {
 const DEFAULT_AVATAR_SVG = `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40"><rect width="40" height="40" rx="20" fill="%23d1d5db"/><circle cx="20" cy="16" r="6" fill="%239ca3af"/><ellipse cx="20" cy="34" rx="11" ry="9" fill="%239ca3af"/></svg>')}`
 
 export default function AddFriendModal({ isOpen, onClose, onOpenChat }: AddFriendModalProps) {
-  const { searchUserByAddress, searchUserByNickname, sendFriendRequest, chats, chatRequests, walletAddress, locale, switchTab } = useStore()
+  const { searchUserByAddress, searchUserByNickname, sendFriendRequest, chats, chatRequests, walletAddress, locale, switchTab, setPendingOpenChatId } = useStore()
   const [normalizedAddr, setNormalizedAddr] = useState('')
   const [searching, setSearching] = useState(false)
   const [searchResults, setSearchResults] = useState<SelectedUser[]>([])
@@ -246,7 +246,12 @@ export default function AddFriendModal({ isOpen, onClose, onOpenChat }: AddFrien
   }
 
   const handleOpenChat = (c: typeof chats[0]) => {
-    if (onOpenChat) onOpenChat(c.id)
+    if (onOpenChat) {
+      onOpenChat(c.id)
+    } else {
+      switchTab('chat')
+      setPendingOpenChatId(c.id)
+    }
     onClose()
   }
 

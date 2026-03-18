@@ -383,6 +383,10 @@ interface AppState {
   myMuteStatus: Record<string, GroupMuteRow | null>
   activeGroupDetail: Record<string, GroupDetail>
 
+  // Navigation: pending chat to open (used by AddFriendModal → ChatPage)
+  pendingOpenChatId: string | null
+  setPendingOpenChatId: (id: string | null) => void
+
   switchTab: (tab: TabType) => void
   toggleBalance: () => void
   switchLocale: () => void
@@ -504,6 +508,8 @@ export const useStore = create<AppState>((set, get) => ({
   myMuteStatus: {},
   activeGroupDetail: {},
 
+  pendingOpenChatId: null,
+  setPendingOpenChatId: (id) => set({ pendingOpenChatId: id }),
   switchTab: (tab) => set({ activeTab: tab }),
   toggleBalance: () => set((s) => ({ isBalanceVisible: !s.isBalanceVisible })),
   setOtaProgress: (progress) => set({ otaProgress: progress }),

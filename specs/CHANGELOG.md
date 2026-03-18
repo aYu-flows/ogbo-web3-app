@@ -4,6 +4,21 @@
 
 ---
 
+## Task93 — Fix Dissolved Group Send, Message Shake, Friend Chat Navigation (2026-03-17)
+
+### Fixed
+- Dissolved group members could still send messages — added guard in `handleSend` to block sending when `removedAlert` is set
+- Dissolved group chat would auto-close before showing the "This group has been dissolved" notice — cached last chat data and prevented auto-deselect for dissolved groups
+- Chat messages (private/group) would shake/jitter on send due to framer-motion `layout` prop causing layout shift animations — removed `layout` prop from message `motion.div`
+- Clicking "Send Message" on an existing friend in AddFriendModal only closed the modal without navigating to the chat — added `pendingOpenChatId` store field for cross-component navigation
+
+### Files Modified
+- `components/pages/ChatPage.tsx` — handleSend guard, removed `layout` prop, cached dissolved chat, pending chat navigation
+- `components/chat/AddFriendModal.tsx` — fallback navigation via `switchTab` + `setPendingOpenChatId`
+- `lib/store.ts` — Added `pendingOpenChatId` and `setPendingOpenChatId`
+
+---
+
 ## Task92 — Fix All IME Chinese Input Issues (2026-03-17)
 
 ### Fixed

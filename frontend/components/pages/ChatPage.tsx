@@ -423,6 +423,8 @@ function ChatDetail({ chat, onBack, locale }: { chat: Chat; onBack: () => void; 
   }, []);
 
   const handleSend = async () => {
+    // Guard: prevent sending in dissolved/removed groups
+    if (removedAlert) return;
     const rawValue = inputRef.current?.value ?? '';
     if (!rawValue.trim()) {
       toast(locale === 'zh' ? '请先输入消息内容' : 'Please enter a message first')
@@ -773,7 +775,6 @@ function ChatDetail({ chat, onBack, locale }: { chat: Chat; onBack: () => void; 
             <motion.div
               key={msg.id}
               data-msg-index={msgIndex}
-              layout
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, height: 0, marginBottom: 0 }}
@@ -1080,6 +1081,8 @@ export default function ChatPage({ searchOpen: searchOpenProp, onCloseSearch }: 
   const { chats, locale, markChatRead, pinChat, deleteChat, chatRequests, getDisplayName, getAvatarUrl, toggleGroupPin, leaveGroupAction, myGroupSettings, pendingRequestCounts, myAdminGroupIds } = useStore();
   const walletAddress = useStore((s) => s.walletAddress);
   const isConnectingChat = useStore((s) => s.isConnectingChat);
+  const pendingOpenChatId = useStore((s) => s.pendingOpenChatId);
+  const setPendingOpenChatId = useStore((s) => s.setPendingOpenChatId);
   const searchIME = useIMEInput("");
   const searchQuery = searchIME.value;
   const deferredSearchQuery = searchIME.deferredValue;
@@ -1101,13 +1104,27 @@ export default function ChatPage({ searchOpen: searchOpenProp, onCloseSearch }: 
     }
   }, [walletAddress]);
 
-  // Auto-deselect when the selected chat no longer exists (e.g. dissolved/left/kicked)
+  // Auto-deselect when the selected chat no longer exists (e.g. left/kicked)
+  // For dissolved groups, keep selectedChat so ChatDetail can show the dissolved notice
+  const lastChatRef = useRef<Chat | null>(null);
   useEffect(() => {
     if (selectedChat && !chats.some(c => c.id === selectedChat)) {
+      // If we have a cached group chat, let ChatDetail show dissolved notice
+      if (lastChatRef.current?.type === 'group') return;
       setSelectedChat(null);
       setActiveChatId(null);
     }
   }, [chats, selectedChat]);
+
+  // Handle pending chat navigation (from AddFriendModal)
+  useEffect(() => {
+    if (pendingOpenChatId) {
+      setSelectedChat(pendingOpenChatId);
+      setActiveChatId(pendingOpenChatId);
+      markChatRead(pendingOpenChatId);
+      setPendingOpenChatId(null);
+    }
+  }, [pendingOpenChatId]);
 
   // Detect invite link in search input and show group preview
   useEffect(() => {
@@ -1159,7 +1176,10 @@ export default function ChatPage({ searchOpen: searchOpenProp, onCloseSearch }: 
       )
     : sortedChats;
 
-  const activeChat = chats.find((c) => c.id === selectedChat);
+  const liveChat = chats.find((c) => c.id === selectedChat);
+  // Cache last valid chat for dissolved group display
+  if (liveChat) lastChatRef.current = liveChat;
+  const activeChat = liveChat || (selectedChat ? lastChatRef.current : null);
 
   const handleOpenChat = (chatId: string) => {
     setSelectedChat(chatId);
