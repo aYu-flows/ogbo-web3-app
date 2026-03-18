@@ -12,28 +12,61 @@ export function setupInputPolling(
   interval = 300,
 ): () => void {
   let lastSynced = el.value
+  // --- IME composition cursor fix for Android WebView ---
+  // Android WebView moves cursor to end after IME candidate selection.
+  // We track composition start position and CALCULATE the correct cursor
+  // position instead of trying to save/restore (which fails because the
+  // cursor is already wrong by the time any event handler runs).
+  let compStartPos: number | null = null
+  let valueBeforeComp = ''
+
+  const onCompStart = () => {
+    compStartPos = el.selectionStart
+    valueBeforeComp = el.value
+  }
+
+  const restoreCursor = (pos: number) => {
+    // Use setTimeout (not rAF) — WebView may move cursor AFTER rAF
+    setTimeout(() => {
+      if (document.activeElement === el) {
+        try { el.setSelectionRange(pos, pos) } catch (_) {}
+      }
+    }, 50)
+  }
+
+  // compositionend may or may not fire on Android WebView
+  const onCompEnd = (e: Event) => {
+    const data = (e as any).data || ''
+    if (compStartPos !== null) {
+      restoreCursor(compStartPos + data.length)
+    }
+    compStartPos = null
+  }
+
   const sync = () => {
     const v = el.value
     if (v !== lastSynced) {
-      // Save cursor position BEFORE onSync triggers React re-renders
-      const start = el.selectionStart
-      const end = el.selectionEnd
       lastSynced = v
       onSync(v)
-      // Restore cursor after React re-render to prevent IME candidate selection
-      // from jumping cursor to end on Android WebView
-      requestAnimationFrame(() => {
-        if (document.activeElement === el && start !== null) {
-          try { el.setSelectionRange(start, end ?? start) } catch (_) {}
-        }
-      })
+      // If composition was active (compositionend may not have fired on Android),
+      // calculate correct cursor: compStartPos + candidateLength
+      // candidateLength = newValue.length - prefix.length - suffix.length
+      //   where suffix = valueBeforeComp.length - compStartPos
+      if (compStartPos !== null) {
+        const suffixLen = valueBeforeComp.length - compStartPos
+        const candidateLen = Math.max(0, v.length - compStartPos - suffixLen)
+        restoreCursor(compStartPos + candidateLen)
+        compStartPos = null
+      }
     }
   }
-  // Primary: native input event (instant for regular keyboard)
+  el.addEventListener('compositionstart', onCompStart)
+  el.addEventListener('compositionend', onCompEnd)
   el.addEventListener('input', sync)
-  // Fallback: polling to catch IME candidate taps that fire no events
   const pollId = setInterval(sync, interval)
   return () => {
+    el.removeEventListener('compositionstart', onCompStart)
+    el.removeEventListener('compositionend', onCompEnd)
     el.removeEventListener('input', sync)
     clearInterval(pollId)
   }
@@ -70,31 +103,39 @@ export function useIMEInput(initialValue = '') {
     cursorRef.current = { start: null, end: null }
   }, [value])
 
+  // Track composition start position for cursor calculation
+  const compStartPosRef = useRef<number | null>(null)
+
   const onCompositionStart = useCallback(() => {
     isComposingRef.current = true
+    const el = elRef.current
+    if (el) compStartPosRef.current = el.selectionStart
   }, [])
 
   const onCompositionEnd = useCallback((e: React.CompositionEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-    // MUST be synchronous — on Android, onChange fires before compositionEnd.
-    // If deferred, handleChange would still see isComposing=true and skip deferredValue update.
     isComposingRef.current = false
     const el = e.currentTarget
-    // Save cursor BEFORE any async work — this is the correct position right after IME finalization
-    const start = el.selectionStart
-    const end = el.selectionEnd
+    const candidateLen = (e.data || '').length
+    const compStart = compStartPosRef.current
+    const correctPos = compStart !== null ? compStart + candidateLen : null
+    compStartPosRef.current = null
     // Use rAF to ensure DOM value is finalized (Android WebView timing issue).
     requestAnimationFrame(() => {
       const finalValue = el.value
-      cursorRef.current = { start, end }
+      if (correctPos !== null) {
+        cursorRef.current = { start: correctPos, end: correctPos }
+      }
       setValue(finalValue)
       setDeferredValue(finalValue)
       setCompositionEndCount(c => c + 1)
-      // Double rAF: restore cursor after React re-render completes
-      requestAnimationFrame(() => {
-        if (document.activeElement === el && start !== null) {
-          try { el.setSelectionRange(start, end ?? start) } catch (_) {}
-        }
-      })
+      // Restore calculated cursor position with setTimeout (WebView may override rAF)
+      if (correctPos !== null) {
+        setTimeout(() => {
+          if (document.activeElement === el) {
+            try { el.setSelectionRange(correctPos, correctPos) } catch (_) {}
+          }
+        }, 50)
+      }
     })
   }, [])
 

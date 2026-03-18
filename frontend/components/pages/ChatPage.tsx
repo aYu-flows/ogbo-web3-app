@@ -155,6 +155,8 @@ function ChatDetail({ chat, onBack, locale }: { chat: Chat; onBack: () => void; 
   const [muteCountdown, setMuteCountdown] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  // Track IME composition start position for cursor fix
+  const compStartPosRef = useRef<number | null>(null);
   // File cache for retry functionality
   const fileCacheRef = useRef<Map<string, File>>(new Map());
   // Ref to the ChatDetail container — used to compute how much of keyboardHeight
@@ -935,22 +937,26 @@ function ChatDetail({ chat, onBack, locale }: { chat: Chat; onBack: () => void; 
               <input
                 ref={messageInputCallbackRef}
                 onInput={handleInput}
-                onCompositionStart={() => setIsComposing(true)}
+                onCompositionStart={(e) => {
+                  setIsComposing(true);
+                  compStartPosRef.current = e.currentTarget.selectionStart;
+                }}
                 onCompositionEnd={(e) => {
-                  // Save cursor position before any React re-renders
                   const el = e.currentTarget;
-                  const start = el.selectionStart;
-                  const end = el.selectionEnd;
-                  // Defer state update to avoid interfering with IME cursor on Android WebView
+                  const candidateLen = (e.data || '').length;
+                  const compStart = compStartPosRef.current;
+                  const correctPos = compStart !== null ? compStart + candidateLen : null;
+                  compStartPosRef.current = null;
                   requestAnimationFrame(() => {
                     setIsComposing(false);
                     handleInput();
-                    // Restore cursor after React re-render
-                    requestAnimationFrame(() => {
-                      if (document.activeElement === el && start !== null) {
-                        try { el.setSelectionRange(start, end ?? start); } catch (_) {}
-                      }
-                    });
+                    if (correctPos !== null) {
+                      setTimeout(() => {
+                        if (document.activeElement === el) {
+                          try { el.setSelectionRange(correctPos, correctPos); } catch (_) {}
+                        }
+                      }, 50);
+                    }
                   });
                 }}
                 onChange={handleInput}
