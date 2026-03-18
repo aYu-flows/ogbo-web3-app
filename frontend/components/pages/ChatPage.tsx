@@ -936,10 +936,21 @@ function ChatDetail({ chat, onBack, locale }: { chat: Chat; onBack: () => void; 
                 ref={messageInputCallbackRef}
                 onInput={handleInput}
                 onCompositionStart={() => setIsComposing(true)}
-                onCompositionEnd={() => {
-                  setIsComposing(false);
+                onCompositionEnd={(e) => {
+                  // Save cursor position before any React re-renders
+                  const el = e.currentTarget;
+                  const start = el.selectionStart;
+                  const end = el.selectionEnd;
+                  // Defer state update to avoid interfering with IME cursor on Android WebView
                   requestAnimationFrame(() => {
+                    setIsComposing(false);
                     handleInput();
+                    // Restore cursor after React re-render
+                    requestAnimationFrame(() => {
+                      if (document.activeElement === el && start !== null) {
+                        try { el.setSelectionRange(start, end ?? start); } catch (_) {}
+                      }
+                    });
                   });
                 }}
                 onChange={handleInput}

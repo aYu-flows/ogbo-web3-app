@@ -15,8 +15,18 @@ export function setupInputPolling(
   const sync = () => {
     const v = el.value
     if (v !== lastSynced) {
+      // Save cursor position BEFORE onSync triggers React re-renders
+      const start = el.selectionStart
+      const end = el.selectionEnd
       lastSynced = v
       onSync(v)
+      // Restore cursor after React re-render to prevent IME candidate selection
+      // from jumping cursor to end on Android WebView
+      requestAnimationFrame(() => {
+        if (document.activeElement === el && start !== null) {
+          try { el.setSelectionRange(start, end ?? start) } catch (_) {}
+        }
+      })
     }
   }
   // Primary: native input event (instant for regular keyboard)
@@ -69,16 +79,22 @@ export function useIMEInput(initialValue = '') {
     // If deferred, handleChange would still see isComposing=true and skip deferredValue update.
     isComposingRef.current = false
     const el = e.currentTarget
+    // Save cursor BEFORE any async work — this is the correct position right after IME finalization
+    const start = el.selectionStart
+    const end = el.selectionEnd
     // Use rAF to ensure DOM value is finalized (Android WebView timing issue).
-    // If onChange already ran (Android order), this is a harmless redundant update.
     requestAnimationFrame(() => {
       const finalValue = el.value
-      // Save cursor position before React re-render resets it
-      cursorRef.current = { start: el.selectionStart, end: el.selectionEnd }
+      cursorRef.current = { start, end }
       setValue(finalValue)
       setDeferredValue(finalValue)
-      // Force increment to trigger downstream effects even if value is the same
       setCompositionEndCount(c => c + 1)
+      // Double rAF: restore cursor after React re-render completes
+      requestAnimationFrame(() => {
+        if (document.activeElement === el && start !== null) {
+          try { el.setSelectionRange(start, end ?? start) } catch (_) {}
+        }
+      })
     })
   }, [])
 
