@@ -4,6 +4,20 @@
 
 ---
 
+## Task95 — Fix IME Candidate Insertion Position on Android WebView (2026-03-18)
+
+### Fixed
+- Android WebView IME candidate selection inserted text at the END of input instead of at cursor position, and fired ZERO JavaScript events (no compositionstart/end, no input, no change). Root cause: native WebView IME bug that bypasses standard cursor position logic and event dispatch. Fix: `setupInputPolling()` tracks `lastStableCursor` via 300ms polling, detects misplaced insertions using prefix/suffix matching, rearranges `el.value` to correct order, and sets cursor to correct position.
+
+### Files Modified
+- `hooks/use-ime-input.ts` — Added cursor tracking + text rearrangement logic in `setupInputPolling()`
+- `components/pages/ChatPage.tsx` — Added `isComposingRef` (useRef) for synchronous IME guard
+
+### Docs Updated
+- `specs/tech.md` §6.3 — Added IME 候选词插入位置错误问题及方案
+
+---
+
 ## Task95 — Fix Cursor Jumping to End on Controlled Inputs (2026-03-18)
 
 ### Fixed

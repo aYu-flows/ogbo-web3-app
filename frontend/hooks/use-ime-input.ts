@@ -1,15 +1,4 @@
 import { useCallback, useLayoutEffect, useRef, useState } from 'react'
-import { supabase } from '@/lib/supabaseClient'
-import { BUNDLE_VERSION } from '@/lib/ota-version'
-
-// ── Task95 diagnostic logger ──
-let _imeSeq = 0
-function imePollingLog(step: string, data?: Record<string, unknown>) {
-  _imeSeq++
-  const payload = { ...data, seq: _imeSeq, v: BUNDLE_VERSION, t: Date.now() }
-  console.log(`[IME-POLL #${_imeSeq}]`, step, payload)
-  supabase.from('ota_debug_log').insert({ step: `POLL_${step}`, bundle_version: BUNDLE_VERSION, data: payload }).then(() => {})
-}
 
 /**
  * Sets up polling + native input event on a DOM element to detect ALL input
@@ -53,12 +42,6 @@ export function setupInputPolling(
       // Value changed — detect if this is a silent IME insertion
       const oldCursor = lastStableCursor
       const oldVal = lastStableValue
-      const currentCursor = el.selectionStart
-
-      imePollingLog('VALUE_CHANGE', {
-        oldVal: oldVal?.slice(0, 40), newVal: v.slice(0, 40),
-        oldCursor, currentCursor, oldLen: oldVal?.length, newLen: v.length,
-      })
 
       if (oldCursor !== null && oldVal !== null && oldCursor < oldVal.length) {
         const prefix = oldVal.slice(0, oldCursor)
@@ -67,10 +50,7 @@ export function setupInputPolling(
         if (v.endsWith(suffix) && suffix.length > 0) {
           // Case A: Text was correctly inserted at cursor — just fix cursor position
           const correctCursor = v.length - suffix.length
-          imePollingLog('CURSOR_FIX_A', {
-            oldCursor, currentCursor, correctCursor, suffix: suffix.slice(0, 20),
-          })
-          if (currentCursor !== correctCursor && correctCursor >= 0) {
+          if (el.selectionStart !== correctCursor && correctCursor >= 0) {
             try { el.setSelectionRange(correctCursor, correctCursor) } catch (_) {}
             setTimeout(() => {
               try { if (el.selectionStart !== correctCursor) el.setSelectionRange(correctCursor, correctCursor) } catch (_) {}
@@ -78,25 +58,17 @@ export function setupInputPolling(
           }
         } else if (v.startsWith(prefix) && suffix.length > 0) {
           // Case B: Text was appended at END instead of at cursor position
-          // e.g. old="你好世界" cursor=2 → new="你好世界啦啦啦" (should be "你好啦啦啦世界")
-          // Detect: prefix="你好" is at start, but suffix="世界" is NOT at end
+          // Android WebView IME bug: inserts candidate text at end, not at cursor
+          // e.g. old="你好世界" cursor=2 → new="你好世界啦" (should be "你好啦世界")
           const afterPrefix = v.slice(prefix.length)
           const suffixIdx = afterPrefix.indexOf(suffix)
-          if (suffixIdx >= 0 && suffixIdx === 0) {
-            // Suffix is right after prefix (original position) — text was appended at end
+          if (suffixIdx === 0) {
             const insertedText = afterPrefix.slice(suffix.length)
             if (insertedText.length > 0) {
               const correctedValue = prefix + insertedText + suffix
               const correctCursor = prefix.length + insertedText.length
-              imePollingLog('TEXT_REARRANGE', {
-                prefix: prefix.slice(0, 10), suffix: suffix.slice(0, 10),
-                inserted: insertedText.slice(0, 10), correctCursor,
-                oldVal: oldVal.slice(0, 30), wrongVal: v.slice(0, 30),
-                fixedVal: correctedValue.slice(0, 30),
-              })
               el.value = correctedValue
               try { el.setSelectionRange(correctCursor, correctCursor) } catch (_) {}
-              // Update synced to corrected value
               lastSynced = correctedValue
               lastStableValue = correctedValue
               lastStableCursor = correctCursor

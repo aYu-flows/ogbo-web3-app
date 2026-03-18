@@ -577,12 +577,25 @@ interface StoredWallet {
 
 #### IME 输入（Android WebView）
 
-- **问题**：Android WebView 中，用户点击 IME 候选词时，文本被插入 DOM，但不触发任何 JavaScript 事件（React onChange、native input、compositionEnd 均不触发）
+- **问题 1 — 候选词无事件**：Android WebView 中，用户点击 IME 候选词时，文本被插入 DOM，但不触发任何 JavaScript 事件（React onChange、native input、compositionEnd 均不触发）
 - **根因**：Capacitor WebView 的 IME 实现直接操作 DOM 而不经过标准事件分发
 - **方案**：`useIMEInput` hook（`hooks/use-ime-input.ts`）内置 300ms 轮询 + native input 事件双保险
   - 所有用户输入框必须使用 `useIMEInput` 的 `getInputProps()` spread
   - 非受控输入使用 `setupInputPolling()` 工具函数
 - **参考**：`tasks/task90_ime_debug.md` 记录了完整的排查过程
+
+- **问题 2 — 候选词插入位置错误**：用户在文本中间点击定位光标后，选择 IME 候选词时，WebView 将文本插入到末尾而非光标位置（例如 "你好|世界" + 选词"的" → "你好世界的" 而非 "你好的世界"），且光标跳到末尾
+- **根因**：Android WebView 的 IME 候选词选择绕过了标准光标位置逻辑，直接 append 到 DOM 文本末尾。此行为不触发任何 JS 事件，因此无法通过事件拦截修复
+- **方案**：`setupInputPolling()` 中实现文本重排逻辑（Task95 Round7）：
+  1. 每次轮询记录 `lastStableCursor`（值未变时更新光标位置）
+  2. 检测到值变化时，用 prefix/suffix 匹配判断文本是否被错误地追加到末尾
+  3. 若 suffix 仍在原位而新文本在末尾 → 重排 `el.value = prefix + inserted + suffix`
+  4. 设置光标到 `prefix.length + inserted.length`
+- **开发注意事项**：
+  - 所有文本输入框必须接入 `setupInputPolling()` 或 `useIMEInput`，否则中文输入在 Android 上会出现插入位置错误
+  - 不要依赖 `compositionstart`/`compositionend` 事件来检测 IME 状态 — 在 Android WebView 上这些事件可能完全不触发
+  - 不要在 IME 相关事件中同步触发 React 状态更新（`useState` setter），即使输入是非受控的，re-render 也可能干扰 WebView 的 IME 处理
+- **参考**：`plans/task95-cursor-jump-debug.md` 记录了 7 轮排查过程
 
 ### §6.4 APK 构建
 
@@ -604,6 +617,7 @@ interface StoredWallet {
 
 | 日期 | 变更内容 | 关联代码文件 |
 |------|---------|-------------|
+| 2026-03-18 | §6.3 IME 输入：新增候选词插入位置错误问题及 setupInputPolling 文本重排方案 | hooks/use-ime-input.ts |
 | 2026-03-08 | 新增 §6.5 OTA 热更新 | lib/use-ota-updater.ts, lib/ota-version.ts |
 | 2026-03-08 | 初始化创建 | - |
 
