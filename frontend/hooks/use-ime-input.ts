@@ -60,31 +60,49 @@ export function setupInputPolling(
         oldCursor, currentCursor, oldLen: oldVal?.length, newLen: v.length,
       })
 
-      // Calculate correct cursor position:
-      // If text was inserted at oldCursor, the suffix after cursor should be unchanged
-      if (oldCursor !== null && oldVal !== null) {
+      if (oldCursor !== null && oldVal !== null && oldCursor < oldVal.length) {
+        const prefix = oldVal.slice(0, oldCursor)
         const suffix = oldVal.slice(oldCursor)
-        // Verify suffix matches end of new value (insertion happened at cursor)
-        if (v.endsWith(suffix)) {
+
+        if (v.endsWith(suffix) && suffix.length > 0) {
+          // Case A: Text was correctly inserted at cursor — just fix cursor position
           const correctCursor = v.length - suffix.length
-          imePollingLog('CURSOR_FIX', {
+          imePollingLog('CURSOR_FIX_A', {
             oldCursor, currentCursor, correctCursor, suffix: suffix.slice(0, 20),
           })
-          // Only fix if cursor is wrong (at end instead of insertion point)
           if (currentCursor !== correctCursor && correctCursor >= 0) {
-            try {
-              el.setSelectionRange(correctCursor, correctCursor)
-              imePollingLog('CURSOR_SET_OK', { correctCursor })
-            } catch (_) { /* ignore */ }
-            // Retry after short delay in case WebView overrides
+            try { el.setSelectionRange(correctCursor, correctCursor) } catch (_) {}
             setTimeout(() => {
-              try {
-                if (el.selectionStart !== correctCursor) {
-                  el.setSelectionRange(correctCursor, correctCursor)
-                  imePollingLog('CURSOR_RETRY_OK', { correctCursor, was: el.selectionStart })
-                }
-              } catch (_) { /* ignore */ }
+              try { if (el.selectionStart !== correctCursor) el.setSelectionRange(correctCursor, correctCursor) } catch (_) {}
             }, 50)
+          }
+        } else if (v.startsWith(prefix) && suffix.length > 0) {
+          // Case B: Text was appended at END instead of at cursor position
+          // e.g. old="你好世界" cursor=2 → new="你好世界啦啦啦" (should be "你好啦啦啦世界")
+          // Detect: prefix="你好" is at start, but suffix="世界" is NOT at end
+          const afterPrefix = v.slice(prefix.length)
+          const suffixIdx = afterPrefix.indexOf(suffix)
+          if (suffixIdx >= 0 && suffixIdx === 0) {
+            // Suffix is right after prefix (original position) — text was appended at end
+            const insertedText = afterPrefix.slice(suffix.length)
+            if (insertedText.length > 0) {
+              const correctedValue = prefix + insertedText + suffix
+              const correctCursor = prefix.length + insertedText.length
+              imePollingLog('TEXT_REARRANGE', {
+                prefix: prefix.slice(0, 10), suffix: suffix.slice(0, 10),
+                inserted: insertedText.slice(0, 10), correctCursor,
+                oldVal: oldVal.slice(0, 30), wrongVal: v.slice(0, 30),
+                fixedVal: correctedValue.slice(0, 30),
+              })
+              el.value = correctedValue
+              try { el.setSelectionRange(correctCursor, correctCursor) } catch (_) {}
+              // Update synced to corrected value
+              lastSynced = correctedValue
+              lastStableValue = correctedValue
+              lastStableCursor = correctCursor
+              onSync(correctedValue)
+              return
+            }
           }
         }
       }
