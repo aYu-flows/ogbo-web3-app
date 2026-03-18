@@ -4,6 +4,16 @@
 
 ---
 
+## Task95 — Fix Cursor Jumping to End on Controlled Inputs (2026-03-18)
+
+### Fixed
+- Tapping in the middle of text in controlled inputs (group name, nickname, announcement, search, profile edit) caused new input to appear at the end instead of at the cursor position. Root cause: `useIMEInput` hook's `setValue()` calls (from onChange, polling, compositionEnd) triggered React re-renders that reset cursor position on Android WebView. Fix: save `selectionStart`/`selectionEnd` before every `setValue`, restore via `useLayoutEffect` after React re-render.
+
+### Files Modified
+- `hooks/use-ime-input.ts` — Added `cursorRef` + `useLayoutEffect` cursor restore; save cursor in `handleChange`, `getInputProps` onChange, polling callback, and `onCompositionEnd`
+
+---
+
 ## Task94 — Fix Dissolved Group Send Guard, Message Shake, Owner Leave (2026-03-18)
 
 ### Fixed

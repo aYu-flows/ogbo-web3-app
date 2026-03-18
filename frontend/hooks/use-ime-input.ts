@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react'
+import { useCallback, useLayoutEffect, useRef, useState } from 'react'
 
 /**
  * Sets up polling + native input event on a DOM element to detect ALL input
@@ -47,6 +47,18 @@ export function useIMEInput(initialValue = '') {
   const [compositionEndCount, setCompositionEndCount] = useState(0)
   const cleanupRef = useRef<(() => void) | null>(null)
   const elRef = useRef<HTMLInputElement | HTMLTextAreaElement | null>(null)
+  // Cursor position tracking — saves before setValue, restores after React re-render
+  const cursorRef = useRef<{ start: number | null; end: number | null }>({ start: null, end: null })
+
+  // Restore cursor position after React re-renders the controlled input value
+  useLayoutEffect(() => {
+    const el = elRef.current
+    const pos = cursorRef.current
+    if (el && pos.start !== null && document.activeElement === el) {
+      try { el.setSelectionRange(pos.start, pos.end ?? pos.start) } catch (_) { /* ignore on non-text inputs */ }
+    }
+    cursorRef.current = { start: null, end: null }
+  }, [value])
 
   const onCompositionStart = useCallback(() => {
     isComposingRef.current = true
@@ -61,6 +73,8 @@ export function useIMEInput(initialValue = '') {
     // If onChange already ran (Android order), this is a harmless redundant update.
     requestAnimationFrame(() => {
       const finalValue = el.value
+      // Save cursor position before React re-render resets it
+      cursorRef.current = { start: el.selectionStart, end: el.selectionEnd }
       setValue(finalValue)
       setDeferredValue(finalValue)
       // Force increment to trigger downstream effects even if value is the same
@@ -70,6 +84,7 @@ export function useIMEInput(initialValue = '') {
 
   const handleChange = useCallback((e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const newValue = e.target.value
+    cursorRef.current = { start: e.target.selectionStart, end: e.target.selectionEnd }
     setValue(newValue)
     // Only update deferred value when NOT composing (for non-CJK input, this is always true)
     if (!isComposingRef.current) {
@@ -91,6 +106,7 @@ export function useIMEInput(initialValue = '') {
     elRef.current = el
     if (el) {
       cleanupRef.current = setupInputPolling(el, (v) => {
+        cursorRef.current = { start: el.selectionStart, end: el.selectionEnd }
         setValue(v)
         // If composing stuck (no compositionEnd fired), reset it
         if (isComposingRef.current) {
@@ -121,6 +137,11 @@ export function useIMEInput(initialValue = '') {
       if (options?.maxLength && !isComposingRef.current && newValue.length > options.maxLength) {
         newValue = newValue.slice(0, options.maxLength)
       }
+      // Save cursor before React re-render; adjust if maxLength truncated
+      const rawCursor = e.target.selectionStart
+      const cursor = (options?.maxLength && rawCursor !== null && rawCursor > options.maxLength)
+        ? options.maxLength : rawCursor
+      cursorRef.current = { start: cursor, end: cursor }
       setValue(newValue)
       if (!isComposingRef.current) {
         // Truncate for deferred as well
